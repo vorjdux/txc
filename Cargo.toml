@@ -1,0 +1,38 @@
+[package]
+name = "txc"
+description = "Text utils CLI tools"
+authors = ["Matheus Santos <vorj.dux@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+clap = { version = "3.1.8", features = ["derive"] }
+urlencoding = "2.1.0"
+html-escape = "0.2.11"
+
+[profile.dev]
+debug = true
+
+[profile.release]
+lto = true
+opt-level = 3
+debug = false
+
+[package.metadata.deb]
+maintainer = "Matheus Santos <vorj.dux@gmail.com>"
+copyright = "2022, Matheus Santos <vorj.dux@gmail.com>"
+license-file = ["LICENSE-MIT", "4"]
+extended-description = """\
+Text utils CLI tools\
+"""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+maintainer-scripts = "debian/"
+systemd-units = { enable = false }
+assets = [
+    ["target/release/txc", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/txc/README", "644"],
+]
