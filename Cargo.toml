@@ -8,9 +8,10 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-clap = { version = "3.1.8", features = ["derive"] }
-urlencoding = "2.1.0"
-html-escape = "0.2.11"
+clap = { version = "3.1", features = ["derive"] }
+urlencoding = "2.1"
+html-escape = "0.2"
+uuid = { version = "0.8.2", features = ["serde", "v1", "v3", "v4", "v5", "guid", "md5", "sha1", "getrandom"] }
 
 [profile.dev]
 debug = true
