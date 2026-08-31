@@ -27,18 +27,18 @@ type.
 ```
  txc  0.2.0 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
-│All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
-│Case          │╰──────────────────────────╯│                                              │
-│Encoding      │┏ Operations (1) ━━━━━━━━━━┓│                                              │
-│Hashing       │┃caesar                    ┃│                                              │
-│Lines         │┃                          ┃│                                              │
-│Text          │┃                          ┃╰──────────────────────────────────────────────╯
-│Numbers       │┃                          ┃╭ Options ─────────────────────────────────────╮
-│Convert       │┃                          ┃│  shift  3                                    │
-│Inspect       │┃                          ┃╰──────────────────────────────────────────────╯
-│Generate      │┃                          ┃╭ Output (43 characters) ──────────────────────╮
-│Time          │┃                          ┃│Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj   │
-│              │┃                          ┃│                                              │
+│  All         ││  caesar                  ││  The quick brown fox jumps over the lazy do  │
+│  Case        │╰──────────────────────────╯│                                              │
+│  Encoding    │┏ Operations (1) ━━━━━━━━━━┓│                                              │
+│  Hashing     │┃  caesar                  ┃│                                              │
+│  Lines       │┃                          ┃│                                              │
+│  Text        │┃                          ┃╰──────────────────────────────────────────────╯
+│  Numbers     │┃                          ┃╭ Options ─────────────────────────────────────╮
+│  Convert     │┃                          ┃│  shift  3                                    │
+│  Inspect     │┃                          ┃╰──────────────────────────────────────────────╯
+│  Generate    │┃                          ┃╭ Output (43 characters) ──────────────────────╮
+│  Time        │┃                          ┃│  Wkh txlfn eurzq ira mxpsv ryhu wkh odcb     │
+│              │┃                          ┃│  grj                                         │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
@@ -46,7 +46,7 @@ type.
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
- tab  panel   ^up/^down  operation   ^p  pipe to input   ^r  sample   ^s  save   ?  help   ^
+ tab  panel   ^up/^down  op   ^y  copy   ^s  save   ?  help   F2  about   ^c  quit
 ```
 
 | Key | Action |
@@ -77,15 +77,15 @@ back.
 ```
  txc  0.2.0 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
-│All           ││uuid                      ││  version    4                                │
-│Case          │╰──────────────────────────╯│  count      1                                │
-│Encoding      │┏ Operations (1) ━━━━━━━━━━┓│  name       example.com                      │
-│Hashing       │┃uuid  gen                 ┃│  namespace  dns                              │
-│Lines         │┃                          ┃│  upper      off                              │
-│Text          │┃                          ┃│  compact    off                              │
-│Numbers       │┃                          ┃╰──────────────────────────────────────────────╯
-│Convert       │┃                          ┃╭ Output (36 characters, ^n for another) ──────╮
-│Inspect       │┃                          ┃│dbcf696d-d319-4f6a-a74c-d8ac915eb769          │
+│  All         ││  uuid                    ││  version    4                                │
+│  Case        │╰──────────────────────────╯│  count      1                                │
+│  Encoding    │┏ Operations (1) ━━━━━━━━━━┓│  name       example.com                      │
+│  Hashing     │┃  uuid  gen               ┃│  namespace  dns                              │
+│  Lines       │┃                          ┃│  upper      off                              │
+│  Text        │┃                          ┃│  compact    off                              │
+│  Numbers     │┃                          ┃╰──────────────────────────────────────────────╯
+│  Convert     │┃                          ┃╭ Output (36 characters, ^n for another) ──────╮
+│  Inspect     │┃                          ┃│  584c63ba-81ad-4284-b306-dac0ce320438        │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
 ```
 
@@ -109,10 +109,9 @@ already filled in with the values the operation would use anyway:
 
 ```
 ╭ Options: Number of places to shift ──────────╮
-│> shift  3                                    │
+│  shift  3                                    │
 ╰──────────────────────────────────────────────╯
 ```
-
 Type to change a value, and press `space` to turn a switch on or off. The panel
 title explains whichever parameter is selected. Parameters that are required on
 the command line, such as `replace --find`, start from a worked example so the
@@ -137,8 +136,8 @@ means your home directory:
 
 ```
 ┏ Save the output as ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃uuid.txt                                                      ┃
-┃enter to save, esc to cancel, ~ is your home directory        ┃
+┃  uuid.txt                                                    ┃
+┃  enter to save, esc to cancel, ~ is your home directory      ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 

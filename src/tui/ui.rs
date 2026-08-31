@@ -5,7 +5,7 @@ use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+    Block, BorderType, Clear, List, ListItem, ListState, Padding, Paragraph, Scrollbar,
     ScrollbarOrientation, ScrollbarState, Wrap,
 };
 
@@ -87,7 +87,7 @@ fn draw_prompt(frame: &mut Frame, area: Rect, app: &App) {
     );
 
     frame.set_cursor_position(Position::new(
-        window.x + 1 + prompt.input.cursor().1 as u16,
+        content_x(window) + prompt.input.cursor().1 as u16,
         window.y + 1,
     ));
 }
@@ -121,6 +121,10 @@ fn draw_right_column(frame: &mut Frame, area: Rect, app: &App) {
     draw_output(frame, *next.next().expect("output area"), app);
 }
 
+/// Every panel indents its contents by this much, so text never sits against
+/// the border. The cursor positions below are offset by the same amount.
+const PAD: u16 = 2;
+
 fn panel(title: &str, focused: bool) -> Block<'_> {
     let style = if focused {
         Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
@@ -134,7 +138,13 @@ fn panel(title: &str, focused: bool) -> Block<'_> {
             BorderType::Rounded
         })
         .border_style(style)
+        .padding(Padding::horizontal(PAD))
         .title(Span::styled(format!(" {title} "), style))
+}
+
+/// Where the first character of a panel's contents is drawn.
+const fn content_x(area: Rect) -> u16 {
+    area.x + 1 + PAD
 }
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
@@ -195,7 +205,7 @@ fn draw_search(frame: &mut Frame, area: Rect, app: &App) {
     );
     if focused {
         frame.set_cursor_position(Position::new(
-            area.x + 1 + app.search.chars().count() as u16,
+            content_x(area) + app.search.chars().count() as u16,
             area.y + 1,
         ));
     }
@@ -273,9 +283,9 @@ fn draw_input(frame: &mut Frame, area: Rect, app: &App) {
     );
 
     if focused {
-        let width = area.width.saturating_sub(2) as usize;
+        let width = area.width.saturating_sub(2 + PAD * 2) as usize;
         frame.set_cursor_position(Position::new(
-            area.x + 1 + column.min(width) as u16,
+            content_x(area) + column.min(width) as u16,
             area.y + 1 + (row - offset) as u16,
         ));
     }
@@ -298,14 +308,19 @@ fn draw_options(frame: &mut Frame, area: Rect, app: &App) {
         .enumerate()
         .map(|(index, field)| {
             let selected = focused && index == app.options.selected();
-            let label = Style::default().fg(if selected { ACCENT } else { MUTED });
+            // The selected row is marked by weight rather than by a symbol,
+            // so every panel indents its contents by the same amount.
+            let label = if selected {
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(MUTED)
+            };
             let value = if selected {
                 Style::default().add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
             Line::from(vec![
-                Span::styled(if selected { "> " } else { "  " }, label),
                 Span::styled(format!("{:width$}  ", field.param.name), label),
                 Span::styled(field.display(), value),
             ])
@@ -323,9 +338,10 @@ fn draw_options(frame: &mut Frame, area: Rect, app: &App) {
     // The cursor belongs in the value of the selected field, and only when
     // that field is something to type into.
     if focused && !app.options.selected_is_flag() {
-        let column = 4 + width + app.options.cursor();
+        // Past the name column and the two spaces after it.
+        let column = width + 2 + app.options.cursor();
         frame.set_cursor_position(Position::new(
-            area.x + 1 + column as u16,
+            content_x(area) + column as u16,
             area.y + 1 + app.options.selected() as u16,
         ));
     }
@@ -435,28 +451,21 @@ fn draw_about(frame: &mut Frame, area: Rect) {
 
     let mut text = vec![
         Line::raw(""),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                about::NAME,
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-        ]),
+        Line::styled(
+            about::NAME,
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
     ];
 
     // The description is a full sentence, so it is wrapped rather than cut.
-    let inner = area.width.min(COLUMNS).saturating_sub(6) as usize;
-    for line in textwrap::wrap(about::DESCRIPTION, inner.max(20)) {
-        text.push(Line::styled(
-            format!("  {line}"),
-            Style::default().fg(MUTED),
-        ));
+    let inner = area.width.min(COLUMNS).saturating_sub(2 + PAD * 2).max(20) as usize;
+    for line in textwrap::wrap(about::DESCRIPTION, inner) {
+        text.push(Line::styled(line.into_owned(), Style::default().fg(MUTED)));
     }
     text.push(Line::raw(""));
 
     for (label, value) in rows {
         text.push(Line::from(vec![
-            Span::raw("  "),
             Span::styled(
                 format!("{label:label_width$}  "),
                 Style::default().fg(MUTED),
@@ -476,10 +485,7 @@ fn draw_about(frame: &mut Frame, area: Rect) {
         ));
     }
     text.push(Line::raw(""));
-    text.push(Line::styled(
-        "  any key to close",
-        Style::default().fg(MUTED),
-    ));
+    text.push(Line::styled("any key to close", Style::default().fg(MUTED)));
 
     let height = text.len() as u16 + 2;
     let popup = window(area, COLUMNS, height);
@@ -497,28 +503,28 @@ fn draw_help(frame: &mut Frame, area: Rect) {
 
     let text = vec![
         Line::raw(""),
-        Line::raw("  tab / shift+tab      move between panels"),
-        Line::raw("  up / down            move inside a list or between options"),
-        Line::raw("  ctrl+up / ctrl+down  change operation from anywhere"),
-        Line::raw("  ctrl+left/right      change category"),
-        Line::raw("  /                    jump to the search box"),
+        Line::raw("tab / shift+tab      move between panels"),
+        Line::raw("up / down            move inside a list or between options"),
+        Line::raw("ctrl+up / ctrl+down  change operation from anywhere"),
+        Line::raw("ctrl+left/right      change category"),
+        Line::raw("/                    jump to the search box"),
         Line::raw(""),
-        Line::raw("  Options panel"),
-        Line::raw("    type               edit the selected value"),
-        Line::raw("    space              turn the selected switch on or off"),
-        Line::raw("    ctrl+l             empty the selected value"),
-        Line::raw("    ctrl+u             put every option back to its default"),
+        Line::raw("Options panel"),
+        Line::raw("type               edit the selected value"),
+        Line::raw("space              turn the selected switch on or off"),
+        Line::raw("ctrl+l             empty the selected value"),
+        Line::raw("ctrl+u             put every option back to its default"),
         Line::raw(""),
-        Line::raw("  ctrl+n               run the operation again, for the random ones"),
-        Line::raw("  ctrl+y               copy the output to the clipboard"),
-        Line::raw("  ctrl+s               save the output, asking where"),
-        Line::raw("  ctrl+p               move the output into the input"),
-        Line::raw("  ctrl+r               bring back the sample text"),
-        Line::raw("  ctrl+l               clear the input"),
-        Line::raw("  page up / page down  scroll the output"),
+        Line::raw("ctrl+n               run the operation again, for the random ones"),
+        Line::raw("ctrl+y               copy the output to the clipboard"),
+        Line::raw("ctrl+s               save the output, asking where"),
+        Line::raw("ctrl+p               move the output into the input"),
+        Line::raw("ctrl+r               bring back the sample text"),
+        Line::raw("ctrl+l               clear the input"),
+        Line::raw("page up / page down  scroll the output"),
         Line::raw(""),
-        Line::raw("  F2  about txc, its author and licence"),
-        Line::raw("  ?   close this help             ctrl+c  quit"),
+        Line::raw("F2  about txc, its author and licence"),
+        Line::raw("?   close this help             ctrl+c  quit"),
     ];
 
     frame.render_widget(Clear, popup);
@@ -539,16 +545,38 @@ mod tests {
     use crate::registry;
 
     fn render(app: &mut App, width: u16, height: u16) -> String {
+        render_with_cursor(app, width, height).0
+    }
+
+    /// Renders and also reports where the cursor was left, which is the part
+    /// of the padding that a screenshot cannot show.
+    fn render_with_cursor(app: &mut App, width: u16, height: u16) -> (String, (u16, u16)) {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
         terminal.draw(|frame| draw(frame, app)).expect("draw");
-        terminal
+        let cursor = terminal.get_cursor_position().expect("cursor position");
+        let screen = terminal
             .backend()
             .buffer()
             .content()
             .chunks(width as usize)
             .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n");
+        (screen, (cursor.x, cursor.y))
+    }
+
+    /// Where a piece of text sits on screen, as a column and a row.
+    ///
+    /// The columns are counted in characters, not bytes: the borders are
+    /// multi byte, so a byte offset would not be a screen position.
+    fn find(screen: &str, needle: &str) -> (u16, u16) {
+        for (row, line) in screen.lines().enumerate() {
+            if let Some(byte) = line.find(needle) {
+                let column = line[..byte].chars().count();
+                return (column as u16, row as u16);
+            }
+        }
+        panic!("{needle:?} is not on screen:\n{screen}");
     }
 
     #[test]
@@ -648,6 +676,90 @@ mod tests {
         app.show_about = true;
         render(&mut app, 40, 12);
         render(&mut app, 20, 6);
+    }
+
+    #[test]
+    fn every_panel_indents_its_contents_by_the_same_amount() {
+        let mut app = App::new();
+        app.search = "caesar".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        let screen = render(&mut app, 100, 30);
+
+        // The category list, the search box, the operation list, the input,
+        // the options and the output all start at the same offset from their
+        // own border.
+        for (content, border) in [
+            ("All", '\u{256d}'),
+            ("caesar", '\u{256d}'),
+            ("The quick", '\u{256d}'),
+            ("shift", '\u{256d}'),
+            ("Wkh txlfn", '\u{256d}'),
+        ] {
+            let (column, row) = find(&screen, content);
+            let line: Vec<char> = screen.lines().nth(row as usize).unwrap().chars().collect();
+            let indent = (0..column)
+                .rev()
+                .take_while(|i| line[*i as usize] == ' ')
+                .count();
+            assert_eq!(
+                indent, PAD as usize,
+                "{content:?} is indented {indent} rather than {PAD}, border {border:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_input_cursor_sits_after_the_padding() {
+        let mut app = App::new();
+        app.search = "upper".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        app.input = crate::tui::textarea::TextArea::from_text("abc");
+        app.focus = Focus::Input;
+        app.recompute();
+
+        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        let (column, row) = find(&screen, "abc");
+        // Three characters typed, so the cursor stands just past them.
+        assert_eq!(cursor, (column + 3, row));
+    }
+
+    #[test]
+    fn the_search_cursor_sits_after_the_padding() {
+        let mut app = App::new();
+        app.focus = Focus::Search;
+        app.search = "up".to_string();
+        app.refresh_operations();
+        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        let (column, row) = find(&screen, "up");
+        assert_eq!(cursor, (column + 2, row));
+    }
+
+    #[test]
+    fn the_options_cursor_sits_in_the_value() {
+        let mut app = App::new();
+        app.search = "caesar".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        app.focus = Focus::Options;
+
+        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        // The value is a single character, and the cursor follows it.
+        let (column, row) = find(&screen, "shift  3");
+        assert_eq!(cursor, (column + "shift  3".len() as u16, row));
+    }
+
+    #[test]
+    fn the_save_question_puts_the_cursor_in_the_path() {
+        let mut app = App::new();
+        app.search = "uuid".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        app.begin_save();
+        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        let (column, row) = find(&screen, "uuid.txt");
+        assert_eq!(cursor, (column + "uuid.txt".len() as u16, row));
     }
 
     #[test]
