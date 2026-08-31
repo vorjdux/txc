@@ -1,0 +1,41 @@
+# Contributor: Matheus Santos <vorj.dux@gmail.com>
+# Maintainer: Matheus Santos <vorj.dux@gmail.com>
+pkgname=txc
+pkgver=@VERSION@
+pkgrel=0
+pkgdesc="Offline text utilities for the terminal"
+url="https://github.com/vorjdux/txc"
+arch="all"
+license="MIT OR Apache-2.0"
+makedepends="cargo"
+subpackages="
+	$pkgname-doc
+	$pkgname-bash-completion
+	$pkgname-zsh-completion
+	$pkgname-fish-completion
+	"
+source="$pkgname-$pkgver.tar.gz::https://github.com/vorjdux/txc/archive/refs/tags/v$pkgver.tar.gz"
+
+build() {
+	cargo build --release --frozen
+	./target/release/txc completions bash > txc.bash
+	./target/release/txc completions zsh > _txc
+	./target/release/txc completions fish > txc.fish
+}
+
+check() {
+	cargo test --frozen
+}
+
+package() {
+	install -Dm755 target/release/txc "$pkgdir"/usr/bin/txc
+	install -Dm644 README.md "$pkgdir"/usr/share/doc/$pkgname/README.md
+	install -Dm644 LICENSE-MIT "$pkgdir"/usr/share/licenses/$pkgname/LICENSE-MIT
+	install -Dm644 LICENSE-APACHE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE-APACHE
+
+	install -Dm644 txc.bash "$pkgdir"/usr/share/bash-completion/completions/txc
+	install -Dm644 _txc "$pkgdir"/usr/share/zsh/site-functions/_txc
+	install -Dm644 txc.fish "$pkgdir"/usr/share/fish/vendor_completions.d/txc.fish
+}
+
+sha512sums="@SHA512_SOURCE@  txc-@VERSION@.tar.gz"

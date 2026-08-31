@@ -475,11 +475,17 @@ impl App {
 const MAX_CLIPBOARD_BYTES: usize = 64 * 1024;
 
 /// Expands a leading `~` so a typed path behaves the way a shell would.
+///
+/// Windows has no `HOME`, so `USERPROFILE` is consulted as well; without it the
+/// tilde would be taken as a literal directory name there.
 fn expand_home(path: &str) -> std::path::PathBuf {
     let Some(rest) = path.strip_prefix('~') else {
         return std::path::PathBuf::from(path);
     };
-    let Ok(home) = std::env::var("HOME") else {
+    let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .filter(|value| !value.is_empty())
+    else {
         return std::path::PathBuf::from(path);
     };
     std::path::PathBuf::from(home).join(rest.trim_start_matches(['/', '\\']))

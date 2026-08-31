@@ -148,17 +148,60 @@ means your home directory:
 
 ## Installing
 
-Rust 1.88 or newer is required; the crate uses the 2024 edition.
+Rust 1.88 or newer is required to build from source; the crate uses the 2024
+edition. The released binaries need nothing installed.
 
+### One line
+
+```sh
+curl -sSf https://raw.githubusercontent.com/vorjdux/txc/main/install.sh | sh
 ```
+
+```powershell
+irm https://raw.githubusercontent.com/vorjdux/txc/main/install.ps1 | iex
+```
+
+Both download the archive for your machine, check it against the published
+`SHA256SUMS`, and put `txc` somewhere on your PATH. Pass `--dry-run` to see
+what would happen, `VERSION=x.y.z` to pin a version, and `INSTALL_DIR=...` to
+choose where it lands.
+
+### Package managers
+
+| Platform | Command |
+| --- | --- |
+| Any, with Rust | `cargo install txc` |
+| macOS, Linux | `brew install vorjdux/tap/txc` |
+| Windows | `winget install vorjdux.txc` |
+| Windows | `scoop install txc` |
+| Arch | `yay -S txc-bin` |
+| Debian, Ubuntu | `sudo dpkg -i txc_<version>_<arch>.deb` |
+| Fedora, RHEL, Rocky, Alma | `sudo rpm -i txc-<version>.<arch>.rpm` |
+| Alpine | `apk add txc` |
+
+### Direct download
+
+Every release carries archives for Linux, macOS and Windows on both x86_64 and
+arm64, alongside `.deb` and `.rpm` packages and a `SHA256SUMS` covering all of
+them: [the releases page](https://github.com/vorjdux/txc/releases).
+
+The Linux binaries are linked against musl, so one archive runs on any
+distribution whatever its glibc.
+
+```sh
+tar xzf txc-<version>-linux-x86_64.tar.gz
+sudo install -m755 txc-<version>-linux-x86_64/txc /usr/local/bin/txc
+```
+
+### From source
+
+```sh
 cargo install --path .
 ```
 
-Or build a Debian package with [`cargo-deb`](https://github.com/kornelski/cargo-deb):
-
-```
-cargo deb
-```
+Packaging definitions for every format above live in
+[`packaging/`](packaging), and `packaging/render.sh` fills them in with the
+version and checksums of a published release.
 
 ## Shell completion
 

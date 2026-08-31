@@ -49,6 +49,96 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked
 
+  packaging:
+    name: Package generators
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install the generators and rpm
+        run: |
+          cargo install cargo-deb cargo-generate-rpm --locked
+          sudo apt-get update -qq && sudo apt-get install -y rpm shellcheck
+
+      - name: Build the release binary
+        run: cargo build --release --locked
+
+      # Both generators are driven entirely by the assets lists in Cargo.toml.
+      # Building and reading the packages back on every change is what catches
+      # a path that moved, which would otherwise ship a package missing its
+      # binary or its completions and only be noticed after a release.
+      - name: Build and inspect the deb
+        run: |
+          set -eu
+          cargo deb --no-build --output target/debian/
+          DEB=$(find target/debian -name '*.deb' | head -1)
+          dpkg-deb -c "$DEB"
+          listing=$(dpkg-deb -c "$DEB" | awk '{print $NF}')
+          for required in ./usr/bin/txc bash-completion zsh fish copyright; do
+            echo "$listing" | grep -q "$required" \
+              || { echo "::error::the deb is missing $required"; exit 1; }
+          done
+
+      - name: Build and inspect the rpm
+        run: |
+          set -eu
+          cargo generate-rpm
+          RPM=$(find target/generate-rpm -name '*.rpm' | head -1)
+          rpm -qlp "$RPM"
+          listing=$(rpm -qlp "$RPM")
+          for required in /usr/bin/txc bash-completion zsh fish licenses; do
+            echo "$listing" | grep -q "$required" \
+              || { echo "::error::the rpm is missing $required"; exit 1; }
+          done
+
+      # Renders against a stand in release so a broken template is caught here
+      # rather than half way through a real release.
+      - name: Render the package manifests
+        run: |
+          set -eu
+          VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          mkdir -p fake-dist
+          for slug in linux-x86_64 linux-aarch64 macos-x86_64 macos-arm64; do
+            echo "$slug" > "fake-dist/txc-${VERSION}-${slug}.tar.gz"
+          done
+          for slug in windows-x86_64 windows-arm64; do
+            echo "$slug" > "fake-dist/txc-${VERSION}-${slug}.zip"
+          done
+          (cd fake-dist && sha256sum ./* | sed 's|\./||' > SHA256SUMS)
+          packaging/render.sh "$VERSION" fake-dist rendered
+          echo "── homebrew ──"; cat rendered/homebrew/txc.rb
+          echo "── scoop ──";    python3 -m json.tool rendered/scoop/txc.json
+          echo "── winget ──";   python3 -c "import yaml,glob,sys; [yaml.safe_load(open(f)) for f in glob.glob('rendered/winget/*.yaml')]; print('winget manifests parse')"
+
+      - name: Shell scripts
+        run: shellcheck install.sh packaging/render.sh
+
+  installer-windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A syntax error here would only surface when somebody tried to install.
+      - name: Parse install.ps1
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path install.ps1), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { $_.Message }; exit 1 }
+          "install.ps1 parses"
+      - name: Analyse install.ps1
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction SilentlyContinue
+          if (Get-Module -ListAvailable PSScriptAnalyzer) {
+            $found = Invoke-ScriptAnalyzer -Path install.ps1 -Severity Error
+            if ($found) { $found | Format-Table -AutoSize | Out-String | Write-Host; exit 1 }
+            "no errors from PSScriptAnalyzer"
+          }
+
   completions:
     name: Completion scripts are up to date
     runs-on: ubuntu-latest

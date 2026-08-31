@@ -1,0 +1,33 @@
+{
+    "version": "@VERSION@",
+    "description": "Offline text utilities for the terminal",
+    "homepage": "https://github.com/vorjdux/txc",
+    "license": "MIT|Apache-2.0",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/vorjdux/txc/releases/download/v@VERSION@/txc-@VERSION@-windows-x86_64.zip",
+            "hash": "@SHA256_WINDOWS_X86_64@"
+        },
+        "arm64": {
+            "url": "https://github.com/vorjdux/txc/releases/download/v@VERSION@/txc-@VERSION@-windows-arm64.zip",
+            "hash": "@SHA256_WINDOWS_ARM64@"
+        }
+    },
+    "bin": "txc.exe",
+    "checkver": {
+        "github": "https://github.com/vorjdux/txc"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/vorjdux/txc/releases/download/v$version/txc-$version-windows-x86_64.zip"
+            },
+            "arm64": {
+                "url": "https://github.com/vorjdux/txc/releases/download/v$version/txc-$version-windows-arm64.zip"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS"
+        }
+    }
+}

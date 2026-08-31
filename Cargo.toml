@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/vorjdux/txc"
 keywords = ["cli", "text", "encoding", "hash", "tui"]
 categories = ["command-line-utilities", "text-processing"]
-exclude = ["debian/", ".github/"]
+exclude = ["debian/", ".github/", "packaging/", "install.sh", "install.ps1"]
 
 [lib]
 name = "txc"
@@ -62,6 +62,8 @@ panic = "abort"
 strip = true
 debug = false
 
+# Built by `cargo deb`. The release workflow runs it on the oldest supported
+# runner, because the generated Depends pins the glibc of the build machine.
 [package.metadata.deb]
 maintainer = "Matheus Santos <vorj.dux@gmail.com>"
 copyright = "2022, Matheus Santos <vorj.dux@gmail.com>"
@@ -75,12 +77,24 @@ through an interactive terminal interface.\
 depends = "$auto"
 section = "utility"
 priority = "optional"
-maintainer-scripts = "debian/"
-systemd-units = { enable = false }
 assets = [
     ["target/release/txc", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/txc/README", "644"],
     ["completions/txc.bash", "usr/share/bash-completion/completions/txc", "644"],
     ["completions/_txc", "usr/share/zsh/vendor-completions/", "644"],
     ["completions/txc.fish", "usr/share/fish/vendor_completions.d/", "644"],
+]
+
+# Built by `cargo generate-rpm`, which reads the already compiled binary rather
+# than building from source, so the same release artifact ships in both formats.
+[package.metadata.generate-rpm]
+summary = "Offline text utilities for the terminal"
+assets = [
+    { source = "target/release/txc", dest = "/usr/bin/txc", mode = "755" },
+    { source = "README.md", dest = "/usr/share/doc/txc/README.md", mode = "644", doc = true },
+    { source = "LICENSE-MIT", dest = "/usr/share/licenses/txc/LICENSE-MIT", mode = "644", doc = true },
+    { source = "LICENSE-APACHE", dest = "/usr/share/licenses/txc/LICENSE-APACHE", mode = "644", doc = true },
+    { source = "completions/txc.bash", dest = "/usr/share/bash-completion/completions/txc", mode = "644" },
+    { source = "completions/_txc", dest = "/usr/share/zsh/site-functions/_txc", mode = "644" },
+    { source = "completions/txc.fish", dest = "/usr/share/fish/vendor_completions.d/txc.fish", mode = "644" },
 ]
