@@ -46,7 +46,7 @@ type.
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
- tab  panel   ^up/^down  op   ^y  copy   ^s  save   ?  help   F2  about   ^c  quit
+ tab panel   ^up/^down op   ^y copy   ^s save   ? help   F2 about   ^c quit
 ```
 
 | Key | Action |
@@ -85,7 +85,7 @@ back.
 │Text          │┃                          ┃│  compact    off                              │
 │Numbers       │┃                          ┃╰──────────────────────────────────────────────╯
 │Convert       │┃                          ┃╭ Output (36 characters, ^n for another) ──────╮
-│Inspect       │┃                          ┃│db86fa81-08ba-40e4-a3ed-62465f151db3          │
+│Inspect       │┃                          ┃│b760c7e9-0fce-46cf-ac1e-5a8c4fc70bec          │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
 ```
 

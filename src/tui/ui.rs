@@ -14,10 +14,16 @@ use crate::registry::Feed;
 use crate::tui::app::{App, Focus};
 
 const ACCENT: Color = Color::Cyan;
-const MUTED: Color = Color::DarkGray;
+/// Secondary text: panel titles, option names, hints and the key reference.
+/// Grey rather than dark grey, which is close to unreadable on the dark
+/// backgrounds most terminals use.
+const MUTED: Color = Color::Gray;
+/// Frames of panels that are not focused. These may be quiet, because the
+/// shape carries the meaning and no words are lost when they recede.
+const BORDER: Color = Color::DarkGray;
 const ERROR: Color = Color::Red;
-/// Sample text is dimmed, so it reads as a starting point rather than input
-/// the reader typed.
+/// Sample text, dimmed so it reads as a starting point rather than input the
+/// reader typed.
 const SAMPLE: Color = Color::Gray;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -122,10 +128,13 @@ fn draw_right_column(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn panel(title: &str, focused: bool) -> Block<'_> {
-    let style = if focused {
-        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+    // The title has to be read, so it stays legible even when the frame around
+    // it recedes.
+    let (border, title_style) = if focused {
+        let style = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
+        (style, style)
     } else {
-        Style::default().fg(MUTED)
+        (Style::default().fg(BORDER), Style::default().fg(MUTED))
     };
     Block::bordered()
         .border_type(if focused {
@@ -133,8 +142,8 @@ fn panel(title: &str, focused: bool) -> Block<'_> {
         } else {
             BorderType::Rounded
         })
-        .border_style(style)
-        .title(Span::styled(format!(" {title} "), style))
+        .border_style(border)
+        .title(Span::styled(format!(" {title} "), title_style))
 }
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
@@ -398,15 +407,18 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(ACCENT),
         ))
     } else {
+        // The keys are picked out by colour and weight rather than by a block
+        // of background, which on a dark terminal left dark text on a dark
+        // patch.
         Line::from(
             keys.into_iter()
                 .flat_map(|(key, label)| {
                     [
                         Span::styled(
                             format!(" {key} "),
-                            Style::default().fg(Color::Black).bg(MUTED),
+                            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
                         ),
-                        Span::styled(format!(" {label}  "), Style::default().fg(MUTED)),
+                        Span::styled(format!("{label}  "), Style::default().fg(MUTED)),
                     ]
                 })
                 .collect::<Vec<_>>(),
@@ -557,6 +569,13 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         (screen, (cursor.x, cursor.y))
+    }
+
+    /// Renders and hands back the buffer, so the colours can be inspected.
+    fn render_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
+        terminal.draw(|frame| draw(frame, app)).expect("draw");
+        terminal.backend().buffer().clone()
     }
 
     /// Where a piece of text sits on screen, as a column and a row.
@@ -722,6 +741,53 @@ mod tests {
         let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
         let (column, row) = find(&screen, "uuid.txt");
         assert_eq!(cursor, (column + "uuid.txt".len() as u16, row));
+    }
+
+    #[test]
+    fn the_key_reference_along_the_bottom_is_legible() {
+        let mut app = App::new();
+        let (screen, _) = render_with_cursor(&mut app, 100, 30);
+        let buffer = render_buffer(&mut app, 100, 30);
+
+        let (key_column, row) = find(&screen, "tab");
+        let key = buffer.cell((key_column, row)).expect("a cell");
+        assert_eq!(key.fg, ACCENT, "the key itself should stand out");
+        assert!(key.modifier.contains(Modifier::BOLD), "and be bold");
+
+        let (label_column, _) = find(&screen, "panel");
+        let label = buffer.cell((label_column, row)).expect("a cell");
+        assert_eq!(
+            label.fg, MUTED,
+            "the label should be readable, not dark grey"
+        );
+
+        // Nothing along the bottom paints a background, which is what made
+        // dark text sit on a dark patch.
+        for column in 0..100 {
+            let cell = buffer.cell((column, row)).expect("a cell");
+            assert_eq!(
+                cell.bg,
+                Color::Reset,
+                "column {column} of the key reference paints a background",
+            );
+        }
+    }
+
+    #[test]
+    fn an_unfocused_panel_keeps_a_readable_title() {
+        let mut app = App::new();
+        app.focus = Focus::Operations;
+        let (screen, _) = render_with_cursor(&mut app, 100, 30);
+        let buffer = render_buffer(&mut app, 100, 30);
+
+        // Categories is not focused here, so its frame recedes, but the word
+        // itself must still be read.
+        let (column, row) = find(&screen, "Categories");
+        assert_eq!(buffer.cell((column, row)).expect("a cell").fg, MUTED);
+
+        // The focused panel is picked out in the accent colour.
+        let (column, row) = find(&screen, "Operations");
+        assert_eq!(buffer.cell((column, row)).expect("a cell").fg, ACCENT);
     }
 
     #[test]
