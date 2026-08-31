@@ -168,6 +168,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(lines.join("\n"))
             },
         )
+        .varies()
         .aliases(&["randomize-lines"]),
     );
 
@@ -581,6 +582,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             lines.truncate(count);
             Ok(lines.join("\n"))
         })
+        .varies()
         .aliases(&["random-line"])
         .params(P_SAMPLE),
     );

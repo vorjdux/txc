@@ -264,6 +264,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .collect())
             },
         )
+        .varies()
         .aliases(&["randomcase"]),
     );
 }

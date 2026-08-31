@@ -2,9 +2,10 @@
 
 pub mod app;
 pub mod options;
-pub(crate) mod textarea;
+pub mod textarea;
 mod ui;
 
+use std::io::Write;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -40,8 +41,36 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
         {
             handle_key(&mut app, key);
         }
+
+        if let Some(text) = app.pending_clipboard.take() {
+            send_to_clipboard(&text)?;
+        }
     }
     Ok(())
+}
+
+/// Puts text on the system clipboard by asking the terminal to do it.
+///
+/// This is the OSC 52 sequence. It needs no library and no display server, and
+/// it works over ssh and inside tmux, because the copying is done by whatever
+/// terminal the reader is sitting in front of. A terminal that does not
+/// support the sequence ignores it, so the status line says the output was
+/// copied rather than proving it arrived.
+fn send_to_clipboard(text: &str) -> Result<()> {
+    let mut stdout = std::io::stdout();
+    stdout
+        .write_all(clipboard_sequence(text).as_bytes())
+        .context("cannot reach the terminal")?;
+    stdout.flush().context("cannot reach the terminal")?;
+    Ok(())
+}
+
+/// The OSC 52 sequence that carries `text` to the clipboard.
+fn clipboard_sequence(text: &str) -> String {
+    format!(
+        "\x1b]52;c;{}\x07",
+        data_encoding::BASE64.encode(text.as_bytes())
+    )
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) {
@@ -49,6 +78,15 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     app.status.clear();
 
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
+
+    if app.prompt.is_some() {
+        if matches!(key.code, KeyCode::Char('c')) && control {
+            app.running = false;
+        } else {
+            prompt_key(app, key, control);
+        }
+        return;
+    }
 
     if app.show_help {
         // While the help is open every key closes it again.
@@ -70,7 +108,15 @@ fn handle_key(app: &mut App, key: KeyEvent) {
             return;
         }
         (KeyCode::Char('s'), true) => {
-            app.save_output();
+            app.begin_save();
+            return;
+        }
+        (KeyCode::Char('y'), true) => {
+            app.copy_output();
+            return;
+        }
+        (KeyCode::Char('n'), true) => {
+            app.run_again();
             return;
         }
         (KeyCode::Up, true) => {
@@ -189,6 +235,27 @@ fn operation_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('/') => app.focus = Focus::Search,
         KeyCode::Char('?') => app.show_help = true,
         KeyCode::Char('q') => app.running = false,
+        _ => {}
+    }
+}
+
+/// Keys for the small window that asks where to save the output.
+fn prompt_key(app: &mut App, key: KeyEvent, control: bool) {
+    let Some(prompt) = app.prompt.as_mut() else {
+        return;
+    };
+    match (key.code, control) {
+        (KeyCode::Enter, _) => app.confirm_prompt(),
+        (KeyCode::Esc, _) => app.cancel_prompt(),
+        (KeyCode::Char('u'), true) => prompt.input.clear(),
+        (KeyCode::Char('w'), true) => prompt.input.delete_word(),
+        (KeyCode::Char(ch), false) => prompt.input.insert(ch),
+        (KeyCode::Backspace, _) => prompt.input.backspace(),
+        (KeyCode::Delete, _) => prompt.input.delete(),
+        (KeyCode::Left, _) => prompt.input.move_left(),
+        (KeyCode::Right, _) => prompt.input.move_right(),
+        (KeyCode::Home, _) => prompt.input.move_home(),
+        (KeyCode::End, _) => prompt.input.move_end(),
         _ => {}
     }
 }
@@ -485,6 +552,73 @@ mod tests {
         press(&mut app, KeyCode::Char('q'));
         assert!(app.running, "q must not quit while typing");
         assert_eq!(app.input.text(), "q");
+    }
+
+    #[test]
+    fn control_n_runs_a_random_operation_again() {
+        let mut app = App::new();
+        app.search = "password".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        let first = app.outcome.text().to_string();
+        press_ctrl(&mut app, KeyCode::Char('n'));
+        assert_ne!(app.outcome.text(), first);
+    }
+
+    #[test]
+    fn control_y_queues_the_output_for_the_clipboard() {
+        let mut app = App::new();
+        app.search = "upper".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        press_ctrl(&mut app, KeyCode::Char('y'));
+        assert!(app.pending_clipboard.is_some());
+    }
+
+    #[test]
+    fn control_s_opens_a_question_that_takes_every_key() {
+        let mut app = App::new();
+        app.focus = Focus::Input;
+        press_ctrl(&mut app, KeyCode::Char('s'));
+        assert!(app.prompt.is_some());
+
+        // While it is open, typing edits the path rather than the input.
+        let before = app.input.text();
+        press_ctrl(&mut app, KeyCode::Char('u'));
+        for ch in "out.txt".chars() {
+            press(&mut app, KeyCode::Char(ch));
+        }
+        assert_eq!(app.prompt.as_ref().unwrap().input.text(), "out.txt");
+        assert_eq!(app.input.text(), before);
+
+        press(&mut app, KeyCode::Esc);
+        assert!(app.prompt.is_none());
+    }
+
+    #[test]
+    fn control_c_still_quits_while_a_question_is_open() {
+        let mut app = App::new();
+        press_ctrl(&mut app, KeyCode::Char('s'));
+        assert!(app.prompt.is_some());
+        press_ctrl(&mut app, KeyCode::Char('c'));
+        assert!(!app.running);
+    }
+
+    #[test]
+    fn the_clipboard_sequence_is_well_formed() {
+        // The terminal is asked to do the copying, so the sequence has to be
+        // exactly OSC 52 with the text base64 encoded inside it.
+        assert_eq!(clipboard_sequence("hello"), "\x1b]52;c;aGVsbG8=\x07");
+        // Text with newlines and accents travels intact.
+        let text = "line one\ncaf\u{e9}";
+        let sequence = clipboard_sequence(text);
+        let payload = sequence
+            .trim_start_matches("\x1b]52;c;")
+            .trim_end_matches('\x07');
+        assert_eq!(
+            String::from_utf8(data_encoding::BASE64.decode(payload.as_bytes()).unwrap()).unwrap(),
+            text
+        );
     }
 
     #[test]

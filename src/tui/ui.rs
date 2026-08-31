@@ -50,6 +50,41 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.show_help {
         draw_help(frame, frame.area());
     }
+
+    if app.prompt.is_some() {
+        draw_prompt(frame, frame.area(), app);
+    }
+}
+
+/// Draws the small window that asks where to save the output.
+fn draw_prompt(frame: &mut Frame, area: Rect, app: &App) {
+    let Some(prompt) = app.prompt.as_ref() else {
+        return;
+    };
+
+    let width = 64.min(area.width.saturating_sub(4));
+    let height = 5.min(area.height);
+    let window = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+
+    frame.render_widget(Clear, window);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::raw(prompt.input.text()),
+            Line::styled(prompt.hint.clone(), Style::default().fg(MUTED)),
+        ])
+        .block(panel(&prompt.title, true)),
+        window,
+    );
+
+    frame.set_cursor_position(Position::new(
+        window.x + 1 + prompt.input.cursor().1 as u16,
+        window.y + 1,
+    ));
 }
 
 /// Lays out the right hand column, leaving out the panels the selected
@@ -296,6 +331,11 @@ fn draw_output(frame: &mut Frame, area: Rect, app: &App) {
     let text = app.outcome.text();
     let title = if failed {
         "Output (error)".to_string()
+    } else if app.varies() {
+        format!(
+            "Output ({} characters, ^n for another)",
+            text.chars().count()
+        )
     } else {
         format!("Output ({} characters)", text.chars().count())
     };
@@ -330,16 +370,18 @@ fn draw_output(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
-    let keys = if app.status.is_empty() {
-        vec![
-            ("tab", "panel"),
-            ("^up/^down", "operation"),
-            ("^p", "pipe to input"),
-            ("^r", "sample"),
-            ("^s", "save"),
+    let keys: Vec<(&str, &str)> = if app.status.is_empty() {
+        let mut keys = vec![("tab", "panel"), ("^up/^down", "operation")];
+        if app.varies() {
+            keys.push(("^n", "generate again"));
+        }
+        keys.extend([
+            ("^y", "copy"),
+            ("^s", "save as"),
             ("?", "help"),
             ("^c", "quit"),
-        ]
+        ]);
+        keys
     } else {
         vec![]
     };
@@ -391,9 +433,11 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         Line::raw("    ctrl+l             empty the selected value"),
         Line::raw("    ctrl+u             put every option back to its default"),
         Line::raw(""),
+        Line::raw("  ctrl+n               run the operation again, for the random ones"),
+        Line::raw("  ctrl+y               copy the output to the clipboard"),
+        Line::raw("  ctrl+s               save the output, asking where"),
         Line::raw("  ctrl+p               move the output into the input"),
         Line::raw("  ctrl+r               bring back the sample text"),
-        Line::raw("  ctrl+s               save the output to txc-output.txt"),
         Line::raw("  ctrl+l               clear the input"),
         Line::raw("  page up / page down  scroll the output"),
         Line::raw(""),
@@ -437,6 +481,9 @@ mod tests {
         app.search = std::env::var("TXC_SHOT").unwrap_or_else(|_| "base64".into());
         app.refresh_operations();
         app.load_operation();
+        if std::env::var("TXC_SHOT_SAVE").is_ok() {
+            app.begin_save();
+        }
         let width = 92;
         let mut terminal = Terminal::new(TestBackend::new(width, 22)).expect("terminal");
         terminal.draw(|frame| draw(frame, &mut app)).expect("draw");
@@ -530,6 +577,33 @@ mod tests {
             render(&mut app, 90, 26);
             app.focus = crate::tui::app::Focus::Operations;
         }
+    }
+
+    #[test]
+    fn draws_the_save_question_over_the_interface() {
+        let mut app = App::new();
+        app.search = "uuid".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        app.begin_save();
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("Save the output as"), "{screen}");
+        assert!(screen.contains("uuid.txt"), "{screen}");
+        assert!(screen.contains("esc to cancel"), "{screen}");
+    }
+
+    #[test]
+    fn the_output_panel_offers_another_run_only_where_it_would_differ() {
+        let mut app = App::new();
+        app.search = "password".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert!(render(&mut app, 100, 30).contains("^n for another"));
+
+        app.search = "upper".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert!(!render(&mut app, 100, 30).contains("^n for another"));
     }
 
     #[test]

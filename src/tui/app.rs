@@ -43,6 +43,14 @@ impl Outcome {
     }
 }
 
+/// A question asked in a small window over the interface.
+#[derive(Clone, Debug)]
+pub struct Prompt {
+    pub title: String,
+    pub hint: String,
+    pub input: TextArea,
+}
+
 pub struct App {
     /// `None` stands for the entry that shows every category at once.
     pub categories: Vec<Option<Category>>,
@@ -55,6 +63,13 @@ pub struct App {
     /// True while the input still holds the sample loaded for the selected
     /// operation, which is what makes it safe to replace on the next change.
     pub input_is_sample: bool,
+    /// The last text the reader typed. It follows them from operation to
+    /// operation for as long as the operation can read it.
+    pub carried: Option<String>,
+    /// A question waiting for an answer, such as where to save the output.
+    pub prompt: Option<Prompt>,
+    /// Text the event loop should hand to the terminal's clipboard.
+    pub pending_clipboard: Option<String>,
     pub outcome: Outcome,
     pub focus: Focus,
     pub output_scroll: u16,
@@ -85,6 +100,9 @@ impl App {
             input: TextArea::default(),
             options: OptionsEditor::default(),
             input_is_sample: true,
+            carried: None,
+            prompt: None,
+            pending_clipboard: None,
             outcome: Outcome::Ready(String::new()),
             focus: Focus::Operations,
             output_scroll: 0,
@@ -144,8 +162,13 @@ impl App {
         }
     }
 
-    /// Prepares the panels for the selected operation: fresh options, and the
-    /// operation's own sample text unless the reader has typed their own.
+    /// Prepares the panels for the selected operation.
+    ///
+    /// Text the reader typed follows them from operation to operation, but
+    /// only while the new operation can actually read it: arriving at
+    /// `base64-decode` carrying a sentence of prose would otherwise show an
+    /// error instead of the operation working. The text is not thrown away,
+    /// it comes back at the next operation that accepts it.
     pub fn load_operation(&mut self) {
         let Some(op) = self.selected_operation() else {
             self.options = OptionsEditor::default();
@@ -154,26 +177,142 @@ impl App {
         };
 
         self.options = OptionsEditor::for_op(op);
-        if self.input_is_sample {
-            self.input = TextArea::from_text(op.sample_input());
+
+        if op.feed == Feed::None {
+            self.input = TextArea::default();
+            self.input_is_sample = true;
+        } else {
+            match self.carried.clone() {
+                Some(text) if self.accepts(op, &text) => {
+                    self.input = TextArea::from_text(&text);
+                    self.input_is_sample = false;
+                }
+                Some(_) => {
+                    self.input = TextArea::from_text(op.sample_input());
+                    self.input_is_sample = true;
+                    self.status = format!("{} cannot read your text, showing its sample", op.name);
+                }
+                None => {
+                    self.input = TextArea::from_text(op.sample_input());
+                    self.input_is_sample = true;
+                }
+            }
         }
+
         self.settle_focus();
         self.recompute();
     }
 
-    /// Puts the sample text back, discarding whatever was typed.
+    /// Whether the operation runs cleanly on this text with the current
+    /// options.
+    fn accepts(&self, op: &Op, text: &str) -> bool {
+        op.apply(text, &self.options.params(op), None).is_ok()
+    }
+
+    /// Puts the sample text back and forgets the carried text, so it does not
+    /// reappear at the next operation.
     pub fn reset_input(&mut self) {
         if let Some(op) = self.selected_operation() {
             self.input = TextArea::from_text(op.sample_input());
             self.input_is_sample = true;
+            self.carried = None;
             self.status = "sample text restored".to_string();
             self.recompute();
+        }
+    }
+
+    /// Runs the operation again, which is the point for the ones whose answer
+    /// changes from run to run.
+    pub fn run_again(&mut self) {
+        self.recompute();
+        self.status = match self.selected_operation() {
+            Some(op) if op.varies => format!("{} ran again", op.name),
+            Some(op) => format!("{} gives the same answer every time", op.name),
+            None => String::new(),
+        };
+    }
+
+    /// Whether running again would produce something different.
+    pub fn varies(&self) -> bool {
+        self.selected_operation().is_some_and(|op| op.varies)
+    }
+
+    /// Hands the output to the terminal, which passes it to the system
+    /// clipboard.
+    pub fn copy_output(&mut self) {
+        if self.outcome.is_error() {
+            self.status = "there is nothing to copy: the operation failed".to_string();
+            return;
+        }
+        let text = self.outcome.text();
+        if text.is_empty() {
+            self.status = "there is nothing to copy".to_string();
+            return;
+        }
+        // Terminals cap how much a copy sequence may carry, and a truncated
+        // copy is worse than none, so large output goes to a file instead.
+        if text.len() > MAX_CLIPBOARD_BYTES {
+            self.status = format!(
+                "output is larger than {} KiB, save it to a file instead",
+                MAX_CLIPBOARD_BYTES / 1024
+            );
+            return;
+        }
+        self.pending_clipboard = Some(text.to_string());
+        self.status = "output copied to the clipboard".to_string();
+    }
+
+    /// Asks where the output should be written.
+    pub fn begin_save(&mut self) {
+        let suggestion = self
+            .selected_operation()
+            .map(|op| format!("{}.txt", op.name))
+            .unwrap_or_else(|| "txc-output.txt".to_string());
+        self.prompt = Some(Prompt {
+            title: "Save the output as".to_string(),
+            hint: "enter to save, esc to cancel, ~ is your home directory".to_string(),
+            input: TextArea::from_text(&suggestion),
+        });
+    }
+
+    /// Drops the question without acting on it.
+    pub fn cancel_prompt(&mut self) {
+        self.prompt = None;
+        self.status = "cancelled".to_string();
+    }
+
+    /// Writes the output to the path that was typed.
+    pub fn confirm_prompt(&mut self) {
+        let Some(prompt) = self.prompt.take() else {
+            return;
+        };
+        let typed = prompt.input.text();
+        let path = expand_home(typed.trim());
+        if path.as_os_str().is_empty() {
+            self.status = "no path given, nothing was saved".to_string();
+            return;
+        }
+
+        self.status = match std::fs::write(&path, self.output_with_newline()) {
+            Ok(()) => format!("saved to {}", path.display()),
+            Err(error) => format!("could not save to {}: {error}", path.display()),
+        };
+    }
+
+    /// The output as it would be written to a file, with a closing newline.
+    fn output_with_newline(&self) -> String {
+        let text = self.outcome.text();
+        if text.is_empty() || text.ends_with('\n') {
+            text.to_string()
+        } else {
+            format!("{text}\n")
         }
     }
 
     /// Records that the reader edited the input, so it is theirs to keep.
     pub fn mark_input_edited(&mut self) {
         self.input_is_sample = false;
+        self.carried = Some(self.input.text());
     }
 
     /// How well an operation answers the search, lower being better.
@@ -311,18 +450,24 @@ impl App {
         }
         self.input = TextArea::from_text(self.outcome.text());
         self.input_is_sample = false;
+        self.carried = Some(self.input.text());
         self.status = "output moved into the input".to_string();
         self.recompute();
     }
+}
 
-    /// Writes the current output next to the working directory.
-    pub fn save_output(&mut self) {
-        let path = std::path::Path::new("txc-output.txt");
-        match std::fs::write(path, self.outcome.text()) {
-            Ok(()) => self.status = format!("saved to {}", path.display()),
-            Err(error) => self.status = format!("could not save: {error}"),
-        }
-    }
+/// The most output a terminal copy sequence may reasonably carry.
+const MAX_CLIPBOARD_BYTES: usize = 64 * 1024;
+
+/// Expands a leading `~` so a typed path behaves the way a shell would.
+fn expand_home(path: &str) -> std::path::PathBuf {
+    let Some(rest) = path.strip_prefix('~') else {
+        return std::path::PathBuf::from(path);
+    };
+    let Ok(home) = std::env::var("HOME") else {
+        return std::path::PathBuf::from(path);
+    };
+    std::path::PathBuf::from(home).join(rest.trim_start_matches(['/', '\\']))
 }
 
 /// Scores an operation against the search, treating an empty search as a
@@ -440,6 +585,71 @@ mod tests {
     }
 
     #[test]
+    fn typed_text_is_dropped_when_the_next_operation_cannot_read_it() {
+        // Encoding your own text and then reaching for the decoder must show
+        // the decoder working, not an error about the text you typed.
+        let mut app = app_showing("base64-encode");
+        app.input = TextArea::from_text("my own text");
+        app.mark_input_edited();
+        app.recompute();
+        assert_eq!(app.outcome.text(), "bXkgb3duIHRleHQ=");
+
+        app.search = "base64-decode".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert!(!app.outcome.is_error(), "{}", app.outcome.text());
+        assert_eq!(app.outcome.text(), "The quick brown fox");
+        assert!(
+            app.status.contains("cannot read your text"),
+            "{}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn no_operation_shows_an_error_when_reached_carrying_prose() {
+        // Walking the whole catalogue with a sentence typed in must never
+        // leave an error on screen.
+        let mut app = App::new();
+        app.input = TextArea::from_text("The quick brown fox jumps over the lazy dog");
+        app.mark_input_edited();
+
+        for index in 0..registry::all().len() {
+            app.search.clear();
+            app.category_index = 0;
+            app.refresh_operations();
+            app.operation_index = index;
+            app.load_operation();
+            let op = app.selected_operation().unwrap();
+            assert!(
+                !app.outcome.is_error(),
+                "{} showed an error while carrying prose: {}",
+                op.name,
+                app.outcome.text()
+            );
+        }
+    }
+
+    #[test]
+    fn carried_text_comes_back_at_an_operation_that_accepts_it() {
+        let mut app = app_showing("upper");
+        app.input = TextArea::from_text("keep me");
+        app.mark_input_edited();
+
+        // A decoder cannot read it, so its own sample is shown instead.
+        app.search = "base64-decode".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert_ne!(app.input.text(), "keep me");
+
+        // Somewhere it fits again, the text returns rather than being lost.
+        app.search = "lower".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert_eq!(app.input.text(), "keep me");
+    }
+
+    #[test]
     fn text_the_reader_typed_survives_changing_operation() {
         let mut app = app_showing("upper");
         app.input = TextArea::from_text("keep me");
@@ -536,6 +746,106 @@ mod tests {
         assert!(!app.shows_input());
         assert!(!app.outcome.is_error());
         assert_eq!(app.outcome.text().len(), 36);
+    }
+
+    #[test]
+    fn random_operations_can_be_run_again() {
+        let mut app = app_showing("password");
+        assert!(app.varies());
+        let first = app.outcome.text().to_string();
+        app.run_again();
+        assert_ne!(app.outcome.text(), first, "a new password should differ");
+        assert!(app.status.contains("ran again"), "{}", app.status);
+    }
+
+    #[test]
+    fn a_settled_operation_says_running_again_changes_nothing() {
+        let mut app = app_showing("upper");
+        assert!(!app.varies());
+        app.run_again();
+        assert!(app.status.contains("same answer"), "{}", app.status);
+    }
+
+    #[test]
+    fn copying_hands_the_output_to_the_event_loop() {
+        let mut app = app_showing("upper");
+        app.copy_output();
+        assert_eq!(
+            app.pending_clipboard.take().unwrap(),
+            "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG"
+        );
+        assert!(app.status.contains("copied"), "{}", app.status);
+    }
+
+    #[test]
+    fn a_failed_operation_has_nothing_to_copy() {
+        let mut app = app_showing("url-decode");
+        app.input = TextArea::from_text("%FF");
+        app.mark_input_edited();
+        app.recompute();
+        app.copy_output();
+        assert!(app.pending_clipboard.is_none());
+        assert!(app.status.contains("nothing to copy"), "{}", app.status);
+    }
+
+    #[test]
+    fn very_large_output_is_sent_to_a_file_rather_than_the_clipboard() {
+        let mut app = app_showing("repeat");
+        app.input = TextArea::from_text(&"x".repeat(40_000));
+        app.mark_input_edited();
+        app.options.clear_selected();
+        app.options.insert('4');
+        app.recompute();
+        app.copy_output();
+        assert!(app.pending_clipboard.is_none());
+        assert!(app.status.contains("save it to a file"), "{}", app.status);
+    }
+
+    #[test]
+    fn saving_asks_where_and_writes_there() {
+        let mut app = app_showing("upper");
+        app.begin_save();
+        let prompt = app.prompt.as_ref().expect("a question was asked");
+        assert_eq!(
+            prompt.input.text(),
+            "upper.txt",
+            "the name should suit the operation"
+        );
+
+        let path = std::env::temp_dir().join("txc-save-test.txt");
+        app.prompt.as_mut().unwrap().input = TextArea::from_text(path.to_str().unwrap());
+        app.confirm_prompt();
+
+        assert!(app.prompt.is_none());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG\n"
+        );
+        assert!(app.status.contains("saved to"), "{}", app.status);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn saving_can_be_cancelled_and_reports_a_bad_path() {
+        let mut app = app_showing("upper");
+        app.begin_save();
+        app.cancel_prompt();
+        assert!(app.prompt.is_none());
+
+        app.begin_save();
+        app.prompt.as_mut().unwrap().input = TextArea::from_text("/does/not/exist/out.txt");
+        app.confirm_prompt();
+        assert!(app.status.contains("could not save"), "{}", app.status);
+    }
+
+    #[test]
+    fn a_leading_tilde_means_the_home_directory() {
+        let home = std::env::var("HOME").expect("a home directory");
+        assert_eq!(
+            expand_home("~/notes.txt"),
+            std::path::Path::new(&home).join("notes.txt")
+        );
+        assert_eq!(expand_home("plain.txt"), std::path::Path::new("plain.txt"));
     }
 
     #[test]

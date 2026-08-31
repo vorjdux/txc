@@ -237,6 +237,9 @@ pub struct Op {
     /// Text the interactive interface starts from, when the general purpose
     /// sample would not suit this operation.
     pub sample: Option<&'static str>,
+    /// Whether running the operation again on the same input can give a
+    /// different answer, as random and clock driven operations do.
+    pub varies: bool,
 }
 
 impl Op {
@@ -258,6 +261,7 @@ impl Op {
             feed,
             run,
             sample: None,
+            varies: false,
         }
     }
 
@@ -276,6 +280,13 @@ impl Op {
     /// Adds usage examples shown in `--help` and in the terminal interface.
     pub const fn examples(mut self, examples: &'static [&'static str]) -> Op {
         self.examples = examples;
+        self
+    }
+
+    /// Marks an operation whose answer changes from run to run, so the
+    /// interface can offer to run it again.
+    pub const fn varies(mut self) -> Op {
+        self.varies = true;
         self
     }
 

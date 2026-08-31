@@ -133,6 +133,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             }
             Ok(lines.join("\n"))
         })
+        .varies()
         .aliases(&["guid"])
         .params(P_UUID)
         .examples(&[
@@ -177,6 +178,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(random_strings(&alphabet, length, count))
             },
         )
+        .varies()
         .aliases(&["passwd", "pwgen"])
         .params(P_PASSWORD)
         .examples(&[
@@ -203,6 +205,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(random_strings(charset, length, count))
             },
         )
+        .varies()
         .params(P_RANDOM_STRING)
         .examples(&["txc random-string --length 8 --charset abcdef0123456789"]),
     );
@@ -225,6 +228,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .join("\n"))
             },
         )
+        .varies()
         .aliases(&["random-int", "dice"])
         .params(P_RANDOM_NUMBER)
         .examples(&[
@@ -258,6 +262,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .join("\n"))
             },
         )
+        .varies()
         .aliases(&["random-bytes", "secret"])
         .params(P_TOKEN)
         .examples(&["txc token", "txc token --bytes 16 --base64"]),
@@ -284,6 +289,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .join("\n\n"))
             },
         )
+        .varies()
         .aliases(&["lipsum", "placeholder"])
         .params(P_LOREM)
         .examples(&[

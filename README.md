@@ -56,9 +56,11 @@ type.
 | `ctrl+up` / `ctrl+down` | Change operation from any panel |
 | `ctrl+left` / `ctrl+right` | Change category |
 | `/` | Jump to the search box |
+| `ctrl+n` | Run the operation again, for the ones that vary |
+| `ctrl+y` | Copy the output to the clipboard |
+| `ctrl+s` | Save the output, asking where to put it |
 | `ctrl+p` | Move the output into the input, to chain operations |
 | `ctrl+r` | Bring back the sample text |
-| `ctrl+s` | Save the output to `txc-output.txt` |
 | `ctrl+l` | Clear the input, or empty the selected option |
 | `ctrl+u` | Put every option back to its default |
 | `ctrl+w` | Delete the word before the cursor |
@@ -71,6 +73,21 @@ such as `uuid` or `password`, has no input panel at all, and one with nothing to
 configure, such as `upper`, has no options panel. The output takes the space
 back.
 
+```
+ txc  0.2.0 Generate UUIDs
+╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
+│All           ││uuid                      ││  version    4                                │
+│Case          │╰──────────────────────────╯│  count      1                                │
+│Encoding      │┏ Operations (1) ━━━━━━━━━━┓│  name       example.com                      │
+│Hashing       │┃uuid  gen                 ┃│  namespace  dns                              │
+│Lines         │┃                          ┃│  upper      off                              │
+│Text          │┃                          ┃│  compact    off                              │
+│Numbers       │┃                          ┃╰──────────────────────────────────────────────╯
+│Convert       │┃                          ┃╭ Output (36 characters, ^n for another) ──────╮
+│Inspect       │┃                          ┃│dbcf696d-d319-4f6a-a74c-d8ac915eb769          │
+╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
+```
+
 ### Sample text
 
 Selecting an operation loads a sample that suits it: `from-timestamp` starts
@@ -78,8 +95,11 @@ from `1700000000`, `roman-decode` from `MMXXIV`, `json-format` from a small JSON
 document. So every operation shows itself working the moment you land on it,
 rather than an error about the previous operation's text.
 
-Once you type your own text it is yours, and changing operation keeps it.
-`ctrl+r` brings the sample back.
+Text you type follows you from operation to operation, but only while the new
+operation can actually read it. Encode something of your own, then reach for
+`base64-decode`, and you get the decoder working on its own sample instead of a
+complaint about your sentence. Your text is not thrown away: it returns at the
+next operation that accepts it, and `ctrl+r` brings the sample back for good.
 
 ### Options
 
@@ -96,6 +116,30 @@ Type to change a value, and press `space` to turn a switch on or off. The panel
 title explains whichever parameter is selected. Parameters that are required on
 the command line, such as `replace --find`, start from a worked example so the
 output is live straight away.
+
+### Running again
+
+Operations whose answer changes from run to run say so in the output title, and
+`ctrl+n` gives you another one: a different password, a fresh UUID, another
+shuffle. `txc uuid --count 5` is still the way to ask for several at once.
+
+### Taking the output with you
+
+`ctrl+y` copies the output to the system clipboard. It asks the terminal to do
+the copying, so it needs no display server and works over ssh and inside tmux;
+a terminal that does not support it simply ignores the request. Output larger
+than 64 KiB is refused rather than copied in part, because a truncated copy is
+worse than none.
+
+`ctrl+s` asks where to save, suggesting a name based on the operation, and `~`
+means your home directory:
+
+```
+┏ Save the output as ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃uuid.txt                                                      ┃
+┃enter to save, esc to cancel, ~ is your home directory        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+```
 
 ## Installing
 

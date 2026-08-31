@@ -74,6 +74,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 })
             },
         )
+        .varies()
         .aliases(&["date"])
         .params(P_NOW)
         .examples(&[
@@ -98,6 +99,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 })
             },
         )
+        .varies()
         .aliases(&["epoch", "unix"])
         .params(P_MILLIS)
         .examples(&["txc timestamp", "txc timestamp --millis"]),
