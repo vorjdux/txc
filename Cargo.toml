@@ -1,24 +1,65 @@
 [package]
 name = "txc"
-description = "Text utils CLI tools"
+description = "Offline text utilities for the terminal: encode, hash, convert, inspect and generate text without sending it anywhere"
 authors = ["Matheus Santos <vorj.dux@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+rust-version = "1.82"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/vorjdux/txc"
+keywords = ["cli", "text", "encoding", "hash", "tui"]
+categories = ["command-line-utilities", "text-processing"]
+exclude = ["debian/", ".github/"]
+
+[lib]
+name = "txc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "txc"
+path = "src/main.rs"
 
 [dependencies]
-clap = { version = "3.1", features = ["derive"] }
-urlencoding = "2.1"
+anyhow = "1.0"
+blake3 = "1.8"
+bs58 = "0.5"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4.6", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "color", "wrap_help"] }
+clap_complete = "4.6"
+crc32fast = "1.5"
+crossterm = "0.29"
+csv = "1.4"
+data-encoding = "2.11"
+digest = "0.11"
+hmac = "0.13"
 html-escape = "0.2"
-uuid = { version = "0.8.2", features = ["serde", "v1", "v3", "v4", "v5", "guid", "md5", "sha1", "getrandom"] }
+md-5 = "0.11"
+ratatui = "0.30"
+rand = "0.10"
+regex = "1.13"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+serde_yaml_ng = "0.10"
+sha1 = "0.11"
+sha2 = "0.11"
+sha3 = "0.12"
+textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
+toml = { version = "1.1", features = ["preserve_order"] }
+unicode-normalization = "0.1"
+unicode-segmentation = "1.13"
+urlencoding = "2.1"
+uuid = { version = "1.26", features = ["v1", "v3", "v4", "v5", "v7"] }
 
 [profile.dev]
 debug = true
 
 [profile.release]
 lto = true
+codegen-units = 1
 opt-level = 3
+panic = "abort"
+strip = true
 debug = false
 
 [package.metadata.deb]
@@ -26,7 +67,10 @@ maintainer = "Matheus Santos <vorj.dux@gmail.com>"
 copyright = "2022, Matheus Santos <vorj.dux@gmail.com>"
 license-file = ["LICENSE-MIT", "4"]
 extended-description = """\
-Text utils CLI tools\
+Offline text utilities for the terminal. Over a hundred text operations \
+covering case conversion, encoding, hashing, line editing, inspection, \
+format conversion and generators, usable as arguments, over a pipe, or \
+through an interactive terminal interface.\
 """
 depends = "$auto"
 section = "utility"
@@ -36,4 +80,7 @@ systemd-units = { enable = false }
 assets = [
     ["target/release/txc", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/txc/README", "644"],
+    ["completions/txc.bash", "usr/share/bash-completion/completions/txc", "644"],
+    ["completions/_txc", "usr/share/zsh/vendor-completions/", "644"],
+    ["completions/txc.fish", "usr/share/fish/vendor_completions.d/", "644"],
 ]
