@@ -179,6 +179,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 })
             },
         )
+        .sample("2024-01-01 12:00:00")
         .aliases(&["date2ts", "date-to-unix"])
         .params(P_TO_TS)
         .examples(&[

@@ -79,6 +79,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .into_owned())
             },
         )
+        .sample("a%20b%26c%20caf%C3%A9")
         .aliases(&["ud", "urldecode"])
         .examples(&["txc url-decode \"a%20b%26c\""]),
     );
@@ -111,6 +112,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Decode HTML entities",
             |s, _| Ok(html_escape::decode_html_entities(s).into_owned()),
         )
+        .sample("&lt;b&gt;Hi &amp; bye&lt;/b&gt;")
         .aliases(&["hd", "htmldecode", "htmlunescape"])
         .examples(&["txc html-decode '&lt;b&gt;hi&lt;/b&gt;'"]),
     );
@@ -147,6 +149,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 bytes_to_string(bytes)
             },
         )
+        .sample("VGhlIHF1aWNrIGJyb3duIGZveA==")
         .aliases(&["b64d", "unbase64"])
         .params(P_BASE64)
         .examples(&["txc base64-decode aGVsbG8="]),
@@ -186,6 +189,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 bytes_to_string(bytes)
             },
         )
+        .sample("KRUGKIDROVUWG2ZAMJZG653OEBTG66A=")
         .aliases(&["b32d"]),
     );
 
@@ -214,6 +218,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 bytes_to_string(bytes)
             },
         )
+        .sample("2NEpo7TZRhna7vSvL")
         .aliases(&["b58d"]),
     );
 
@@ -242,6 +247,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Decode hexadecimal back to text",
             |s, _| bytes_to_string(from_hex(s)?),
         )
+        .sample("54 68 65 20 71 75 69 63 6b 20 66 6f 78")
         .aliases(&["unhex", "fromhex"])
         .examples(&["txc hex-decode 6869"]),
     );
@@ -268,6 +274,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Decode binary bytes back to text",
             |s, _| radix_decode(s, 2, 8),
         )
+        .sample("01101000 01101001")
         .aliases(&["frombinary", "unbin"]),
     );
 
@@ -291,6 +298,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Decode octal bytes back to text",
             |s, _| radix_decode(s, 8, 3),
         )
+        .sample("150 151")
         .aliases(&["fromoctal", "unoct"]),
     );
 
@@ -314,6 +322,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Decode decimal byte values back to text",
             |s, _| radix_decode(s, 10, 0),
         )
+        .sample("104 105")
         .aliases(&["fromdecimal", "undec"]),
     );
 
@@ -425,6 +434,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(out)
             },
         )
+        .sample("... --- ...")
         .aliases(&["unmorse"])
         .examples(&["txc morse-decode \"... --- ...\""]),
     );
@@ -468,6 +478,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .context("input is not a valid JSON string body")
             },
         )
+        .sample("line one\\nline \\\"two\\\"")
         .aliases(&["jsonunescape"]),
     );
 
@@ -493,6 +504,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(out)
             },
         )
+        .sample("caf\u{e9} and na\u{ef}ve")
         .aliases(&["uescape"])
         .params(P_ESCAPE_ALL)
         .examples(&["txc unicode-escape \"caf\u{e9}\""]),
@@ -506,6 +518,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Decode \\uXXXX and \\xNN escape sequences",
             |s, _| unicode_unescape(s),
         )
+        .sample("caf\\u00e9 and na\\u00efve")
         .aliases(&["uunescape"]),
     );
 
@@ -522,32 +535,36 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .join(p.get("sep")))
             },
         )
+        .sample("caf\u{e9}")
         .aliases(&["codepoints"])
         .params(P_SEP),
     );
 
-    out.push(Op::new(
-        "codepoint-decode",
-        CAT,
-        Feed::Buffer,
-        "Turn U+XXXX code points back into characters",
-        |s, _| {
-            let mut out = String::new();
-            for token in s.split_whitespace() {
-                let digits = token
-                    .trim_start_matches("U+")
-                    .trim_start_matches("u+")
-                    .trim_start_matches("0x");
-                let value = u32::from_str_radix(digits, 16)
-                    .map_err(|_| anyhow::anyhow!("{token:?} is not a code point"))?;
-                out.push(
-                    char::from_u32(value)
-                        .with_context(|| format!("{token} is not a valid character"))?,
-                );
-            }
-            Ok(out)
-        },
-    ));
+    out.push(
+        Op::new(
+            "codepoint-decode",
+            CAT,
+            Feed::Buffer,
+            "Turn U+XXXX code points back into characters",
+            |s, _| {
+                let mut out = String::new();
+                for token in s.split_whitespace() {
+                    let digits = token
+                        .trim_start_matches("U+")
+                        .trim_start_matches("u+")
+                        .trim_start_matches("0x");
+                    let value = u32::from_str_radix(digits, 16)
+                        .map_err(|_| anyhow::anyhow!("{token:?} is not a code point"))?;
+                    out.push(
+                        char::from_u32(value)
+                            .with_context(|| format!("{token} is not a valid character"))?,
+                    );
+                }
+                Ok(out)
+            },
+        )
+        .sample("U+0063 U+0061 U+0066 U+00E9"),
+    );
 
     out.push(
         Op::new(

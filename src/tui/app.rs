@@ -1,7 +1,7 @@
 //! State of the interactive interface.
 
-use crate::params::Params;
 use crate::registry::{self, Category, Feed, Op};
+use crate::tui::options::OptionsEditor;
 use crate::tui::textarea::TextArea;
 
 /// Which panel keystrokes are going to.
@@ -22,16 +22,6 @@ impl Focus {
         Focus::Input,
         Focus::Options,
     ];
-
-    pub fn next(self) -> Focus {
-        let index = Self::ORDER.iter().position(|f| *f == self).unwrap_or(0);
-        Self::ORDER[(index + 1) % Self::ORDER.len()]
-    }
-
-    pub fn previous(self) -> Focus {
-        let index = Self::ORDER.iter().position(|f| *f == self).unwrap_or(0);
-        Self::ORDER[(index + Self::ORDER.len() - 1) % Self::ORDER.len()]
-    }
 }
 
 /// The result of running the selected operation over the current input.
@@ -61,7 +51,10 @@ pub struct App {
     pub operation_index: usize,
     pub search: String,
     pub input: TextArea,
-    pub options: TextArea,
+    pub options: OptionsEditor,
+    /// True while the input still holds the sample loaded for the selected
+    /// operation, which is what makes it safe to replace on the next change.
+    pub input_is_sample: bool,
     pub outcome: Outcome,
     pub focus: Focus,
     pub output_scroll: u16,
@@ -89,8 +82,9 @@ impl App {
             operations: Vec::new(),
             operation_index: 0,
             search: String::new(),
-            input: TextArea::from_text("The quick brown fox jumps over the lazy dog"),
-            options: TextArea::default(),
+            input: TextArea::default(),
+            options: OptionsEditor::default(),
+            input_is_sample: true,
             outcome: Outcome::Ready(String::new()),
             focus: Focus::Operations,
             output_scroll: 0,
@@ -99,8 +93,87 @@ impl App {
             running: true,
         };
         app.refresh_operations();
-        app.recompute();
+        app.load_operation();
         app
+    }
+
+    /// Panels the current operation actually shows, in tab order.
+    ///
+    /// A generator has no input to edit and an operation without parameters
+    /// has no options, so neither panel is drawn nor focused.
+    pub fn focus_order(&self) -> Vec<Focus> {
+        Focus::ORDER
+            .iter()
+            .copied()
+            .filter(|focus| match focus {
+                Focus::Input => self.shows_input(),
+                Focus::Options => self.shows_options(),
+                _ => true,
+            })
+            .collect()
+    }
+
+    /// Whether the selected operation reads any input.
+    pub fn shows_input(&self) -> bool {
+        self.selected_operation()
+            .is_some_and(|op| op.feed != Feed::None)
+    }
+
+    /// Whether the selected operation has any options to set.
+    pub fn shows_options(&self) -> bool {
+        !self.options.is_empty()
+    }
+
+    pub fn focus_next(&mut self) {
+        let order = self.focus_order();
+        let index = order.iter().position(|f| *f == self.focus).unwrap_or(0);
+        self.focus = order[(index + 1) % order.len()];
+    }
+
+    pub fn focus_previous(&mut self) {
+        let order = self.focus_order();
+        let index = order.iter().position(|f| *f == self.focus).unwrap_or(0);
+        self.focus = order[(index + order.len() - 1) % order.len()];
+    }
+
+    /// Moves focus off a panel the current operation does not show.
+    fn settle_focus(&mut self) {
+        let order = self.focus_order();
+        if !order.contains(&self.focus) {
+            self.focus = Focus::Operations;
+        }
+    }
+
+    /// Prepares the panels for the selected operation: fresh options, and the
+    /// operation's own sample text unless the reader has typed their own.
+    pub fn load_operation(&mut self) {
+        let Some(op) = self.selected_operation() else {
+            self.options = OptionsEditor::default();
+            self.outcome = Outcome::Ready(String::new());
+            return;
+        };
+
+        self.options = OptionsEditor::for_op(op);
+        if self.input_is_sample {
+            self.input = TextArea::from_text(op.sample_input());
+        }
+        self.settle_focus();
+        self.recompute();
+    }
+
+    /// Puts the sample text back, discarding whatever was typed.
+    pub fn reset_input(&mut self) {
+        if let Some(op) = self.selected_operation() {
+            self.input = TextArea::from_text(op.sample_input());
+            self.input_is_sample = true;
+            self.status = "sample text restored".to_string();
+            self.recompute();
+        }
+    }
+
+    /// Records that the reader edited the input, so it is theirs to keep.
+    pub fn mark_input_edited(&mut self) {
+        self.input_is_sample = false;
     }
 
     /// How well an operation answers the search, lower being better.
@@ -178,13 +251,7 @@ impl App {
             return;
         };
 
-        let params = match Params::parse_kv(op, &self.options.text()) {
-            Ok(params) => params,
-            Err(error) => {
-                self.outcome = Outcome::Failed(error.to_string());
-                return;
-            }
-        };
+        let params = self.options.params(op);
 
         let text = if op.feed == Feed::None {
             String::new()
@@ -209,7 +276,7 @@ impl App {
             return;
         }
         self.operation_index = (self.operation_index + 1) % self.operations.len();
-        self.recompute();
+        self.load_operation();
     }
 
     pub fn select_previous_operation(&mut self) {
@@ -218,14 +285,14 @@ impl App {
         }
         self.operation_index =
             (self.operation_index + self.operations.len() - 1) % self.operations.len();
-        self.recompute();
+        self.load_operation();
     }
 
     pub fn select_next_category(&mut self) {
         self.category_index = (self.category_index + 1) % self.categories.len();
         self.operation_index = 0;
         self.refresh_operations();
-        self.recompute();
+        self.load_operation();
     }
 
     pub fn select_previous_category(&mut self) {
@@ -233,7 +300,7 @@ impl App {
             (self.category_index + self.categories.len() - 1) % self.categories.len();
         self.operation_index = 0;
         self.refresh_operations();
-        self.recompute();
+        self.load_operation();
     }
 
     /// Swaps the output into the input, so operations can be chained by hand.
@@ -243,6 +310,7 @@ impl App {
             return;
         }
         self.input = TextArea::from_text(self.outcome.text());
+        self.input_is_sample = false;
         self.status = "output moved into the input".to_string();
         self.recompute();
     }
@@ -270,11 +338,66 @@ fn match_score(op: &Op, needle: &str) -> Option<u8> {
 mod tests {
     use super::*;
 
+    fn app_showing(name: &str) -> App {
+        let mut app = App::new();
+        app.search = name.to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert_eq!(app.selected_operation().unwrap().name, name);
+        app
+    }
+
     #[test]
-    fn focus_cycles_in_both_directions() {
-        assert_eq!(Focus::Search.next(), Focus::Categories);
-        assert_eq!(Focus::Options.next(), Focus::Search);
-        assert_eq!(Focus::Search.previous(), Focus::Options);
+    fn focus_order_skips_panels_the_operation_does_not_show() {
+        // A generator reads no input.
+        let app = app_showing("uuid");
+        assert!(!app.focus_order().contains(&Focus::Input));
+        assert!(app.focus_order().contains(&Focus::Options));
+
+        // An operation with no parameters has no options.
+        let app = app_showing("upper");
+        assert!(app.focus_order().contains(&Focus::Input));
+        assert!(!app.focus_order().contains(&Focus::Options));
+
+        // And one with neither shows only the three left hand panels.
+        let app = app_showing("reverse");
+        assert_eq!(
+            app.focus_order(),
+            vec![
+                Focus::Search,
+                Focus::Categories,
+                Focus::Operations,
+                Focus::Input
+            ]
+        );
+    }
+
+    #[test]
+    fn tab_never_lands_on_a_hidden_panel() {
+        let mut app = app_showing("uuid");
+        for _ in 0..12 {
+            app.focus_next();
+            assert_ne!(app.focus, Focus::Input, "focused a panel that is not drawn");
+        }
+        let mut app = app_showing("upper");
+        for _ in 0..12 {
+            app.focus_previous();
+            assert_ne!(
+                app.focus,
+                Focus::Options,
+                "focused a panel that is not drawn"
+            );
+        }
+    }
+
+    #[test]
+    fn focus_moves_off_a_panel_that_disappears() {
+        let mut app = app_showing("upper");
+        app.focus = Focus::Input;
+        app.search = "uuid".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert_ne!(app.focus, Focus::Input);
     }
 
     #[test]
@@ -286,28 +409,73 @@ mod tests {
     }
 
     #[test]
-    fn searching_narrows_the_list_and_keeps_the_selection() {
-        let mut app = App::new();
-        app.search = "base64".to_string();
-        app.refresh_operations();
-        assert!(app.operations.iter().all(|op| {
-            op.name.contains("base64")
-                || op.about.to_lowercase().contains("base64")
-                || op.aliases.iter().any(|a| a.contains("b64"))
-        }));
-        assert!(!app.operations.is_empty());
+    fn each_operation_loads_its_own_sample_text() {
+        assert_eq!(app_showing("from-timestamp").input.text(), "1700000000");
+        assert_eq!(app_showing("roman-decode").input.text(), "MMXXIV");
+        assert_eq!(app_showing("spell").input.text(), "2024");
+        assert!(app_showing("json-format").input.text().starts_with('{'));
+        assert!(app_showing("sort").input.text().contains('\n'));
+    }
 
-        // Searching by alias finds the operation too.
+    #[test]
+    fn every_operation_produces_a_result_from_its_own_sample() {
+        // This is the whole point of the samples: selecting an operation shows
+        // it working, never an error about the previous operation's text.
+        let mut app = App::new();
+        for index in 0..registry::all().len() {
+            app.search.clear();
+            app.category_index = 0;
+            app.refresh_operations();
+            app.operation_index = index;
+            app.input_is_sample = true;
+            app.load_operation();
+            let op = app.selected_operation().unwrap();
+            assert!(
+                !app.outcome.is_error(),
+                "{} showed an error on its own sample: {}",
+                op.name,
+                app.outcome.text()
+            );
+        }
+    }
+
+    #[test]
+    fn text_the_reader_typed_survives_changing_operation() {
+        let mut app = app_showing("upper");
+        app.input = TextArea::from_text("keep me");
+        app.mark_input_edited();
+
+        app.search = "lower".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert_eq!(app.input.text(), "keep me");
+        assert_eq!(app.outcome.text(), "keep me");
+    }
+
+    #[test]
+    fn the_sample_can_be_brought_back() {
+        let mut app = app_showing("upper");
+        app.input = TextArea::from_text("mine");
+        app.mark_input_edited();
+        app.reset_input();
+        assert!(app.input_is_sample);
+        assert_eq!(
+            app.input.text(),
+            "The quick brown fox jumps over the lazy dog"
+        );
+    }
+
+    #[test]
+    fn searching_narrows_the_list_and_ranks_exact_names_first() {
+        let mut app = App::new();
         app.search = "b64d".to_string();
         app.refresh_operations();
         assert_eq!(app.selected_operation().unwrap().name, "base64-decode");
 
-        // An exact name beats a longer operation that merely contains it.
         app.search = "sha256".to_string();
         app.refresh_operations();
         assert_eq!(app.selected_operation().unwrap().name, "sha256");
 
-        // A description match still shows up, just further down.
         app.search = "roman".to_string();
         app.refresh_operations();
         assert_eq!(app.selected_operation().unwrap().name, "roman-encode");
@@ -322,58 +490,63 @@ mod tests {
     }
 
     #[test]
-    fn output_follows_the_selected_operation() {
-        let mut app = App::new();
-        app.search = "upper".to_string();
-        app.refresh_operations();
-        app.input = TextArea::from_text("hello");
+    fn options_start_pre_filled_and_can_be_changed() {
+        let mut app = app_showing("caesar");
+        assert_eq!(app.options.fields()[0].value, "3");
+        assert_eq!(
+            app.outcome.text(),
+            "Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj"
+        );
+
+        app.options.clear_selected();
+        app.options.insert('1');
         app.recompute();
-        assert_eq!(app.outcome.text(), "HELLO");
+        assert_eq!(
+            app.outcome.text(),
+            "Uif rvjdl cspxo gpy kvnqt pwfs uif mbaz eph"
+        );
     }
 
     #[test]
-    fn bad_options_are_reported_rather_than_thrown_away() {
-        let mut app = App::new();
-        app.search = "caesar".to_string();
-        app.refresh_operations();
-        app.options = TextArea::from_text("nonsense=1");
+    fn required_options_are_pre_filled_so_nothing_starts_broken() {
+        for name in ["replace", "extract", "filter", "hmac-sha256"] {
+            let app = app_showing(name);
+            assert!(
+                !app.outcome.is_error(),
+                "{name} started with an error: {}",
+                app.outcome.text()
+            );
+        }
+    }
+
+    #[test]
+    fn switching_operation_resets_the_options() {
+        let mut app = app_showing("sort");
+        app.options.toggle();
         app.recompute();
-        assert!(app.outcome.is_error());
-        assert!(app.outcome.text().contains("no option named"));
+        app.search = "sort".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        assert!(app.options.fields().iter().all(|f| !f.enabled));
     }
 
     #[test]
     fn generators_ignore_the_input_text() {
-        let mut app = App::new();
-        app.search = "uuid".to_string();
-        app.refresh_operations();
-        app.input = TextArea::from_text("ignored");
-        app.recompute();
+        let app = app_showing("uuid");
+        assert!(!app.shows_input());
         assert!(!app.outcome.is_error());
         assert_eq!(app.outcome.text().len(), 36);
     }
 
     #[test]
     fn piping_moves_the_output_into_the_input() {
-        let mut app = App::new();
-        app.search = "upper".to_string();
-        app.refresh_operations();
+        let mut app = app_showing("upper");
         app.input = TextArea::from_text("hello");
+        app.mark_input_edited();
         app.recompute();
         app.pipe_output_into_input();
         assert_eq!(app.input.text(), "HELLO");
-    }
-
-    #[test]
-    fn every_operation_runs_on_the_sample_text_without_panicking() {
-        let mut app = App::new();
-        for index in 0..registry::all().len() {
-            app.search.clear();
-            app.category_index = 0;
-            app.refresh_operations();
-            app.operation_index = index;
-            // A failure is fine here, a panic is not.
-            app.recompute();
-        }
+        // The piped text is the reader's, so the next operation keeps it.
+        assert!(!app.input_is_sample);
     }
 }

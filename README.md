@@ -25,42 +25,77 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.2.0 Encode text as base64
-╭ Categories ──╮╭ Search ──────────────────╮╭ Input (18 characters) ───────────────────────╮
-│All           ││base64                    ││offline text tools                            │
+ txc  0.2.0 Shift letters by a fixed amount
+╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
+│All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
-│Encoding      │┏ Operations (2) ━━━━━━━━━━┓│                                              │
-│Hashing       │┃base64-encode             ┃│                                              │
-│Lines         │┃base64-decode             ┃│                                              │
+│Encoding      │┏ Operations (1) ━━━━━━━━━━┓│                                              │
+│Hashing       │┃caesar                    ┃│                                              │
+│Lines         │┃                          ┃│                                              │
 │Text          │┃                          ┃╰──────────────────────────────────────────────╯
 │Numbers       │┃                          ┃╭ Options ─────────────────────────────────────╮
-│Convert       │┃                          ┃│url-safe no-pad                               │
+│Convert       │┃                          ┃│  shift  3                                    │
 │Inspect       │┃                          ┃╰──────────────────────────────────────────────╯
-│Generate      │┃                          ┃╭ Output (24 characters) ──────────────────────╮
-│Time          │┃                          ┃│b2ZmbGluZSB0ZXh0IHRvb2xz                      │
+│Generate      │┃                          ┃╭ Output (43 characters) ──────────────────────╮
+│Time          │┃                          ┃│Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj   │
+│              │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
- tab  panel   ^up/^down  operation   ^p  pipe output to input   ^s  save   ?  help   ^c  quit
+ tab  panel   ^up/^down  operation   ^p  pipe to input   ^r  sample   ^s  save   ?  help   ^
 ```
 
 | Key | Action |
 | --- | --- |
 | `tab` / `shift+tab` | Move between panels |
-| `up` / `down` | Move inside a list |
+| `up` / `down` | Move inside a list, or between options |
 | `ctrl+up` / `ctrl+down` | Change operation from any panel |
 | `ctrl+left` / `ctrl+right` | Change category |
 | `/` | Jump to the search box |
 | `ctrl+p` | Move the output into the input, to chain operations |
+| `ctrl+r` | Bring back the sample text |
 | `ctrl+s` | Save the output to `txc-output.txt` |
-| `ctrl+l` | Clear the input |
+| `ctrl+l` | Clear the input, or empty the selected option |
+| `ctrl+u` | Put every option back to its default |
 | `ctrl+w` | Delete the word before the cursor |
 | `page up` / `page down` | Scroll the output |
 | `?` or `F1` | Key reference |
 | `ctrl+c` | Quit |
 
-The Options panel takes the same options the command line does, written as
-`key=value` pairs and bare switches, for example `width=40 upper`. The panel
-shows the options the selected operation accepts.
+Each panel earns its place. An operation that generates rather than transforms,
+such as `uuid` or `password`, has no input panel at all, and one with nothing to
+configure, such as `upper`, has no options panel. The output takes the space
+back.
+
+### Sample text
+
+Selecting an operation loads a sample that suits it: `from-timestamp` starts
+from `1700000000`, `roman-decode` from `MMXXIV`, `json-format` from a small JSON
+document. So every operation shows itself working the moment you land on it,
+rather than an error about the previous operation's text.
+
+Once you type your own text it is yours, and changing operation keeps it.
+`ctrl+r` brings the sample back.
+
+### Options
+
+The options panel lists the parameters of the selected operation, one per line,
+already filled in with the values the operation would use anyway:
+
+```
+╭ Options: Number of places to shift ──────────╮
+│> shift  3                                    │
+╰──────────────────────────────────────────────╯
+```
+
+Type to change a value, and press `space` to turn a switch on or off. The panel
+title explains whichever parameter is selected. Parameters that are required on
+the command line, such as `replace --find`, start from a worked example so the
+output is live straight away.
 
 ## Installing
 
@@ -113,7 +148,15 @@ txc upper --file notes.txt   # a file
 ```
 
 Several arguments are joined with a single space, so `txc upper hello world`
-gives `HELLO WORLD`.
+gives `HELLO WORLD`. Options may go before or after the text, whichever reads
+better:
+
+```
+txc from-timestamp 1700000000 --utc
+txc from-timestamp --utc 1700000000
+```
+
+For text that starts with a dash, put `--` first: `txc upper -- -x-`.
 
 A shell adds a newline to `echo hello`, so one trailing newline is removed from
 piped and file input. That is what makes `echo hello | txc b64` agree with

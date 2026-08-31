@@ -168,12 +168,9 @@ fn subcommand_for(op: &'static Op) -> Command {
     }
 
     if reads_input {
-        sub = sub.arg(
-            Arg::new("INPUT")
-                .num_args(0..)
-                .trailing_var_arg(true)
-                .help("Text to process; omit to read standard input"),
-        );
+        sub = sub.arg(Arg::new("INPUT").num_args(0..).help(
+            "Text to process; omit to read standard input, or -- for text starting with a dash",
+        ));
     }
 
     sub

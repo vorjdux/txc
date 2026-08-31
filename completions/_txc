@@ -41,7 +41,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (camel)
@@ -57,7 +57,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (capitalize)
@@ -73,7 +73,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (constant)
@@ -89,7 +89,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (dot)
@@ -105,7 +105,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (kebab)
@@ -121,7 +121,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (lower)
@@ -137,7 +137,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (pascal)
@@ -153,7 +153,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (random-case)
@@ -169,7 +169,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sentence)
@@ -185,7 +185,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (snake)
@@ -201,7 +201,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (swap)
@@ -217,7 +217,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (title)
@@ -233,7 +233,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (train)
@@ -249,7 +249,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (upper)
@@ -265,7 +265,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (atbash)
@@ -281,7 +281,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (base32-decode)
@@ -297,7 +297,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (base32-encode)
@@ -314,7 +314,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-pad[Omit the = padding characters]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (base58-decode)
@@ -330,7 +330,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (base58-encode)
@@ -346,7 +346,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (base64-decode)
@@ -364,7 +364,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-pad[Omit the = padding characters]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (base64-encode)
@@ -382,7 +382,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-pad[Omit the = padding characters]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (binary-decode)
@@ -398,7 +398,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (binary-encode)
@@ -416,7 +416,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (caesar)
@@ -433,7 +433,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (codepoint-decode)
@@ -449,7 +449,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (codepoint-encode)
@@ -467,7 +467,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (decimal-decode)
@@ -483,7 +483,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (decimal-encode)
@@ -501,7 +501,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (hex-decode)
@@ -517,7 +517,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (hex-encode)
@@ -537,7 +537,7 @@ _arguments "${_arguments_options[@]}" : \
 '--upper[Use uppercase output]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (html-decode)
@@ -553,7 +553,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (html-encode)
@@ -571,7 +571,7 @@ _arguments "${_arguments_options[@]}" : \
 '--quotes[Also escape single and double quotes]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (json-escape)
@@ -589,7 +589,7 @@ _arguments "${_arguments_options[@]}" : \
 '--quotes[Keep the surrounding double quotes]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (json-unescape)
@@ -605,7 +605,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (morse-decode)
@@ -621,7 +621,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (morse-encode)
@@ -637,7 +637,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (nato)
@@ -653,7 +653,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (octal-decode)
@@ -669,7 +669,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (octal-encode)
@@ -687,7 +687,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (rot13)
@@ -703,7 +703,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (rot47)
@@ -719,7 +719,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (unicode-escape)
@@ -737,7 +737,7 @@ _arguments "${_arguments_options[@]}" : \
 '--all[Escape ASCII characters as well]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (unicode-unescape)
@@ -753,7 +753,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (url-decode)
@@ -769,7 +769,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (url-encode)
@@ -785,7 +785,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (blake3)
@@ -805,7 +805,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (crc32)
@@ -825,7 +825,7 @@ _arguments "${_arguments_options[@]}" : \
 '--decimal[Print the checksum as a decimal number]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (hmac-sha1)
@@ -847,7 +847,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (hmac-sha256)
@@ -869,7 +869,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (hmac-sha512)
@@ -891,7 +891,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (keccak256)
@@ -911,7 +911,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (md5)
@@ -931,7 +931,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sha1)
@@ -951,7 +951,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sha224)
@@ -971,7 +971,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sha256)
@@ -991,7 +991,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sha3-256)
@@ -1011,7 +1011,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sha3-512)
@@ -1031,7 +1031,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sha384)
@@ -1051,7 +1051,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sha512)
@@ -1071,7 +1071,7 @@ _arguments "${_arguments_options[@]}" : \
 '--base64[Print the digest as base64 instead of hex]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (center)
@@ -1089,7 +1089,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (chunk)
@@ -1107,7 +1107,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (dedent)
@@ -1123,7 +1123,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (duplicates)
@@ -1141,7 +1141,7 @@ _arguments "${_arguments_options[@]}" : \
 '--ignore-case[Compare without regard to case]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (filter)
@@ -1165,7 +1165,7 @@ _arguments "${_arguments_options[@]}" : \
 '--ignore-case[Match without regard to case]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (head)
@@ -1183,7 +1183,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (indent)
@@ -1203,7 +1203,7 @@ _arguments "${_arguments_options[@]}" : \
 '--tabs[Indent with tabs instead of spaces]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (join)
@@ -1221,7 +1221,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (number)
@@ -1244,7 +1244,7 @@ _arguments "${_arguments_options[@]}" : \
 '--zeros[Pad numbers with zeros instead of spaces]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (pad-left)
@@ -1264,7 +1264,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (pad-right)
@@ -1284,7 +1284,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (prefix)
@@ -1302,7 +1302,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (remove-empty)
@@ -1318,7 +1318,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (reverse-lines)
@@ -1334,7 +1334,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sample)
@@ -1352,7 +1352,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (shuffle)
@@ -1368,7 +1368,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (sort)
@@ -1393,7 +1393,7 @@ _arguments "${_arguments_options[@]}" : \
 '--length[Sort by line length]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (split)
@@ -1414,7 +1414,7 @@ _arguments "${_arguments_options[@]}" : \
 '--keep-empty[Keep empty pieces]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (suffix)
@@ -1432,7 +1432,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (tail)
@@ -1450,7 +1450,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (trim-lines)
@@ -1466,7 +1466,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (unique)
@@ -1484,7 +1484,7 @@ _arguments "${_arguments_options[@]}" : \
 '--ignore-case[Compare without regard to case]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (wrap)
@@ -1502,7 +1502,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (escape-regex)
@@ -1518,7 +1518,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (extract)
@@ -1539,7 +1539,7 @@ _arguments "${_arguments_options[@]}" : \
 '--first[Print only the first match]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (fancy)
@@ -1557,7 +1557,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (newlines-to-spaces)
@@ -1573,7 +1573,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (normalize)
@@ -1590,7 +1590,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (palindrome)
@@ -1606,7 +1606,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (quote)
@@ -1624,7 +1624,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (remove)
@@ -1644,7 +1644,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (remove-accents)
@@ -1660,7 +1660,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (remove-non-ascii)
@@ -1676,7 +1676,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (remove-punctuation)
@@ -1692,7 +1692,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (remove-whitespace)
@@ -1708,7 +1708,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (repeat)
@@ -1728,7 +1728,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (replace)
@@ -1752,7 +1752,7 @@ _arguments "${_arguments_options[@]}" : \
 '--first[Replace only the first match]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (reverse)
@@ -1768,7 +1768,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (reverse-words)
@@ -1784,7 +1784,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (rotate)
@@ -1802,7 +1802,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (slugify)
@@ -1818,7 +1818,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (spaces-to-newlines)
@@ -1834,7 +1834,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (spaces-to-tabs)
@@ -1852,7 +1852,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (squeeze)
@@ -1868,7 +1868,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (strip-html)
@@ -1884,7 +1884,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (tabs-to-spaces)
@@ -1902,7 +1902,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (trim)
@@ -1922,7 +1922,7 @@ _arguments "${_arguments_options[@]}" : \
 '--end[Only trim the end]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (truncate)
@@ -1942,7 +1942,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (base-convert)
@@ -1962,7 +1962,7 @@ _arguments "${_arguments_options[@]}" : \
 '--upper[Use uppercase digits]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (ordinal)
@@ -1978,7 +1978,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (roman-decode)
@@ -1994,7 +1994,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (roman-encode)
@@ -2010,7 +2010,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (spell)
@@ -2026,7 +2026,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (csv-to-json)
@@ -2047,7 +2047,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-header[Treat the first row as data, not as column names]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (csv-to-markdown)
@@ -2065,7 +2065,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (json-format)
@@ -2083,7 +2083,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (json-minify)
@@ -2099,7 +2099,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (json-to-csv)
@@ -2117,7 +2117,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (json-to-toml)
@@ -2133,7 +2133,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (json-to-yaml)
@@ -2149,7 +2149,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (toml-to-json)
@@ -2167,7 +2167,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (toml-to-yaml)
@@ -2183,7 +2183,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (yaml-to-json)
@@ -2201,7 +2201,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (yaml-to-toml)
@@ -2217,7 +2217,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (charinfo)
@@ -2233,7 +2233,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (count-bytes)
@@ -2249,7 +2249,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (count-chars)
@@ -2265,7 +2265,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (count-lines)
@@ -2281,7 +2281,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (count-words)
@@ -2297,7 +2297,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (frequency)
@@ -2321,7 +2321,7 @@ _arguments "${_arguments_options[@]}" : \
 '--percent[Include the share of the total]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (is-palindrome)
@@ -2337,7 +2337,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (stats)
@@ -2353,7 +2353,7 @@ _arguments "${_arguments_options[@]}" : \
 '--no-newline[Do not append a trailing newline to the result]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (lorem)
@@ -2490,7 +2490,7 @@ _arguments "${_arguments_options[@]}" : \
 '--iso[Use the RFC 3339 format]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (now)
@@ -2539,7 +2539,7 @@ _arguments "${_arguments_options[@]}" : \
 '--millis[Print milliseconds instead of seconds]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'*::INPUT -- Text to process; omit to read standard input:_default' \
+'*::INPUT -- Text to process; omit to read standard input, or -- for text starting with a dash:_default' \
 && ret=0
 ;;
 (list)

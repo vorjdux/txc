@@ -60,6 +60,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(String::from_utf8(buffer)?)
             },
         )
+        .sample("{\"name\":\"txc\",\"tags\":[\"text\",\"cli\"],\"offline\":true}")
         .aliases(&["json-pretty", "json-beautify"])
         .params(P_INDENT)
         .examples(&[
@@ -76,6 +77,12 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Remove all whitespace from JSON",
             |s, _| Ok(serde_json::to_string(&parse_json(s)?)?),
         )
+        .sample(
+            "{
+  \"name\": \"txc\",
+  \"offline\": true
+}",
+        )
         .aliases(&["json-compact"]),
     );
 
@@ -87,6 +94,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Convert JSON to YAML",
             |s, _| Ok(serde_yaml_ng::to_string(&parse_json(s)?)?),
         )
+        .sample("{\"name\":\"txc\",\"tags\":[\"text\",\"cli\"]}")
         .aliases(&["json2yaml"])
         .examples(&["txc json-to-yaml --file config.json"]),
     );
@@ -101,6 +109,12 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 let value: serde_json::Value = parse_yaml(s)?;
                 render_json(&value, p)
             },
+        )
+        .sample(
+            "name: txc
+tags:
+  - text
+  - cli",
         )
         .aliases(&["yaml2json"])
         .params(P_INDENT),
@@ -118,6 +132,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 toml::to_string_pretty(&value).context("this JSON has no TOML equivalent")
             },
         )
+        .sample("{\"name\":\"txc\",\"offline\":true}")
         .aliases(&["json2toml"]),
     );
 
@@ -132,6 +147,10 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     toml::from_str(s).context("input is not valid TOML")?;
                 render_json(&value, p)
             },
+        )
+        .sample(
+            "name = \"txc\"
+offline = true",
         )
         .aliases(&["toml2json"])
         .params(P_INDENT)
@@ -149,6 +168,10 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 toml::to_string_pretty(&value).context("this YAML has no TOML equivalent")
             },
         )
+        .sample(
+            "name: txc
+offline: true",
+        )
         .aliases(&["yaml2toml"]),
     );
 
@@ -163,6 +186,10 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     toml::from_str(s).context("input is not valid TOML")?;
                 Ok(serde_yaml_ng::to_string(&value)?)
             },
+        )
+        .sample(
+            "name = \"txc\"
+offline = true",
         )
         .aliases(&["toml2yaml"]),
     );
@@ -210,6 +237,11 @@ pub(crate) fn register(out: &mut Vec<Op>) {
 
                 render_json(&value, p)
             },
+        )
+        .sample(
+            "name,age,member
+ada,36,true
+grace,45,false",
         )
         .aliases(&["csv2json"])
         .params(P_CSV_IN)
@@ -261,6 +293,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .to_string())
             },
         )
+        .sample("[{\"name\":\"ada\",\"age\":36},{\"name\":\"grace\",\"age\":45}]")
         .aliases(&["json2csv"])
         .params(P_CSV_OUT),
     );
@@ -296,6 +329,11 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 }
                 Ok(table.join("\n"))
             },
+        )
+        .sample(
+            "name,age
+ada,36
+grace,45",
         )
         .aliases(&["csv2md"])
         .params(P_CSV_OUT)

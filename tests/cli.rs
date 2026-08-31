@@ -75,6 +75,40 @@ fn options_belong_after_the_operation() {
 }
 
 #[test]
+fn options_are_accepted_on_either_side_of_the_text() {
+    // Writing the text first is the natural way to reach for an option after
+    // seeing the result, so both orders have to work.
+    assert_eq!(
+        stdout_of(&run(&["from-timestamp", "1700000000", "--utc"])),
+        "2023-11-14 22:13:20"
+    );
+    assert_eq!(
+        stdout_of(&run(&["from-timestamp", "--utc", "1700000000"])),
+        "2023-11-14 22:13:20"
+    );
+    assert_eq!(
+        stdout_of(&run(&["hex-encode", "hi", "--upper", "--sep", " "])),
+        "68 69"
+    );
+    assert_eq!(
+        stdout_of(&run(&[
+            "replace",
+            "the fox ran",
+            "--find",
+            "fox",
+            "--with",
+            "cat"
+        ])),
+        "the cat ran"
+    );
+}
+
+#[test]
+fn a_double_dash_protects_text_that_starts_with_a_dash() {
+    assert_eq!(stdout_of(&run(&["upper", "--", "-x-"])), "-X-");
+}
+
+#[test]
 fn operations_can_be_chained_through_pipes() {
     let first = pipe(&["snake"], "Hello World\n");
     let second = pipe(&["upper"], &String::from_utf8_lossy(&first.stdout));

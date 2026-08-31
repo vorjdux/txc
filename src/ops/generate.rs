@@ -25,7 +25,8 @@ static P_UUID: &[Param] = &[
         None,
         "TEXT",
         "Name to hash, required by versions 3 and 5",
-    ),
+    )
+    .suggest("example.com"),
     Param::valued(
         "namespace",
         None,

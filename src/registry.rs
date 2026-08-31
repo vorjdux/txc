@@ -106,7 +106,7 @@ impl Category {
 }
 
 /// Whether a parameter carries a value or is a simple on/off switch.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ParamKind {
     Flag,
     Value {
@@ -116,12 +116,16 @@ pub enum ParamKind {
 }
 
 /// A single parameter accepted by an operation.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Param {
     pub name: &'static str,
     pub short: Option<char>,
     pub help: &'static str,
     pub kind: ParamKind,
+    /// A value the interactive interface pre-fills when the parameter has no
+    /// default of its own. It is never applied on the command line, where a
+    /// required parameter stays required.
+    pub sample: Option<&'static str>,
 }
 
 impl Param {
@@ -132,6 +136,7 @@ impl Param {
             short,
             help,
             kind: ParamKind::Flag,
+            sample: None,
         }
     }
 
@@ -150,6 +155,7 @@ impl Param {
                 placeholder,
                 default: None,
             },
+            sample: None,
         }
     }
 
@@ -169,7 +175,18 @@ impl Param {
                 placeholder,
                 default: Some(default),
             },
+            sample: None,
         }
+    }
+
+    /// Suggests a starting value for the interactive interface.
+    ///
+    /// Use this for parameters that are required on the command line: the
+    /// interface can then show a working result straight away without the
+    /// command line quietly accepting an incomplete invocation.
+    pub const fn suggest(mut self, sample: &'static str) -> Param {
+        self.sample = Some(sample);
+        self
     }
 
     /// The declared default, if any.
@@ -183,6 +200,15 @@ impl Param {
     /// Whether this parameter is a switch rather than a value.
     pub fn is_flag(&self) -> bool {
         matches!(self.kind, ParamKind::Flag)
+    }
+
+    /// The value the interactive interface starts from: the suggestion when
+    /// one was given, else the declared default, else nothing.
+    ///
+    /// The suggestion wins because it is only ever set for parameters whose
+    /// default would leave the panel looking empty.
+    pub fn starting_value(&self) -> &'static str {
+        self.sample.or(self.default_value()).unwrap_or("")
     }
 }
 
@@ -208,6 +234,9 @@ pub struct Op {
     pub params: &'static [Param],
     pub feed: Feed,
     pub run: OpFn,
+    /// Text the interactive interface starts from, when the general purpose
+    /// sample would not suit this operation.
+    pub sample: Option<&'static str>,
 }
 
 impl Op {
@@ -228,6 +257,7 @@ impl Op {
             params: &[],
             feed,
             run,
+            sample: None,
         }
     }
 
@@ -247,6 +277,33 @@ impl Op {
     pub const fn examples(mut self, examples: &'static [&'static str]) -> Op {
         self.examples = examples;
         self
+    }
+
+    /// Sets the text the interactive interface starts from.
+    ///
+    /// Operations that read timestamps, numbers or structured documents need
+    /// their own sample; a sentence of prose would only ever produce an error.
+    pub const fn sample(mut self, sample: &'static str) -> Op {
+        self.sample = Some(sample);
+        self
+    }
+
+    /// The text the interactive interface loads when this operation is
+    /// selected, falling back to something suitable for the category.
+    pub fn sample_input(&self) -> &'static str {
+        if self.feed == Feed::None {
+            return "";
+        }
+        if let Some(sample) = self.sample {
+            return sample;
+        }
+        match self.category {
+            Category::Lines => "beta\nalpha\ngamma\nalpha\ndelta",
+            Category::Number => "2024",
+            Category::Time => "1700000000",
+            Category::Convert => "{\"name\": \"txc\", \"offline\": true}",
+            _ => "The quick brown fox jumps over the lazy dog",
+        }
     }
 
     /// Looks up one of the operation's declared parameters.

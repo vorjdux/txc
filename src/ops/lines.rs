@@ -33,7 +33,8 @@ static P_FILTER: &[Param] = &[
         Some('c'),
         "TEXT",
         "Keep lines containing this text",
-    ),
+    )
+    .suggest("a"),
     Param::value(
         "regex",
         Some('r'),
@@ -65,14 +66,16 @@ static P_NUMBER: &[Param] = &[
         "Pad numbers with zeros instead of spaces",
     ),
 ];
-static P_TEXT: &[Param] = &[Param::valued("text", Some('t'), "TEXT", "", "Text to add")];
+static P_TEXT: &[Param] =
+    &[Param::valued("text", Some('t'), "TEXT", "", "Text to add").suggest("> ")];
 static P_SEP_JOIN: &[Param] = &[Param::valued(
     "sep",
     Some('s'),
     "TEXT",
     "",
     "Text placed between the joined lines",
-)];
+)
+.suggest(", ")];
 static P_SPLIT: &[Param] = &[
     Param::valued("sep", Some('s'), "TEXT", " ", "Separator to split on"),
     Param::flag(
@@ -446,6 +449,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .join("\n"))
             },
         )
+        .sample("one,two,three")
         .aliases(&["split-text"])
         .params(P_SPLIT)
         .examples(&["txc split --sep , \"a,b,c\"", "txc split --sep '' abc"]),

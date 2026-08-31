@@ -15,6 +15,9 @@ use crate::tui::app::{App, Focus};
 const ACCENT: Color = Color::Cyan;
 const MUTED: Color = Color::DarkGray;
 const ERROR: Color = Color::Red;
+/// Sample text is dimmed, so it reads as a starting point rather than input
+/// the reader typed.
+const SAMPLE: Color = Color::Gray;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let [header, body, footer] = Layout::vertical([
@@ -40,21 +43,42 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_search(frame, search_area, app);
     draw_operations(frame, list_area, app);
 
-    let [input_area, options_area, output_area] = Layout::vertical([
-        Constraint::Percentage(35),
-        Constraint::Length(3),
-        Constraint::Min(5),
-    ])
-    .areas(right);
-    draw_input(frame, input_area, app);
-    draw_options(frame, options_area, app);
-    draw_output(frame, output_area, app);
+    draw_right_column(frame, right, app);
 
     draw_footer(frame, footer, app);
 
     if app.show_help {
         draw_help(frame, frame.area());
     }
+}
+
+/// Lays out the right hand column, leaving out the panels the selected
+/// operation has no use for: a generator gets no input panel, and an operation
+/// without parameters gets no options panel. The output takes the space back.
+fn draw_right_column(frame: &mut Frame, area: Rect, app: &App) {
+    let shows_input = app.shows_input();
+    let shows_options = app.shows_options();
+
+    let mut constraints = Vec::new();
+    if shows_input {
+        constraints.push(Constraint::Percentage(35));
+    }
+    if shows_options {
+        // One line per parameter, plus the border.
+        constraints.push(Constraint::Length(app.options.len() as u16 + 2));
+    }
+    constraints.push(Constraint::Min(3));
+
+    let areas = Layout::vertical(constraints).split(area);
+    let mut next = areas.iter();
+
+    if shows_input {
+        draw_input(frame, *next.next().expect("input area"), app);
+    }
+    if shows_options {
+        draw_options(frame, *next.next().expect("options area"), app);
+    }
+    draw_output(frame, *next.next().expect("output area"), app);
 }
 
 fn panel(title: &str, focused: bool) -> Block<'_> {
@@ -172,12 +196,13 @@ fn draw_operations(frame: &mut Frame, area: Rect, app: &App) {
 
 fn draw_input(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Input;
-    let generator = app
-        .selected_operation()
-        .is_some_and(|op| op.feed == Feed::None);
+    let sample = app.input_is_sample;
 
-    let title = if generator {
-        "Input (not used by this operation)".to_string()
+    let title = if sample {
+        format!(
+            "Input ({} characters, sample)",
+            app.input.text().chars().count()
+        )
     } else {
         format!("Input ({} characters)", app.input.text().chars().count())
     };
@@ -194,8 +219,8 @@ fn draw_input(frame: &mut Frame, area: Rect, app: &App) {
         .map(|line| Line::raw(line.as_str()))
         .collect();
 
-    let style = if generator {
-        Style::default().fg(MUTED)
+    let style = if sample {
+        Style::default().fg(SAMPLE)
     } else {
         Style::default()
     };
@@ -207,7 +232,7 @@ fn draw_input(frame: &mut Frame, area: Rect, app: &App) {
         area,
     );
 
-    if focused && !generator {
+    if focused {
         let width = area.width.saturating_sub(2) as usize;
         frame.set_cursor_position(Position::new(
             area.x + 1 + column.min(width) as u16,
@@ -216,41 +241,52 @@ fn draw_input(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+/// Draws one line per parameter, with its current value, so the panel shows
+/// what the operation is about to do instead of an empty box.
 fn draw_options(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Options;
-    let op = app.selected_operation();
+    let fields = app.options.fields();
 
-    let hint = op
-        .map(|op| {
-            if op.params.is_empty() {
-                "this operation takes no options".to_string()
+    let width = fields
+        .iter()
+        .map(|field| field.param.name.chars().count())
+        .max()
+        .unwrap_or(0);
+
+    let lines: Vec<Line> = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| {
+            let selected = focused && index == app.options.selected();
+            let label = Style::default().fg(if selected { ACCENT } else { MUTED });
+            let value = if selected {
+                Style::default().add_modifier(Modifier::BOLD)
             } else {
-                op.params
-                    .iter()
-                    .map(|p| {
-                        if p.is_flag() {
-                            p.name.to_string()
-                        } else {
-                            format!("{}=", p.name)
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            }
+                Style::default()
+            };
+            Line::from(vec![
+                Span::styled(if selected { "> " } else { "  " }, label),
+                Span::styled(format!("{:width$}  ", field.param.name), label),
+                Span::styled(field.display(), value),
+            ])
         })
-        .unwrap_or_default();
+        .collect();
 
-    let text = if app.options.is_empty() && !focused {
-        Line::from(Span::styled(hint, Style::default().fg(MUTED)))
-    } else {
-        Line::raw(app.options.text())
-    };
+    let title = fields
+        .get(app.options.selected())
+        .filter(|_| focused)
+        .map(|field| format!("Options: {}", field.param.help))
+        .unwrap_or_else(|| "Options".to_string());
 
-    frame.render_widget(Paragraph::new(text).block(panel("Options", focused)), area);
-    if focused {
+    frame.render_widget(Paragraph::new(lines).block(panel(&title, focused)), area);
+
+    // The cursor belongs in the value of the selected field, and only when
+    // that field is something to type into.
+    if focused && !app.options.selected_is_flag() {
+        let column = 4 + width + app.options.cursor();
         frame.set_cursor_position(Position::new(
-            area.x + 1 + app.options.cursor().1 as u16,
-            area.y + 1,
+            area.x + 1 + column as u16,
+            area.y + 1 + app.options.selected() as u16,
         ));
     }
 }
@@ -298,7 +334,8 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
         vec![
             ("tab", "panel"),
             ("^up/^down", "operation"),
-            ("^p", "pipe output to input"),
+            ("^p", "pipe to input"),
+            ("^r", "sample"),
             ("^s", "save"),
             ("?", "help"),
             ("^c", "quit"),
@@ -331,8 +368,8 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_help(frame: &mut Frame, area: Rect) {
-    let width = 62.min(area.width.saturating_sub(4));
-    let height = 20.min(area.height.saturating_sub(2));
+    let width = 64.min(area.width.saturating_sub(4));
+    let height = 24.min(area.height.saturating_sub(2));
     let popup = Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + (area.height - height) / 2,
@@ -342,21 +379,25 @@ fn draw_help(frame: &mut Frame, area: Rect) {
 
     let text = vec![
         Line::raw(""),
-        Line::raw("  tab / shift+tab    move between panels"),
-        Line::raw("  up / down          move inside a list"),
+        Line::raw("  tab / shift+tab      move between panels"),
+        Line::raw("  up / down            move inside a list or between options"),
         Line::raw("  ctrl+up / ctrl+down  change operation from anywhere"),
-        Line::raw("  ctrl+left / ctrl+right  change category"),
+        Line::raw("  ctrl+left/right      change category"),
+        Line::raw("  /                    jump to the search box"),
+        Line::raw(""),
+        Line::raw("  Options panel"),
+        Line::raw("    type               edit the selected value"),
+        Line::raw("    space              turn the selected switch on or off"),
+        Line::raw("    ctrl+l             empty the selected value"),
+        Line::raw("    ctrl+u             put every option back to its default"),
+        Line::raw(""),
+        Line::raw("  ctrl+p               move the output into the input"),
+        Line::raw("  ctrl+r               bring back the sample text"),
+        Line::raw("  ctrl+s               save the output to txc-output.txt"),
+        Line::raw("  ctrl+l               clear the input"),
         Line::raw("  page up / page down  scroll the output"),
         Line::raw(""),
-        Line::raw("  ctrl+p             move the output into the input"),
-        Line::raw("  ctrl+s             save the output to txc-output.txt"),
-        Line::raw("  ctrl+l             clear the input"),
-        Line::raw("  ctrl+w             delete the word before the cursor"),
-        Line::raw(""),
-        Line::raw("  Options accept key=value pairs and bare switches,"),
-        Line::raw("  for example: width=40 upper"),
-        Line::raw(""),
-        Line::raw("  ?  close this help          ctrl+c  quit"),
+        Line::raw("  ?  close this help              ctrl+c  quit"),
     ];
 
     frame.render_widget(Clear, popup);
@@ -393,10 +434,9 @@ mod tests {
     #[ignore = "prints the layout used in the README"]
     fn screenshot() {
         let mut app = App::new();
-        app.search = "base64".to_string();
+        app.search = std::env::var("TXC_SHOT").unwrap_or_else(|_| "base64".into());
         app.refresh_operations();
-        app.input = crate::tui::textarea::TextArea::from_text("offline text tools");
-        app.recompute();
+        app.load_operation();
         let width = 92;
         let mut terminal = Terminal::new(TestBackend::new(width, 22)).expect("terminal");
         terminal.draw(|frame| draw(frame, &mut app)).expect("draw");
@@ -420,8 +460,9 @@ mod tests {
     #[test]
     fn draws_every_panel() {
         let mut app = App::new();
-        app.search = "upper".to_string();
+        app.search = "caesar".to_string();
         app.refresh_operations();
+        app.load_operation();
         app.input = crate::tui::textarea::TextArea::from_text("hello");
         app.recompute();
 
@@ -432,7 +473,32 @@ mod tests {
         assert!(screen.contains("Input"), "{screen}");
         assert!(screen.contains("Options"), "{screen}");
         assert!(screen.contains("Output"), "{screen}");
-        assert!(screen.contains("HELLO"), "{screen}");
+        // The parameter and its value are both shown, ready to edit.
+        assert!(screen.contains("shift"), "{screen}");
+        assert!(screen.contains("khoor"), "{screen}");
+    }
+
+    #[test]
+    fn an_operation_without_options_gets_no_options_panel() {
+        let mut app = App::new();
+        app.search = "upper".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("Input"), "{screen}");
+        assert!(!screen.contains("Options"), "{screen}");
+    }
+
+    #[test]
+    fn a_generator_gets_no_input_panel() {
+        let mut app = App::new();
+        app.search = "password".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        let screen = render(&mut app, 100, 30);
+        assert!(!screen.contains("Input"), "{screen}");
+        assert!(screen.contains("Options"), "{screen}");
+        assert!(screen.contains("length"), "{screen}");
     }
 
     #[test]
@@ -457,8 +523,12 @@ mod tests {
         let mut app = App::new();
         for index in 0..registry::all().len() {
             app.operation_index = index;
-            app.recompute();
+            app.load_operation();
             render(&mut app, 90, 26);
+            // The options panel is only focusable when it is on screen.
+            app.focus = crate::tui::app::Focus::Options;
+            render(&mut app, 90, 26);
+            app.focus = crate::tui::app::Focus::Operations;
         }
     }
 

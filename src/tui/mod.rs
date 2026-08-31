@@ -1,6 +1,7 @@
 //! The interactive interface, shown when `txc` is run with no arguments.
 
 pub mod app;
+pub mod options;
 pub(crate) mod textarea;
 mod ui;
 
@@ -89,11 +90,15 @@ fn handle_key(app: &mut App, key: KeyEvent) {
             return;
         }
         (KeyCode::Tab, _) => {
-            app.focus = app.focus.next();
+            app.focus_next();
             return;
         }
         (KeyCode::BackTab, _) => {
-            app.focus = app.focus.previous();
+            app.focus_previous();
+            return;
+        }
+        (KeyCode::Char('r'), true) => {
+            app.reset_input();
             return;
         }
         (KeyCode::PageUp, _) => {
@@ -115,8 +120,8 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Focus::Search => search_key(app, key, control),
         Focus::Categories => category_key(app, key),
         Focus::Operations => operation_key(app, key),
-        Focus::Input => text_key(app, key, control, true),
-        Focus::Options => text_key(app, key, control, false),
+        Focus::Input => input_key(app, key, control),
+        Focus::Options => options_key(app, key, control),
     }
 }
 
@@ -125,22 +130,22 @@ fn search_key(app: &mut App, key: KeyEvent, control: bool) {
         KeyCode::Char('w') if control => {
             app.search.clear();
             app.refresh_operations();
-            app.recompute();
+            app.load_operation();
         }
         KeyCode::Char(ch) => {
             app.search.push(ch);
             app.refresh_operations();
-            app.recompute();
+            app.load_operation();
         }
         KeyCode::Backspace => {
             app.search.pop();
             app.refresh_operations();
-            app.recompute();
+            app.load_operation();
         }
         KeyCode::Esc => {
             app.search.clear();
             app.refresh_operations();
-            app.recompute();
+            app.load_operation();
         }
         KeyCode::Enter | KeyCode::Down => app.focus = Focus::Operations,
         _ => {}
@@ -165,13 +170,21 @@ fn operation_key(app: &mut App, key: KeyEvent) {
         KeyCode::Up | KeyCode::Char('k') => app.select_previous_operation(),
         KeyCode::Home => {
             app.operation_index = 0;
-            app.recompute();
+            app.load_operation();
         }
         KeyCode::End => {
             app.operation_index = app.operations.len().saturating_sub(1);
-            app.recompute();
+            app.load_operation();
         }
-        KeyCode::Enter | KeyCode::Right => app.focus = Focus::Input,
+        KeyCode::Enter | KeyCode::Right => {
+            app.focus = if app.shows_input() {
+                Focus::Input
+            } else if app.shows_options() {
+                Focus::Options
+            } else {
+                Focus::Operations
+            }
+        }
         KeyCode::Left => app.focus = Focus::Categories,
         KeyCode::Char('/') => app.focus = Focus::Search,
         KeyCode::Char('?') => app.show_help = true,
@@ -180,58 +193,144 @@ fn operation_key(app: &mut App, key: KeyEvent) {
     }
 }
 
-/// Editing keys for the input and options panels.
-fn text_key(app: &mut App, key: KeyEvent, control: bool, multiline: bool) {
-    let area = if multiline {
-        &mut app.input
-    } else {
-        &mut app.options
-    };
-
-    match (key.code, control) {
-        (KeyCode::Char('l'), true) => area.clear(),
-        (KeyCode::Char('w'), true) => area.delete_word(),
-        (KeyCode::Char(ch), false) => area.insert(ch),
-        (KeyCode::Backspace, _) => area.backspace(),
-        (KeyCode::Delete, _) => area.delete(),
-        (KeyCode::Enter, _) if multiline => area.newline(),
+/// Editing keys for the input panel.
+fn input_key(app: &mut App, key: KeyEvent, control: bool) {
+    let edited = match (key.code, control) {
+        (KeyCode::Char('l'), true) => {
+            app.input.clear();
+            true
+        }
+        (KeyCode::Char('w'), true) => {
+            app.input.delete_word();
+            true
+        }
+        (KeyCode::Char(ch), false) => {
+            app.input.insert(ch);
+            true
+        }
+        (KeyCode::Backspace, _) => {
+            app.input.backspace();
+            true
+        }
+        (KeyCode::Delete, _) => {
+            app.input.delete();
+            true
+        }
         (KeyCode::Enter, _) => {
-            app.focus = Focus::Operations;
-            return;
+            app.input.newline();
+            true
         }
         (KeyCode::Left, _) => {
-            area.move_left();
-            return;
+            app.input.move_left();
+            false
         }
         (KeyCode::Right, _) => {
-            area.move_right();
-            return;
+            app.input.move_right();
+            false
         }
         (KeyCode::Up, _) => {
-            area.move_up();
-            return;
+            app.input.move_up();
+            false
         }
         (KeyCode::Down, _) => {
-            area.move_down();
-            return;
+            app.input.move_down();
+            false
         }
         (KeyCode::Home, _) => {
-            area.move_home();
-            return;
+            app.input.move_home();
+            false
         }
         (KeyCode::End, _) => {
-            area.move_end();
-            return;
+            app.input.move_end();
+            false
         }
         (KeyCode::Esc, _) => {
             app.focus = Focus::Operations;
-            return;
+            false
         }
         _ => return,
-    }
+    };
 
-    // Only edits change the result, so movement returns early above.
-    app.recompute();
+    // Only an edit changes the result, and only an edit makes the text the
+    // reader's own rather than the operation's sample.
+    if edited {
+        app.mark_input_edited();
+        app.recompute();
+    }
+}
+
+/// Editing keys for the options panel.
+///
+/// Values are typed into, switches are toggled with space or enter, and the
+/// arrow keys move between the parameters.
+fn options_key(app: &mut App, key: KeyEvent, control: bool) {
+    let changed = match (key.code, control) {
+        (KeyCode::Up, _) => {
+            app.options.select_previous();
+            false
+        }
+        (KeyCode::Down, _) => {
+            app.options.select_next();
+            false
+        }
+        (KeyCode::Enter, _) => {
+            if !app.options.toggle() {
+                app.options.select_next();
+                return;
+            }
+            true
+        }
+        (KeyCode::Char(' '), false) if app.options.selected_is_flag() => {
+            app.options.toggle();
+            true
+        }
+        (KeyCode::Char('l'), true) => {
+            app.options.clear_selected();
+            true
+        }
+        (KeyCode::Char('u'), true) => {
+            app.options.reset();
+            app.status = "options reset".to_string();
+            true
+        }
+        (KeyCode::Char(ch), false) => {
+            app.options.insert(ch);
+            true
+        }
+        (KeyCode::Backspace, _) => {
+            app.options.backspace();
+            true
+        }
+        (KeyCode::Delete, _) => {
+            app.options.delete();
+            true
+        }
+        (KeyCode::Left, _) => {
+            app.options.move_left();
+            false
+        }
+        (KeyCode::Right, _) => {
+            app.options.move_right();
+            false
+        }
+        (KeyCode::Home, _) => {
+            app.options.move_home();
+            false
+        }
+        (KeyCode::End, _) => {
+            app.options.move_end();
+            false
+        }
+        (KeyCode::Esc, _) => {
+            app.focus = Focus::Operations;
+            false
+        }
+        _ => return,
+    };
+
+    if changed {
+        app.recompute();
+    }
 }
 
 #[cfg(test)]
@@ -296,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn options_are_applied_as_they_are_typed() {
+    fn options_start_filled_in_and_react_to_editing() {
         let mut app = App::new();
         app.focus = Focus::Search;
         for ch in "caesar".chars() {
@@ -307,13 +406,48 @@ mod tests {
         for ch in "abc".chars() {
             press(&mut app, KeyCode::Char(ch));
         }
+        // The declared default of 3 is already in the panel and already applied.
+        assert_eq!(app.options.fields()[0].value, "3");
         assert_eq!(app.outcome.text(), "def");
 
+        // Editing the field is ordinary typing, with no key=value syntax.
         app.focus = Focus::Options;
-        for ch in "shift=1".chars() {
+        press_ctrl(&mut app, KeyCode::Char('l'));
+        press(&mut app, KeyCode::Char('1'));
+        assert_eq!(app.outcome.text(), "bcd");
+    }
+
+    #[test]
+    fn switches_are_toggled_with_space() {
+        let mut app = App::new();
+        app.search = "sort".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        app.focus = Focus::Input;
+        press_ctrl(&mut app, KeyCode::Char('l'));
+        for ch in "b".chars() {
             press(&mut app, KeyCode::Char(ch));
         }
-        assert_eq!(app.outcome.text(), "bcd");
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('a'));
+        assert_eq!(app.outcome.text(), "a\nb");
+
+        app.focus = Focus::Options;
+        assert_eq!(app.options.fields()[0].param.name, "reverse");
+        press(&mut app, KeyCode::Char(' '));
+        assert_eq!(app.outcome.text(), "b\na");
+    }
+
+    #[test]
+    fn control_r_restores_the_sample_text() {
+        let mut app = App::new();
+        app.focus = Focus::Input;
+        press_ctrl(&mut app, KeyCode::Char('l'));
+        press(&mut app, KeyCode::Char('x'));
+        assert!(!app.input_is_sample);
+        press_ctrl(&mut app, KeyCode::Char('r'));
+        assert!(app.input_is_sample);
+        assert!(app.input.text().contains("quick brown fox"));
     }
 
     #[test]

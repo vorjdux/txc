@@ -33,7 +33,8 @@ static P_HMAC: &[Param] = &[
         Some('k'),
         "SECRET",
         "Secret key for the authentication code",
-    ),
+    )
+    .suggest("secret"),
     Param::flag("upper", Some('u'), "Print the digest in uppercase hex"),
     Param::flag(
         "base64",

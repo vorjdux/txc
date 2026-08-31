@@ -91,6 +91,12 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 ))
             },
         )
+        .sample(
+            "The quick brown fox jumps over the lazy dog.
+A second sentence here.
+
+And a new paragraph.",
+        )
         .aliases(&["analyze", "info"])
         .examples(&["txc stats --file article.txt"]),
     );
@@ -188,6 +194,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .join("\n"))
             },
         )
+        .sample("the cat and the dog and the bird")
         .aliases(&["freq", "histogram"])
         .params(P_FREQUENCY)
         .examples(&[
@@ -212,6 +219,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(if cleaned == reversed { "yes" } else { "no" }.to_string())
             },
         )
+        .sample("A man, a plan, a canal: Panama")
         .examples(&["txc is-palindrome \"A man, a plan, a canal: Panama\""]),
     );
 
@@ -243,6 +251,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .join("\n"))
             },
         )
+        .sample("caf\u{e9}")
         .aliases(&["chars", "explain"])
         .examples(&["txc charinfo \"a\u{e9}\""]),
     );

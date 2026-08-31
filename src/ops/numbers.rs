@@ -138,6 +138,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(total.to_string())
             },
         )
+        .sample("MMXXIV")
         .aliases(&["unroman"])
         .examples(&["txc roman-decode MMXXIV"]),
     );

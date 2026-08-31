@@ -39,8 +39,8 @@ static P_TRIM: &[Param] = &[
     Param::flag("end", None, "Only trim the end"),
 ];
 static P_REPLACE: &[Param] = &[
-    Param::value("find", None, "TEXT", "Text or pattern to look for"),
-    Param::valued("with", Some('w'), "TEXT", "", "Replacement text"),
+    Param::value("find", None, "TEXT", "Text or pattern to look for").suggest("fox"),
+    Param::valued("with", Some('w'), "TEXT", "", "Replacement text").suggest("cat"),
     Param::flag("regex", Some('r'), "Treat --find as a regular expression"),
     Param::flag("ignore-case", Some('i'), "Match without regard to case"),
     Param::flag("first", None, "Replace only the first match"),
@@ -51,7 +51,8 @@ static P_EXTRACT: &[Param] = &[
         Some('r'),
         "PATTERN",
         "Regular expression to search for",
-    ),
+    )
+    .suggest("\\w+o\\w+"),
     Param::valued(
         "group",
         Some('g'),
@@ -62,7 +63,7 @@ static P_EXTRACT: &[Param] = &[
     Param::flag("first", None, "Print only the first match"),
 ];
 static P_REMOVE: &[Param] = &[
-    Param::value("text", Some('t'), "TEXT", "Exact text to remove"),
+    Param::value("text", Some('t'), "TEXT", "Exact text to remove").suggest("the "),
     Param::value(
         "regex",
         Some('r'),
@@ -340,6 +341,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             "Replace accented letters with their plain form",
             |s, _| Ok(strip_marks(s)),
         )
+        .sample("cr\u{e8}me br\u{fb}l\u{e9}e, na\u{ef}ve fa\u{e7}ade")
         .aliases(&["deaccent", "unaccent"])
         .examples(&["txc remove-accents \"cr\u{e8}me br\u{fb}l\u{e9}e\""]),
     );
@@ -379,6 +381,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(slug)
             },
         )
+        .sample("Hello, World! A Cafe in 2024")
         .aliases(&["slug"])
         .examples(&["txc slugify \"Hello, World! 2024\""]),
     );
@@ -403,6 +406,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(html_escape::decode_html_entities(&out).into_owned())
             },
         )
+        .sample("<p>Hi <b>there</b> &amp; welcome</p>")
         .aliases(&["strip-tags", "html-to-text"])
         .examples(&["txc strip-html '<p>Hi &amp; bye</p>'"]),
     );
@@ -417,6 +421,10 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 let width: usize = p.parse("width")?;
                 Ok(s.replace('\t', &" ".repeat(width)))
             },
+        )
+        .sample(
+            "name	value
+alpha	1",
         )
         .aliases(&["untabify", "expand"])
         .params(P_TABSTOP),
@@ -522,6 +530,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 })
             },
         )
+        .sample("caf\u{65}\u{301}")
         .aliases(&["unicode-normalize"])
         .params(P_FORM),
     );
