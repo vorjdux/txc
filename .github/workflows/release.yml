@@ -276,11 +276,21 @@ jobs:
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \
             -o -name '*.deb' -o -name '*.rpm' \) -exec cp {} dist/ \;
           cp install.sh install.ps1 dist/
-          cd dist
-          sha256sum ./* | sed 's|\./||' > SHA256SUMS
+          checksum() (
+            # SHA256SUMS is excluded from its own listing by name. The
+            # redirect creates the file as the pipeline starts, so anything
+            # that merely deletes it first still walks over the empty file it
+            # is about to write, and records the hash of nothing: that entry
+            # then makes `sha256sum -c SHA256SUMS` fail on the very file doing
+            # the checking.
+            cd "$1"
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' \
+              | sort | xargs sha256sum > SHA256SUMS
+          )
+          checksum dist
           echo "── dist ──"
-          ls -lh
-          cat SHA256SUMS
+          ls -lh dist
+          cat dist/SHA256SUMS
 
       - name: Render the package manifests
         run: |
@@ -290,7 +300,10 @@ jobs:
           tar czf dist/txc-"${VERSION}"-packaging.tar.gz -C dist packaging
           rm -rf dist/packaging
           # The checksum file has to cover the manifest bundle too.
-          cd dist && sha256sum ./* | sed 's|\./||' > SHA256SUMS
+          cd dist
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' \
+            | sort | xargs sha256sum > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Release notes
         run: |
