@@ -103,7 +103,7 @@ fn every_operation_named_in_the_readme_exists() {
 
 #[test]
 fn the_library_example_compiles_and_runs() {
-    use txc::{find, Params};
+    use txc::{Params, find};
 
     let op = find("slugify").expect("slugify is registered");
     let text = op

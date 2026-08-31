@@ -103,7 +103,7 @@ pub fn from_hex(input: &str) -> anyhow::Result<Vec<u8>> {
         .collect::<String>()
         .replace("0x", "")
         .replace("0X", "");
-    if cleaned.len() % 2 != 0 {
+    if !cleaned.len().is_multiple_of(2) {
         anyhow::bail!("hex input has an odd number of digits");
     }
     let bytes = cleaned.as_bytes();

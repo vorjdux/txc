@@ -1,5 +1,6 @@
 //! Drawing the interactive interface.
 
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -7,7 +8,6 @@ use ratatui::widgets::{
     Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
     ScrollbarOrientation, ScrollbarState, Wrap,
 };
-use ratatui::Frame;
 
 use crate::registry::Feed;
 use crate::tui::app::{App, Focus};
@@ -370,8 +370,8 @@ fn draw_help(frame: &mut Frame, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     use super::*;
     use crate::registry;

@@ -1,8 +1,8 @@
 //! Generators: identifiers, passwords, random data and placeholder text.
 
-use anyhow::{bail, Result};
-use rand::seq::IndexedRandom;
+use anyhow::{Result, bail};
 use rand::RngExt;
+use rand::seq::IndexedRandom;
 use uuid::Uuid;
 
 use crate::ops::to_hex;

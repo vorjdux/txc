@@ -1,7 +1,7 @@
 //! Encoding, decoding and classic ciphers.
 
-use anyhow::{bail, Context, Result};
-use data_encoding::{BASE32, BASE32_NOPAD, BASE64, BASE64URL, BASE64URL_NOPAD, BASE64_NOPAD};
+use anyhow::{Context, Result, bail};
+use data_encoding::{BASE32, BASE32_NOPAD, BASE64, BASE64_NOPAD, BASE64URL, BASE64URL_NOPAD};
 
 use crate::ops::{bytes_to_string, from_hex, to_hex};
 use crate::params::Params;
@@ -624,7 +624,7 @@ fn radix_decode(input: &str, radix: u32, width: usize) -> Result<String> {
         trimmed.split_whitespace().map(str::to_string).collect()
     } else {
         let compact = strip_whitespace(trimmed);
-        if compact.len() % width != 0 {
+        if !compact.len().is_multiple_of(width) {
             bail!(
                 "input length {} is not a multiple of {width}",
                 compact.len()

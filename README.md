@@ -64,6 +64,8 @@ shows the options the selected operation accepts.
 
 ## Installing
 
+Rust 1.88 or newer is required; the crate uses the 2024 edition.
+
 ```
 cargo install --path .
 ```
@@ -431,7 +433,7 @@ The operation registry is exposed as a library, so the same catalogue is
 available from Rust:
 
 ```rust
-use txc::{find, Params};
+use txc::{Params, find};
 
 let op = find("slugify").expect("slugify is registered");
 let text = op.apply("Hello, World!", &Params::for_op(op), None)?;

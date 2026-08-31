@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::registry::Op;
 

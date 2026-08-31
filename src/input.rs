@@ -8,7 +8,7 @@ use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 /// Where the text for an operation comes from.
 #[derive(Debug, Default, Clone)]
@@ -121,10 +121,10 @@ pub fn write(text: &str, destination: Option<&Path>, newline: bool) -> Result<()
                     }
                 })
                 .and_then(|()| out.flush());
-            if let Err(e) = written {
-                if e.kind() != io::ErrorKind::BrokenPipe {
-                    return Err(e.into());
-                }
+            if let Err(e) = written
+                && e.kind() != io::ErrorKind::BrokenPipe
+            {
+                return Err(e.into());
             }
         }
     }

@@ -34,10 +34,10 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
         if !event::poll(Duration::from_millis(200))? {
             continue;
         }
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                handle_key(&mut app, key);
-            }
+        if let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+        {
+            handle_key(&mut app, key);
         }
     }
     Ok(())

@@ -296,7 +296,7 @@ fn spell_group(group: u16) -> String {
     if rest > 0 {
         parts.push(if rest < 20 {
             ONES[rest as usize].to_string()
-        } else if rest % 10 == 0 {
+        } else if rest.is_multiple_of(10) {
             TENS[(rest / 10) as usize].to_string()
         } else {
             format!(

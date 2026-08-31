@@ -11,4 +11,4 @@ pub mod registry;
 pub mod tui;
 
 pub use params::Params;
-pub use registry::{all, find, in_category, Category, Feed, Op, OpResult, Param};
+pub use registry::{Category, Feed, Op, OpResult, Param, all, find, in_category};

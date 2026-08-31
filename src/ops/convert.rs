@@ -345,10 +345,10 @@ fn guess_type(field: &str) -> serde_json::Value {
     if let Ok(value) = trimmed.parse::<i64>() {
         return serde_json::Value::from(value);
     }
-    if let Ok(value) = trimmed.parse::<f64>() {
-        if trimmed.contains(['.', 'e', 'E']) {
-            return serde_json::Value::from(value);
-        }
+    if let Ok(value) = trimmed.parse::<f64>()
+        && trimmed.contains(['.', 'e', 'E'])
+    {
+        return serde_json::Value::from(value);
     }
     match trimmed {
         "true" => serde_json::Value::Bool(true),
