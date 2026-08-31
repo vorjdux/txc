@@ -38,4 +38,7 @@ package() {
 	install -Dm644 txc.fish "$pkgdir"/usr/share/fish/vendor_completions.d/txc.fish
 }
 
+# Alpine generates this from the source tarball. Run `abuild checksum` in the
+# aports checkout before submitting; the release cannot know it, because the
+# tarball is produced by GitHub when the tag is created.
 sha512sums="@SHA512_SOURCE@  txc-@VERSION@.tar.gz"

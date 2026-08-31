@@ -174,7 +174,7 @@ choose where it lands.
 | macOS, Linux | `brew install vorjdux/tap/txc` |
 | Windows | `winget install vorjdux.txc` |
 | Windows | `scoop install txc` |
-| Arch | `yay -S txc-bin` |
+| Arch, Manjaro, EndeavourOS | `yay -S txc-bin` (or `paru -S txc-bin`) |
 | Debian, Ubuntu | `sudo dpkg -i txc_<version>_<arch>.deb` |
 | Fedora, RHEL, Rocky, Alma | `sudo rpm -i txc-<version>.<arch>.rpm` |
 | Alpine | `apk add txc` |
@@ -199,9 +199,16 @@ sudo install -m755 txc-<version>-linux-x86_64/txc /usr/local/bin/txc
 cargo install --path .
 ```
 
+On Arch the AUR package is `txc-bin`: it installs the released static binary,
+so there is no Rust toolchain to pull in and nothing to compile. Arch users who
+would rather build from source can use `cargo install txc`.
+
 Packaging definitions for every format above live in
 [`packaging/`](packaging), and `packaging/render.sh` fills them in with the
-version and checksums of a published release.
+version and checksums of a published release. The Alpine `APKBUILD` is the one
+exception that needs a manual step: run `abuild checksum` in the aports
+checkout, because the source tarball it builds from is produced by GitHub when
+the tag is created and its checksum cannot be known beforehand.
 
 ## Shell completion
 

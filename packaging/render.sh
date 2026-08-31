@@ -47,9 +47,13 @@ WINDOWS_ARM64=$(require_sum "txc-${VERSION}-windows-arm64.zip")
 # winget wants uppercase hex.
 upper() { echo "$1" | tr '[:lower:]' '[:upper:]'; }
 
-# Alpine builds from the source tarball, which GitHub generates for the tag.
+# Alpine builds from the source tarball, which GitHub produces when the tag is
+# created, so its checksum is not among the release archives. The marker is
+# deliberately not a valid checksum: `abuild checksum` replaces it, and an
+# APKBUILD submitted without that step fails loudly rather than quietly
+# fetching something unverified.
 SOURCE_SHA512=$(sum_for "txc-${VERSION}-source.tar.gz")
-[ -n "$SOURCE_SHA512" ] || SOURCE_SHA512="fill-in-with-abuild-checksum"
+[ -n "$SOURCE_SHA512" ] || SOURCE_SHA512="RUN-abuild-checksum-TO-FILL-THIS-IN"
 
 RELEASE_DATE=$(date -u +%Y-%m-%d)
 
