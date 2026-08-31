@@ -5,7 +5,7 @@
 #   curl -sSf https://raw.githubusercontent.com/vorjdux/txc/main/install.sh | sh
 #
 # Environment overrides:
-#   VERSION=0.2.0              install a specific version, without the v prefix
+#   VERSION=0.3.0              install a specific version, without the v prefix
 #   INSTALL_DIR=/usr/local/bin override where the binary goes
 #   NO_COLOR=1                 plain output
 #   INSECURE=1                 skip checksum verification, not recommended

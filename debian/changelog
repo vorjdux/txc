@@ -1,4 +1,4 @@
-txc (0.2.0) experimental; urgency=low
+txc (0.3.0) experimental; urgency=low
 
   * Reorganise the project around a registry of text operations, from which
     the command line parser, the help text, the shell completions and the
@@ -9,7 +9,10 @@ txc (0.2.0) experimental; urgency=low
   * Accept input as arguments, from a file or over a pipe, with the same
     result in each case.
   * Add an interactive full screen interface, shown when txc is run with no
-    arguments, with live output as you type.
+    arguments, with live output as you type, sample text per operation and an
+    options panel showing the values in force.
+  * Copy the output to the clipboard and save it to a chosen path from the
+    interface, and report the version, author and licence with txc about.
   * Add shell completion scripts for bash, zsh, fish, powershell and elvish.
   * Replace the panics on invalid input with reported errors and a non zero
     exit status.

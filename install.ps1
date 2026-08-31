@@ -10,7 +10,7 @@
     irm https://raw.githubusercontent.com/vorjdux/txc/main/install.ps1 | iex
 
 .EXAMPLE
-    .\install.ps1 -Version 0.2.0 -InstallDir C:\tools\bin
+    .\install.ps1 -Version 0.3.0 -InstallDir C:\tools\bin
 #>
 [CmdletBinding()]
 param(

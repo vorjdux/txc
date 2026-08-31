@@ -25,7 +25,7 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.2.0 Shift letters by a fixed amount
+ txc  0.3.0 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
@@ -75,7 +75,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.2.0 Generate UUIDs
+ txc  0.3.0 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -85,7 +85,7 @@ back.
 │Text          │┃                          ┃│  compact    off                              │
 │Numbers       │┃                          ┃╰──────────────────────────────────────────────╯
 │Convert       │┃                          ┃╭ Output (36 characters, ^n for another) ──────╮
-│Inspect       │┃                          ┃│b760c7e9-0fce-46cf-ac1e-5a8c4fc70bec          │
+│Inspect       │┃                          ┃│0eee13a3-a1b3-4aff-bf1a-c7e7be89f88b          │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
 ```
 
@@ -332,7 +332,7 @@ $ txc about
 txc — Offline text utilities for the terminal: encode, hash, convert, inspect
 and generate text without sending it anywhere
 
-Version     0.2.0
+Version     0.3.0
 Operations  143 in 10 categories
 Author      Matheus Santos <vorj.dux@gmail.com>
 Repository  https://github.com/vorjdux/txc

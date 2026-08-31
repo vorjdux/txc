@@ -18,8 +18,8 @@ env:
 
 jobs:
   # The archive names come from the tag while --version comes from the
-  # manifest, so tagging v0.3.0 against a manifest still reading 0.2.0 would
-  # ship txc-0.3.0-*.tar.gz containing a binary that reports 0.2.0.
+  # manifest, so tagging v0.4.0 against a manifest still reading 0.3.0 would
+  # ship txc-0.4.0-*.tar.gz containing a binary that reports 0.3.0.
   # It runs unconditionally rather than only on tags: a skipped job skips
   # everything that needs it, which would break workflow_dispatch.
   check-version:
