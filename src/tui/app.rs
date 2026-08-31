@@ -273,8 +273,10 @@ impl App {
             );
             return;
         }
+        // The status is set by whoever carries the text, because only there
+        // is it known which route took it, or whether any did.
         self.pending_clipboard = Some(text.to_string());
-        self.status = "output copied to the clipboard".to_string();
+        self.status = "copying".to_string();
     }
 
     /// Asks where the output should be written.
@@ -795,7 +797,6 @@ mod tests {
             app.pending_clipboard.take().unwrap(),
             "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG"
         );
-        assert!(app.status.contains("copied"), "{}", app.status);
     }
 
     #[test]

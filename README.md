@@ -126,11 +126,22 @@ shuffle. `txc uuid --count 5` is still the way to ask for several at once.
 
 ### Taking the output with you
 
-`ctrl+y` copies the output to the system clipboard. It asks the terminal to do
-the copying, so it needs no display server and works over ssh and inside tmux;
-a terminal that does not support it simply ignores the request. Output larger
-than 64 KiB is refused rather than copied in part, because a truncated copy is
-worse than none.
+`ctrl+y` copies the output to the system clipboard. It asks a clipboard
+program first, because that works whatever the terminal is: `pbcopy` on macOS,
+`Set-Clipboard` or `clip` on Windows, and `wl-copy`, `xclip` or `xsel` on Linux
+and the BSDs. Install one of those three on Linux if none is present.
+
+When no clipboard program answers, which is the normal case over ssh, the
+terminal is asked instead with the OSC 52 escape sequence, wrapped for
+passthrough when running inside tmux or screen. That route cannot be confirmed,
+so the status line says the copy was offered rather than claiming it arrived,
+and names what to install when a clipboard program would have been the reliable
+choice. A terminal that does not implement OSC 52, or has it switched off,
+ignores the request silently: Alacritty needs `terminal.osc52` set to
+`OnlyCopy` or `CopyPaste`, and tmux needs `set -g set-clipboard on`.
+
+Output larger than 64 KiB is refused rather than copied in part, because
+terminals cap the sequence and half a copy is worse than none.
 
 `ctrl+s` asks where to save, suggesting a name based on the operation, and `~`
 means your home directory:

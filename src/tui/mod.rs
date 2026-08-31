@@ -1,11 +1,11 @@
 //! The interactive interface, shown when `txc` is run with no arguments.
 
 pub mod app;
+pub mod clipboard;
 pub mod options;
 pub mod textarea;
 mod ui;
 
-use std::io::Write;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -43,34 +43,13 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
         }
 
         if let Some(text) = app.pending_clipboard.take() {
-            send_to_clipboard(&text)?;
+            app.status = match clipboard::copy(&text) {
+                Ok(route) => clipboard::report(&route),
+                Err(error) => format!("could not copy: {error}"),
+            };
         }
     }
     Ok(())
-}
-
-/// Puts text on the system clipboard by asking the terminal to do it.
-///
-/// This is the OSC 52 sequence. It needs no library and no display server, and
-/// it works over ssh and inside tmux, because the copying is done by whatever
-/// terminal the reader is sitting in front of. A terminal that does not
-/// support the sequence ignores it, so the status line says the output was
-/// copied rather than proving it arrived.
-fn send_to_clipboard(text: &str) -> Result<()> {
-    let mut stdout = std::io::stdout();
-    stdout
-        .write_all(clipboard_sequence(text).as_bytes())
-        .context("cannot reach the terminal")?;
-    stdout.flush().context("cannot reach the terminal")?;
-    Ok(())
-}
-
-/// The OSC 52 sequence that carries `text` to the clipboard.
-fn clipboard_sequence(text: &str) -> String {
-    format!(
-        "\x1b]52;c;{}\x07",
-        data_encoding::BASE64.encode(text.as_bytes())
-    )
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) {
@@ -619,23 +598,6 @@ mod tests {
         assert!(app.prompt.is_some());
         press_ctrl(&mut app, KeyCode::Char('c'));
         assert!(!app.running);
-    }
-
-    #[test]
-    fn the_clipboard_sequence_is_well_formed() {
-        // The terminal is asked to do the copying, so the sequence has to be
-        // exactly OSC 52 with the text base64 encoded inside it.
-        assert_eq!(clipboard_sequence("hello"), "\x1b]52;c;aGVsbG8=\x07");
-        // Text with newlines and accents travels intact.
-        let text = "line one\ncaf\u{e9}";
-        let sequence = clipboard_sequence(text);
-        let payload = sequence
-            .trim_start_matches("\x1b]52;c;")
-            .trim_end_matches('\x07');
-        assert_eq!(
-            String::from_utf8(data_encoding::BASE64.decode(payload.as_bytes()).unwrap()).unwrap(),
-            text
-        );
     }
 
     #[test]
