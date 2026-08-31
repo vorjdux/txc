@@ -9,6 +9,7 @@ use ratatui::widgets::{
     ScrollbarOrientation, ScrollbarState, Wrap,
 };
 
+use crate::about;
 use crate::registry::Feed;
 use crate::tui::app::{App, Focus};
 
@@ -49,6 +50,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     if app.show_help {
         draw_help(frame, frame.area());
+    }
+
+    if app.show_about {
+        draw_about(frame, frame.area());
     }
 
     if app.prompt.is_some() {
@@ -371,14 +376,15 @@ fn draw_output(frame: &mut Frame, area: Rect, app: &App) {
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
     let keys: Vec<(&str, &str)> = if app.status.is_empty() {
-        let mut keys = vec![("tab", "panel"), ("^up/^down", "operation")];
+        let mut keys = vec![("tab", "panel"), ("^up/^down", "op")];
         if app.varies() {
-            keys.push(("^n", "generate again"));
+            keys.push(("^n", "new"));
         }
         keys.extend([
             ("^y", "copy"),
-            ("^s", "save as"),
+            ("^s", "save"),
             ("?", "help"),
+            ("F2", "about"),
             ("^c", "quit"),
         ]);
         keys
@@ -409,15 +415,85 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
-fn draw_help(frame: &mut Frame, area: Rect) {
-    let width = 64.min(area.width.saturating_sub(4));
-    let height = 24.min(area.height.saturating_sub(2));
-    let popup = Rect {
-        x: area.x + (area.width - width) / 2,
-        y: area.y + (area.height - height) / 2,
+/// A window in the middle of the screen, sized to its contents.
+fn window(area: Rect, columns: u16, rows: u16) -> Rect {
+    let width = columns.min(area.width.saturating_sub(4));
+    let height = rows.min(area.height);
+    Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
         width,
         height,
-    };
+    }
+}
+
+/// Draws the About view: what this is, who wrote it, and under what terms.
+fn draw_about(frame: &mut Frame, area: Rect) {
+    const COLUMNS: u16 = 72;
+    let rows = about::rows();
+    let label_width = rows.iter().map(|(label, _)| label.len()).max().unwrap_or(0);
+
+    let mut text = vec![
+        Line::raw(""),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                about::NAME,
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+    ];
+
+    // The description is a full sentence, so it is wrapped rather than cut.
+    let inner = area.width.min(COLUMNS).saturating_sub(6) as usize;
+    for line in textwrap::wrap(about::DESCRIPTION, inner.max(20)) {
+        text.push(Line::styled(
+            format!("  {line}"),
+            Style::default().fg(MUTED),
+        ));
+    }
+    text.push(Line::raw(""));
+
+    for (label, value) in rows {
+        text.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{label:label_width$}  "),
+                Style::default().fg(MUTED),
+            ),
+            Span::raw(value),
+        ]));
+    }
+
+    text.push(Line::raw(""));
+    for line in textwrap::wrap(
+        "Your text never leaves this machine: txc makes no network requests.",
+        inner.max(20),
+    ) {
+        text.push(Line::styled(
+            format!("  {line}"),
+            Style::default().fg(ACCENT),
+        ));
+    }
+    text.push(Line::raw(""));
+    text.push(Line::styled(
+        "  any key to close",
+        Style::default().fg(MUTED),
+    ));
+
+    let height = text.len() as u16 + 2;
+    let popup = window(area, COLUMNS, height);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        Paragraph::new(text)
+            .alignment(Alignment::Left)
+            .block(panel("About", true)),
+        popup,
+    );
+}
+
+fn draw_help(frame: &mut Frame, area: Rect) {
+    let popup = window(area, 64, 25);
 
     let text = vec![
         Line::raw(""),
@@ -441,7 +517,8 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         Line::raw("  ctrl+l               clear the input"),
         Line::raw("  page up / page down  scroll the output"),
         Line::raw(""),
-        Line::raw("  ?  close this help              ctrl+c  quit"),
+        Line::raw("  F2  about txc, its author and licence"),
+        Line::raw("  ?   close this help             ctrl+c  quit"),
     ];
 
     frame.render_widget(Clear, popup);
@@ -483,6 +560,9 @@ mod tests {
         app.load_operation();
         if std::env::var("TXC_SHOT_SAVE").is_ok() {
             app.begin_save();
+        }
+        if std::env::var("TXC_SHOT_ABOUT").is_ok() {
+            app.show_about = true;
         }
         let width = 92;
         let mut terminal = Terminal::new(TestBackend::new(width, 22)).expect("terminal");
@@ -546,6 +626,28 @@ mod tests {
         assert!(!screen.contains("Input"), "{screen}");
         assert!(screen.contains("Options"), "{screen}");
         assert!(screen.contains("length"), "{screen}");
+    }
+
+    #[test]
+    fn the_about_view_names_the_author_and_the_terms() {
+        let mut app = App::new();
+        app.show_about = true;
+        let screen = render(&mut app, 100, 30);
+        assert!(screen.contains("About"), "{screen}");
+        assert!(screen.contains("Matheus Santos"), "{screen}");
+        assert!(screen.contains("vorj.dux@gmail.com"), "{screen}");
+        assert!(screen.contains("MIT OR Apache-2.0"), "{screen}");
+        assert!(screen.contains(env!("CARGO_PKG_VERSION")), "{screen}");
+        assert!(screen.contains("143 in 10 categories"), "{screen}");
+        assert!(screen.contains("never leaves this machine"), "{screen}");
+    }
+
+    #[test]
+    fn the_about_view_fits_a_small_terminal() {
+        let mut app = App::new();
+        app.show_about = true;
+        render(&mut app, 40, 12);
+        render(&mut app, 20, 6);
     }
 
     #[test]

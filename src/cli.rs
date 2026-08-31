@@ -61,6 +61,11 @@ pub fn build() -> Command {
                     .help("Shell to generate for"),
             ),
     )
+    .subcommand(
+        Command::new("about")
+            .about("Show the version, author and licence")
+            .alias("credits"),
+    )
     .subcommand(Command::new("tui").about("Open the interactive interface"))
 }
 

@@ -88,9 +88,9 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    if app.show_help {
-        // While the help is open every key closes it again.
-        app.show_help = false;
+    if app.overlay_is_open() {
+        // While a window is open every key closes it again.
+        app.close_overlay();
         if matches!(key.code, KeyCode::Char('c')) && control {
             app.running = false;
         }
@@ -157,6 +157,10 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         }
         (KeyCode::F(1), _) => {
             app.show_help = true;
+            return;
+        }
+        (KeyCode::F(2), _) => {
+            app.show_about = true;
             return;
         }
         _ => {}
@@ -531,6 +535,19 @@ mod tests {
         }
         press_ctrl(&mut app, KeyCode::Char('p'));
         assert_eq!(app.input.text(), "HI");
+    }
+
+    #[test]
+    fn f2_opens_the_about_view_and_the_next_key_closes_it() {
+        let mut app = App::new();
+        press(&mut app, KeyCode::F(2));
+        assert!(app.show_about);
+        // While it is open, keys close it rather than reaching the panels.
+        let before = app.input.text();
+        press(&mut app, KeyCode::Char('x'));
+        assert!(!app.show_about);
+        assert_eq!(app.input.text(), before);
+        assert!(app.running);
     }
 
     #[test]

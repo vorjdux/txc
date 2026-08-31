@@ -167,6 +167,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand to-timestamp 'Turn a date into a Unix timestamp'
             cand list 'List every operation, optionally filtered by category'
             cand completions 'Print a shell completion script'
+            cand about 'Show the version, author and licence'
             cand tui 'Open the interactive interface'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -2275,6 +2276,10 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'txc;about'= {
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
         &'txc;tui'= {
             cand -h 'Print help'
             cand --help 'Print help'
@@ -2425,6 +2430,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand to-timestamp 'Turn a date into a Unix timestamp'
             cand list 'List every operation, optionally filtered by category'
             cand completions 'Print a shell completion script'
+            cand about 'Show the version, author and licence'
             cand tui 'Open the interactive interface'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -2717,6 +2723,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;list'= {
         }
         &'txc;help;completions'= {
+        }
+        &'txc;help;about'= {
         }
         &'txc;help;tui'= {
         }

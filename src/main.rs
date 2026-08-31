@@ -65,6 +65,10 @@ fn run() -> Result<()> {
             clap_complete::generate(shell, &mut command, "txc", &mut script);
             txc::input::write(&String::from_utf8(script)?, None, false)
         }
+        "about" => {
+            print!("{}", txc::about::report());
+            Ok(())
+        }
         "tui" => txc::tui::run(),
         _ => {
             let op = registry::find(name)

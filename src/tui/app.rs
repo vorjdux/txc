@@ -74,6 +74,8 @@ pub struct App {
     pub focus: Focus,
     pub output_scroll: u16,
     pub show_help: bool,
+    /// Whether the About view is over the interface.
+    pub show_about: bool,
     pub status: String,
     pub running: bool,
 }
@@ -107,6 +109,7 @@ impl App {
             focus: Focus::Operations,
             output_scroll: 0,
             show_help: false,
+            show_about: false,
             status: String::new(),
             running: true,
         };
@@ -129,6 +132,18 @@ impl App {
                 _ => true,
             })
             .collect()
+    }
+
+    /// Whether a window is covering the interface, which changes what the
+    /// next keystroke means.
+    pub fn overlay_is_open(&self) -> bool {
+        self.show_help || self.show_about
+    }
+
+    /// Closes whichever window is open.
+    pub fn close_overlay(&mut self) {
+        self.show_help = false;
+        self.show_about = false;
     }
 
     /// Whether the selected operation reads any input.

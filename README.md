@@ -66,6 +66,7 @@ type.
 | `ctrl+w` | Delete the word before the cursor |
 | `page up` / `page down` | Scroll the output |
 | `?` or `F1` | Key reference |
+| `F2` | About: version, author, licence |
 | `ctrl+c` | Quit |
 
 Each panel earns its place. An operation that generates rather than transforms,
@@ -255,6 +256,26 @@ txc list                    # everything, grouped by category
 txc list --category hash    # one category
 txc list --names            # bare names, one per line
 txc sha256 --help           # options and examples for one operation
+txc about                   # version, author and licence
+```
+
+`txc about` prints the same details the `F2` view shows in the interface, both
+read from the package metadata so neither can drift:
+
+```
+$ txc about
+txc — Offline text utilities for the terminal: encode, hash, convert, inspect
+and generate text without sending it anywhere
+
+Version     0.2.0
+Operations  143 in 10 categories
+Author      Matheus Santos <vorj.dux@gmail.com>
+Repository  https://github.com/vorjdux/txc
+License     MIT OR Apache-2.0
+Copyright   2022 Matheus Santos
+
+Your text never leaves this machine: txc makes no network requests.
+Licensed under either of Apache-2.0 or MIT, at your option.
 ```
 
 ## Examples

@@ -170,6 +170,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('to-timestamp', 'to-timestamp', [CompletionResultType]::ParameterValue, 'Turn a date into a Unix timestamp')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List every operation, optionally filtered by category')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a shell completion script')
+            [CompletionResult]::new('about', 'about', [CompletionResultType]::ParameterValue, 'Show the version, author and licence')
             [CompletionResult]::new('tui', 'tui', [CompletionResultType]::ParameterValue, 'Open the interactive interface')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -2424,6 +2425,11 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
+        'txc;about' {
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'txc;tui' {
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
@@ -2575,6 +2581,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('to-timestamp', 'to-timestamp', [CompletionResultType]::ParameterValue, 'Turn a date into a Unix timestamp')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List every operation, optionally filtered by category')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Print a shell completion script')
+            [CompletionResult]::new('about', 'about', [CompletionResultType]::ParameterValue, 'Show the version, author and licence')
             [CompletionResult]::new('tui', 'tui', [CompletionResultType]::ParameterValue, 'Open the interactive interface')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -3012,6 +3019,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;completions' {
+            break
+        }
+        'txc;help;about' {
             break
         }
         'txc;help;tui' {

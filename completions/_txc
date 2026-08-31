@@ -2558,6 +2558,12 @@ _arguments "${_arguments_options[@]}" : \
 ':shell -- Shell to generate for:(bash elvish fish powershell zsh)' \
 && ret=0
 ;;
+(about)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (tui)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -3156,6 +3162,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(about)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (tui)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -3321,10 +3331,16 @@ _txc_commands() {
 'to-timestamp:Turn a date into a Unix timestamp' \
 'list:List every operation, optionally filtered by category' \
 'completions:Print a shell completion script' \
+'about:Show the version, author and licence' \
 'tui:Open the interactive interface' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__about_commands] )) ||
+_txc__subcmd__about_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc about commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__alternate_commands] )) ||
 _txc__subcmd__alternate_commands() {
@@ -3679,10 +3695,16 @@ _txc__subcmd__help_commands() {
 'to-timestamp:Turn a date into a Unix timestamp' \
 'list:List every operation, optionally filtered by category' \
 'completions:Print a shell completion script' \
+'about:Show the version, author and licence' \
 'tui:Open the interactive interface' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc help commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__about_commands] )) ||
+_txc__subcmd__help__subcmd__about_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help about commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__alternate_commands] )) ||
 _txc__subcmd__help__subcmd__alternate_commands() {

@@ -3,6 +3,7 @@
 //! The crate exposes the same operation registry the `txc` binary is built
 //! from, so the operations can also be used as a library.
 
+pub mod about;
 pub mod cli;
 pub mod input;
 pub mod ops;

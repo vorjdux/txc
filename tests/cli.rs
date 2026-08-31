@@ -293,6 +293,32 @@ fn completion_scripts_are_generated_for_every_shell() {
 }
 
 #[test]
+fn about_reports_the_author_and_the_licence() {
+    let output = run(&["about"]);
+    assert!(output.status.success(), "{}", stderr_of(&output));
+    let report = stdout_of(&output);
+    for expected in [
+        "Matheus Santos",
+        "vorj.dux@gmail.com",
+        "MIT OR Apache-2.0",
+        "https://github.com/vorjdux/txc",
+        env!("CARGO_PKG_VERSION"),
+        "never leaves this machine",
+    ] {
+        assert!(
+            report.contains(expected),
+            "{expected:?} missing from:\n{report}"
+        );
+    }
+
+    // The catalogue size it quotes has to be the real one.
+    let operations = stdout_of(&run(&["list", "--names"])).lines().count();
+    assert!(report.contains(&format!("{operations} in ")), "{report}");
+
+    assert_eq!(stdout_of(&run(&["credits"])), report);
+}
+
+#[test]
 fn the_version_and_help_flags_work() {
     let version = run(&["--version"]);
     assert!(version.status.success());

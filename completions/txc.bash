@@ -16,6 +16,9 @@ _txc() {
             ",$1")
                 cmd="txc"
                 ;;
+            txc,about)
+                cmd="txc__subcmd__about"
+                ;;
             txc,alternate)
                 cmd="txc__subcmd__alternate"
                 ;;
@@ -456,6 +459,9 @@ _txc() {
                 ;;
             txc,yaml-to-toml)
                 cmd="txc__subcmd__yaml__subcmd__to__subcmd__toml"
+                ;;
+            txc__subcmd__help,about)
+                cmd="txc__subcmd__help__subcmd__about"
                 ;;
             txc__subcmd__help,alternate)
                 cmd="txc__subcmd__help__subcmd__alternate"
@@ -905,8 +911,22 @@ _txc() {
 
     case "${cmd}" in
         txc)
-            opts="-h -V --help --version alternate camel capitalize constant dot kebab lower pascal random-case sentence snake swap title train upper atbash base32-decode base32-encode base58-decode base58-encode base64-decode base64-encode binary-decode binary-encode caesar codepoint-decode codepoint-encode decimal-decode decimal-encode hex-decode hex-encode html-decode html-encode json-escape json-unescape morse-decode morse-encode nato octal-decode octal-encode rot13 rot47 unicode-escape unicode-unescape url-decode url-encode blake3 crc32 hmac-sha1 hmac-sha256 hmac-sha512 keccak256 md5 sha1 sha224 sha256 sha3-256 sha3-512 sha384 sha512 center chunk dedent duplicates filter head indent join number pad-left pad-right prefix remove-empty reverse-lines sample shuffle sort split suffix tail trim-lines unique wrap escape-regex extract fancy newlines-to-spaces normalize palindrome quote remove remove-accents remove-non-ascii remove-punctuation remove-whitespace repeat replace reverse reverse-words rotate slugify spaces-to-newlines spaces-to-tabs squeeze strip-html tabs-to-spaces trim truncate base-convert ordinal roman-decode roman-encode spell csv-to-json csv-to-markdown json-format json-minify json-to-csv json-to-toml json-to-yaml toml-to-json toml-to-yaml yaml-to-json yaml-to-toml charinfo count-bytes count-chars count-lines count-words frequency is-palindrome stats lorem password random-number random-string sequence token uuid from-timestamp now timestamp to-timestamp list completions tui help"
+            opts="-h -V --help --version alternate camel capitalize constant dot kebab lower pascal random-case sentence snake swap title train upper atbash base32-decode base32-encode base58-decode base58-encode base64-decode base64-encode binary-decode binary-encode caesar codepoint-decode codepoint-encode decimal-decode decimal-encode hex-decode hex-encode html-decode html-encode json-escape json-unescape morse-decode morse-encode nato octal-decode octal-encode rot13 rot47 unicode-escape unicode-unescape url-decode url-encode blake3 crc32 hmac-sha1 hmac-sha256 hmac-sha512 keccak256 md5 sha1 sha224 sha256 sha3-256 sha3-512 sha384 sha512 center chunk dedent duplicates filter head indent join number pad-left pad-right prefix remove-empty reverse-lines sample shuffle sort split suffix tail trim-lines unique wrap escape-regex extract fancy newlines-to-spaces normalize palindrome quote remove remove-accents remove-non-ascii remove-punctuation remove-whitespace repeat replace reverse reverse-words rotate slugify spaces-to-newlines spaces-to-tabs squeeze strip-html tabs-to-spaces trim truncate base-convert ordinal roman-decode roman-encode spell csv-to-json csv-to-markdown json-format json-minify json-to-csv json-to-toml json-to-yaml toml-to-json toml-to-yaml yaml-to-json yaml-to-toml charinfo count-bytes count-chars count-lines count-words frequency is-palindrome stats lorem password random-number random-string sequence token uuid from-timestamp now timestamp to-timestamp list completions about tui help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__about)
+            opts="-h --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -2281,8 +2301,22 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help)
-            opts="alternate camel capitalize constant dot kebab lower pascal random-case sentence snake swap title train upper atbash base32-decode base32-encode base58-decode base58-encode base64-decode base64-encode binary-decode binary-encode caesar codepoint-decode codepoint-encode decimal-decode decimal-encode hex-decode hex-encode html-decode html-encode json-escape json-unescape morse-decode morse-encode nato octal-decode octal-encode rot13 rot47 unicode-escape unicode-unescape url-decode url-encode blake3 crc32 hmac-sha1 hmac-sha256 hmac-sha512 keccak256 md5 sha1 sha224 sha256 sha3-256 sha3-512 sha384 sha512 center chunk dedent duplicates filter head indent join number pad-left pad-right prefix remove-empty reverse-lines sample shuffle sort split suffix tail trim-lines unique wrap escape-regex extract fancy newlines-to-spaces normalize palindrome quote remove remove-accents remove-non-ascii remove-punctuation remove-whitespace repeat replace reverse reverse-words rotate slugify spaces-to-newlines spaces-to-tabs squeeze strip-html tabs-to-spaces trim truncate base-convert ordinal roman-decode roman-encode spell csv-to-json csv-to-markdown json-format json-minify json-to-csv json-to-toml json-to-yaml toml-to-json toml-to-yaml yaml-to-json yaml-to-toml charinfo count-bytes count-chars count-lines count-words frequency is-palindrome stats lorem password random-number random-string sequence token uuid from-timestamp now timestamp to-timestamp list completions tui help"
+            opts="alternate camel capitalize constant dot kebab lower pascal random-case sentence snake swap title train upper atbash base32-decode base32-encode base58-decode base58-encode base64-decode base64-encode binary-decode binary-encode caesar codepoint-decode codepoint-encode decimal-decode decimal-encode hex-decode hex-encode html-decode html-encode json-escape json-unescape morse-decode morse-encode nato octal-decode octal-encode rot13 rot47 unicode-escape unicode-unescape url-decode url-encode blake3 crc32 hmac-sha1 hmac-sha256 hmac-sha512 keccak256 md5 sha1 sha224 sha256 sha3-256 sha3-512 sha384 sha512 center chunk dedent duplicates filter head indent join number pad-left pad-right prefix remove-empty reverse-lines sample shuffle sort split suffix tail trim-lines unique wrap escape-regex extract fancy newlines-to-spaces normalize palindrome quote remove remove-accents remove-non-ascii remove-punctuation remove-whitespace repeat replace reverse reverse-words rotate slugify spaces-to-newlines spaces-to-tabs squeeze strip-html tabs-to-spaces trim truncate base-convert ordinal roman-decode roman-encode spell csv-to-json csv-to-markdown json-format json-minify json-to-csv json-to-toml json-to-yaml toml-to-json toml-to-yaml yaml-to-json yaml-to-toml charinfo count-bytes count-chars count-lines count-words frequency is-palindrome stats lorem password random-number random-string sequence token uuid from-timestamp now timestamp to-timestamp list completions about tui help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__about)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
