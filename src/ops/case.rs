@@ -283,6 +283,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
     );
 }
 
+#[derive(Clone, Copy)]
 enum Casing {
     Lower,
     Upper,

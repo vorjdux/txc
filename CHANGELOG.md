@@ -6,6 +6,34 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0]
+
+A documentation release: the library half of txc is now documented in full,
+and the whole crate is held to a stricter set of lints.
+
+### Added
+
+- Documentation on every public item. The crate root reads as an
+  introduction, covering how to run an operation, pass parameters, chain
+  operations, walk the catalogue and read the errors back.
+- 100 examples, which run as part of `cargo test`, so they cannot go stale.
+- `OpFn` and `ParamKind` are re-exported from the crate root, so declaring an
+  operation no longer needs the `registry` module path.
+- The dependency audit runs in CI, weekly as well as on every change, since an
+  advisory can be published without anything here changing.
+- The documentation is built in CI with warnings denied: a broken link would
+  otherwise show up only as a mangled page on docs.rs.
+
+### Changed
+
+- The crate is linted with `clippy::pedantic`, plus `use_self` and
+  `missing_const_for_fn`. What that fixed is invisible from outside, other
+  than more functions being `const` and returning values now being
+  `#[must_use]`.
+- Reading time in `stats` is worked out in whole numbers. In floating point,
+  205 words came out as 61 seconds rather than 62, because 61.5 is not
+  representable and the value landed just below it.
+
 ## [0.3.0]
 
 Rebuilt around a single registry of text operations, from which the command

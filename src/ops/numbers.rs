@@ -80,17 +80,6 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             Feed::Lines,
             "Write a number in roman numerals",
             |s, _| {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    return Ok(String::new());
-                }
-                let value: u32 = trimmed
-                    .parse()
-                    .map_err(|_| anyhow::anyhow!("{trimmed:?} is not a whole number"))?;
-                if !(1..=3999).contains(&value) {
-                    bail!("roman numerals cover 1 to 3999, got {value}");
-                }
-
                 const TABLE: [(u32, &str); 13] = [
                     (1000, "M"),
                     (900, "CM"),
@@ -106,6 +95,18 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     (4, "IV"),
                     (1, "I"),
                 ];
+
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    return Ok(String::new());
+                }
+                let value: u32 = trimmed
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("{trimmed:?} is not a whole number"))?;
+                if !(1..=3999).contains(&value) {
+                    bail!("roman numerals cover 1 to 3999, got {value}");
+                }
+
                 let mut left = value;
                 let mut roman = String::new();
                 for (amount, symbol) in TABLE {
@@ -228,7 +229,7 @@ fn to_radix(mut value: u128, base: u32, upper: bool) -> String {
     if value == 0 {
         return "0".to_string();
     }
-    let base = base as u128;
+    let base = u128::from(base);
     let mut out = Vec::new();
     while value > 0 {
         let digit = DIGITS[(value % base) as usize] as char;
@@ -278,16 +279,21 @@ const SCALES: [&str; 7] = [
 ];
 
 fn spell_number(value: i64) -> String {
+    // unsigned_abs rather than negation, so i64::MIN spells out too.
     if value < 0 {
-        return format!("minus {}", spell_number(value.unsigned_abs() as i64));
+        return format!("minus {}", spell_magnitude(value.unsigned_abs()));
     }
+    spell_magnitude(value.unsigned_abs())
+}
+
+fn spell_magnitude(value: u64) -> String {
     if value < 20 {
         return ONES[value as usize].to_string();
     }
 
     // Break the number into groups of three digits, spelling each in turn.
     let mut groups = Vec::new();
-    let mut left = value as u64;
+    let mut left = value;
     while left > 0 {
         groups.push((left % 1000) as u16);
         left /= 1000;

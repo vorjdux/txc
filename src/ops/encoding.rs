@@ -20,6 +20,8 @@
 use anyhow::{Context, Result, bail};
 use data_encoding::{BASE32, BASE32_NOPAD, BASE64, BASE64_NOPAD, BASE64URL, BASE64URL_NOPAD};
 
+use std::fmt::Write;
+
 use crate::ops::{bytes_to_string, from_hex, to_hex};
 use crate::params::Params;
 use crate::registry::{Category, Feed, Op, Param};
@@ -515,7 +517,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     }
                     let mut buffer = [0u16; 2];
                     for unit in ch.encode_utf16(&mut buffer) {
-                        out.push_str(&format!("\\u{unit:04x}"));
+                        let _ = write!(out, "\\u{unit:04x}");
                     }
                 }
                 Ok(out)
@@ -721,7 +723,7 @@ fn unicode_unescape(input: &str) -> Result<String> {
                         if (0xd800..=0xdbff).contains(&unit) {
                             pending_high = Some(unit);
                         } else {
-                            out.push(char::from_u32(unit as u32).unwrap_or('\u{fffd}'));
+                            out.push(char::from_u32(u32::from(unit)).unwrap_or('\u{fffd}'));
                         }
                     }
                 }

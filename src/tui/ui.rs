@@ -149,8 +149,7 @@ fn panel(title: &str, focused: bool) -> Block<'_> {
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let operation = app
         .selected_operation()
-        .map(|op| op.about)
-        .unwrap_or("no operation matches the search");
+        .map_or("no operation matches the search", |op| op.about);
 
     let line = Line::from(vec![
         Span::styled(
@@ -324,8 +323,10 @@ fn draw_options(frame: &mut Frame, area: Rect, app: &App) {
     let title = fields
         .get(app.options.selected())
         .filter(|_| focused)
-        .map(|field| format!("Options: {}", field.param.help))
-        .unwrap_or_else(|| "Options".to_string());
+        .map_or_else(
+            || "Options".to_string(),
+            |field| format!("Options: {}", field.param.help),
+        );
 
     frame.render_widget(Paragraph::new(lines).block(panel(&title, focused)), area);
 
@@ -565,7 +566,11 @@ mod tests {
             .buffer()
             .content()
             .chunks(width as usize)
-            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .map(|row| {
+                row.iter()
+                    .map(ratatui::buffer::Cell::symbol)
+                    .collect::<String>()
+            })
             .collect::<Vec<_>>()
             .join("\n");
         (screen, (cursor.x, cursor.y))
@@ -615,7 +620,7 @@ mod tests {
             .chunks(width as usize)
             .map(|row| {
                 row.iter()
-                    .map(|cell| cell.symbol())
+                    .map(ratatui::buffer::Cell::symbol)
                     .collect::<String>()
                     .trim_end()
                     .to_string()

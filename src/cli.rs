@@ -31,6 +31,7 @@ pub const RESERVED_SHORTS: &[char] = &['f', 'n', 'o', 'h', 'V'];
 /// assert_eq!(matches.subcommand_name(), Some("upper"));
 /// # Ok::<(), clap::Error>(())
 /// ```
+#[must_use]
 pub fn build() -> Command {
     let mut cmd = Command::new("txc")
         .version(env!("CARGO_PKG_VERSION"))
@@ -218,6 +219,7 @@ fn subcommand_for(op: &'static Op) -> Command {
 /// assert_eq!(op.apply("abc", &params, None)?, "def");
 /// # Ok::<(), anyhow::Error>(())
 /// ```
+#[must_use]
 pub fn params_from(op: &'static Op, matches: &clap::ArgMatches) -> Params {
     let mut params = Params::for_op(op);
     for param in op.params {

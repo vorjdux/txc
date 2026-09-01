@@ -84,17 +84,17 @@ impl Category {
     /// assert_eq!(Category::ALL.len(), 10);
     /// assert_eq!(Category::ALL[0], Category::Case);
     /// ```
-    pub const ALL: [Category; 10] = [
-        Category::Case,
-        Category::Encode,
-        Category::Hash,
-        Category::Lines,
-        Category::Text,
-        Category::Number,
-        Category::Convert,
-        Category::Inspect,
-        Category::Generate,
-        Category::Time,
+    pub const ALL: [Self; 10] = [
+        Self::Case,
+        Self::Encode,
+        Self::Hash,
+        Self::Lines,
+        Self::Text,
+        Self::Number,
+        Self::Convert,
+        Self::Inspect,
+        Self::Generate,
+        Self::Time,
     ];
 
     /// Short machine friendly identifier, used by `txc list --category`.
@@ -105,18 +105,19 @@ impl Category {
     /// assert_eq!(Category::Encode.id(), "encode");
     /// assert_eq!(Category::Number.id(), "number");
     /// ```
-    pub fn id(self) -> &'static str {
+    #[must_use]
+    pub const fn id(self) -> &'static str {
         match self {
-            Category::Case => "case",
-            Category::Encode => "encode",
-            Category::Hash => "hash",
-            Category::Lines => "lines",
-            Category::Text => "text",
-            Category::Number => "number",
-            Category::Convert => "convert",
-            Category::Inspect => "inspect",
-            Category::Generate => "generate",
-            Category::Time => "time",
+            Self::Case => "case",
+            Self::Encode => "encode",
+            Self::Hash => "hash",
+            Self::Lines => "lines",
+            Self::Text => "text",
+            Self::Number => "number",
+            Self::Convert => "convert",
+            Self::Inspect => "inspect",
+            Self::Generate => "generate",
+            Self::Time => "time",
         }
     }
 
@@ -132,18 +133,19 @@ impl Category {
     /// ```
     ///
     /// [`id`]: Category::id
-    pub fn title(self) -> &'static str {
+    #[must_use]
+    pub const fn title(self) -> &'static str {
         match self {
-            Category::Case => "Case",
-            Category::Encode => "Encoding",
-            Category::Hash => "Hashing",
-            Category::Lines => "Lines",
-            Category::Text => "Text",
-            Category::Number => "Numbers",
-            Category::Convert => "Convert",
-            Category::Inspect => "Inspect",
-            Category::Generate => "Generate",
-            Category::Time => "Time",
+            Self::Case => "Case",
+            Self::Encode => "Encoding",
+            Self::Hash => "Hashing",
+            Self::Lines => "Lines",
+            Self::Text => "Text",
+            Self::Number => "Numbers",
+            Self::Convert => "Convert",
+            Self::Inspect => "Inspect",
+            Self::Generate => "Generate",
+            Self::Time => "Time",
         }
     }
 
@@ -154,18 +156,19 @@ impl Category {
     ///
     /// assert!(Category::Hash.about().contains("digests"));
     /// ```
-    pub fn about(self) -> &'static str {
+    #[must_use]
+    pub const fn about(self) -> &'static str {
         match self {
-            Category::Case => "Upper, lower, title, camel, snake and friends",
-            Category::Encode => "URL, HTML, base64, hex, binary and classic ciphers",
-            Category::Hash => "Checksums and cryptographic digests",
-            Category::Lines => "Sort, filter, number, pad and reshape lines",
-            Category::Text => "Search, replace, trim, wrap and clean up text",
-            Category::Number => "Bases, roman numerals and number spelling",
-            Category::Convert => "JSON, YAML, TOML and CSV in every direction",
-            Category::Inspect => "Counts, statistics, frequencies and code points",
-            Category::Generate => "UUIDs, passwords, random data and placeholder text",
-            Category::Time => "Timestamps and date formatting",
+            Self::Case => "Upper, lower, title, camel, snake and friends",
+            Self::Encode => "URL, HTML, base64, hex, binary and classic ciphers",
+            Self::Hash => "Checksums and cryptographic digests",
+            Self::Lines => "Sort, filter, number, pad and reshape lines",
+            Self::Text => "Search, replace, trim, wrap and clean up text",
+            Self::Number => "Bases, roman numerals and number spelling",
+            Self::Convert => "JSON, YAML, TOML and CSV in every direction",
+            Self::Inspect => "Counts, statistics, frequencies and code points",
+            Self::Generate => "UUIDs, passwords, random data and placeholder text",
+            Self::Time => "Timestamps and date formatting",
         }
     }
 
@@ -178,8 +181,9 @@ impl Category {
     /// assert_eq!(Category::from_id("HASH"), Some(Category::Hash));
     /// assert_eq!(Category::from_id("nonsense"), None);
     /// ```
-    pub fn from_id(value: &str) -> Option<Category> {
-        Category::ALL
+    #[must_use]
+    pub fn from_id(value: &str) -> Option<Self> {
+        Self::ALL
             .iter()
             .copied()
             .find(|c| c.id().eq_ignore_ascii_case(value))
@@ -228,8 +232,9 @@ impl Param {
     /// assert!(param.is_flag());
     /// assert_eq!(param.default_value(), None);
     /// ```
-    pub const fn flag(name: &'static str, short: Option<char>, help: &'static str) -> Param {
-        Param {
+    #[must_use]
+    pub const fn flag(name: &'static str, short: Option<char>, help: &'static str) -> Self {
+        Self {
             name,
             short,
             help,
@@ -250,13 +255,14 @@ impl Param {
     /// assert!(!param.is_flag());
     /// assert_eq!(param.default_value(), None);
     /// ```
+    #[must_use]
     pub const fn value(
         name: &'static str,
         short: Option<char>,
         placeholder: &'static str,
         help: &'static str,
-    ) -> Param {
-        Param {
+    ) -> Self {
+        Self {
             name,
             short,
             help,
@@ -277,14 +283,15 @@ impl Param {
     /// assert_eq!(param.default_value(), Some("1"));
     /// assert_eq!(param.starting_value(), "1");
     /// ```
+    #[must_use]
     pub const fn valued(
         name: &'static str,
         short: Option<char>,
         placeholder: &'static str,
         default: &'static str,
         help: &'static str,
-    ) -> Param {
-        Param {
+    ) -> Self {
+        Self {
             name,
             short,
             help,
@@ -310,7 +317,8 @@ impl Param {
     /// assert_eq!(param.starting_value(), "secret");
     /// assert_eq!(param.default_value(), None);
     /// ```
-    pub const fn suggest(mut self, sample: &'static str) -> Param {
+    #[must_use]
+    pub const fn suggest(mut self, sample: &'static str) -> Self {
         self.sample = Some(sample);
         self
     }
@@ -326,7 +334,8 @@ impl Param {
     /// ```
     ///
     /// [`Flag`]: ParamKind::Flag
-    pub fn default_value(&self) -> Option<&'static str> {
+    #[must_use]
+    pub const fn default_value(&self) -> Option<&'static str> {
         match self.kind {
             ParamKind::Value { default, .. } => default,
             ParamKind::Flag => None,
@@ -341,7 +350,8 @@ impl Param {
     /// assert!(Param::flag("raw", None, "raw output").is_flag());
     /// assert!(!Param::value("key", None, "<KEY>", "the key").is_flag());
     /// ```
-    pub fn is_flag(&self) -> bool {
+    #[must_use]
+    pub const fn is_flag(&self) -> bool {
         matches!(self.kind, ParamKind::Flag)
     }
 
@@ -357,6 +367,7 @@ impl Param {
     /// // Nothing declared at all leaves the field empty.
     /// assert_eq!(Param::value("key", None, "<KEY>", "the key").starting_value(), "");
     /// ```
+    #[must_use]
     pub fn starting_value(&self) -> &'static str {
         self.sample.or(self.default_value()).unwrap_or("")
     }
@@ -431,8 +442,8 @@ impl Op {
         feed: Feed,
         about: &'static str,
         run: OpFn,
-    ) -> Op {
-        Op {
+    ) -> Self {
+        Self {
             name,
             aliases: &[],
             category,
@@ -454,7 +465,8 @@ impl Op {
     /// // `b64e` is an alias, and finds the same operation as the full name.
     /// assert_eq!(find("b64e").map(|op| op.name), Some("base64-encode"));
     /// ```
-    pub const fn aliases(mut self, aliases: &'static [&'static str]) -> Op {
+    #[must_use]
+    pub const fn aliases(mut self, aliases: &'static [&'static str]) -> Self {
         self.aliases = aliases;
         self
     }
@@ -467,7 +479,8 @@ impl Op {
     /// let op = find("caesar").expect("caesar is registered");
     /// assert!(op.param("shift").is_some());
     /// ```
-    pub const fn params(mut self, params: &'static [Param]) -> Op {
+    #[must_use]
+    pub const fn params(mut self, params: &'static [Param]) -> Self {
         self.params = params;
         self
     }
@@ -480,7 +493,8 @@ impl Op {
     /// let op = find("slugify").expect("slugify is registered");
     /// assert!(op.examples.iter().all(|example| example.starts_with("txc ")));
     /// ```
-    pub const fn examples(mut self, examples: &'static [&'static str]) -> Op {
+    #[must_use]
+    pub const fn examples(mut self, examples: &'static [&'static str]) -> Self {
         self.examples = examples;
         self
     }
@@ -494,7 +508,8 @@ impl Op {
     /// assert!(find("uuid").expect("uuid is registered").varies);
     /// assert!(!find("upper").expect("upper is registered").varies);
     /// ```
-    pub const fn varies(mut self) -> Op {
+    #[must_use]
+    pub const fn varies(mut self) -> Self {
         self.varies = true;
         self
     }
@@ -511,7 +526,8 @@ impl Op {
     /// let op = find("json-format").expect("json-format is registered");
     /// assert!(op.apply(op.sample_input(), &Params::for_op(op), None).is_ok());
     /// ```
-    pub const fn sample(mut self, sample: &'static str) -> Op {
+    #[must_use]
+    pub const fn sample(mut self, sample: &'static str) -> Self {
         self.sample = Some(sample);
         self
     }
@@ -527,6 +543,7 @@ impl Op {
     /// assert_eq!(find("uuid").unwrap().sample_input(), "");
     /// assert!(!find("upper").unwrap().sample_input().is_empty());
     /// ```
+    #[must_use]
     pub fn sample_input(&self) -> &'static str {
         if self.feed == Feed::None {
             return "";
@@ -552,6 +569,7 @@ impl Op {
     /// assert_eq!(op.param("shift").map(|p| p.name), Some("shift"));
     /// assert!(op.param("no-such-parameter").is_none());
     /// ```
+    #[must_use]
     pub fn param(&self, name: &str) -> Option<&'static Param> {
         self.params.iter().find(|p| p.name == name)
     }
@@ -641,13 +659,16 @@ fn index() -> &'static HashMap<&'static str, usize> {
     INDEX.get_or_init(|| {
         let mut map = HashMap::new();
         for (i, op) in all().iter().enumerate() {
-            if map.insert(op.name, i).is_some() {
-                panic!("duplicate operation name: {}", op.name);
-            }
+            assert!(
+                map.insert(op.name, i).is_none(),
+                "duplicate operation name: {}",
+                op.name
+            );
             for alias in op.aliases {
-                if map.insert(*alias, i).is_some() {
-                    panic!("duplicate operation alias: {alias}");
-                }
+                assert!(
+                    map.insert(*alias, i).is_none(),
+                    "duplicate operation alias: {alias}"
+                );
             }
         }
         map
@@ -666,6 +687,7 @@ fn index() -> &'static HashMap<&'static str, usize> {
 /// assert!(find("Upper").is_none());
 /// assert!(find("no-such-operation").is_none());
 /// ```
+#[must_use]
 pub fn find(name: &str) -> Option<&'static Op> {
     index().get(name).map(|i| &all()[*i])
 }
@@ -679,6 +701,7 @@ pub fn find(name: &str) -> Option<&'static Op> {
 /// assert!(!hashes.is_empty());
 /// assert!(hashes.iter().all(|op| op.category == Category::Hash));
 /// ```
+#[must_use]
 pub fn in_category(category: Category) -> Vec<&'static Op> {
     all().iter().filter(|op| op.category == category).collect()
 }

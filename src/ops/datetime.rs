@@ -79,9 +79,9 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             |_, p| {
                 let now = Utc::now();
                 Ok(if p.flag("utc") {
-                    render(now, p)
+                    render(&now, p)
                 } else {
-                    render(now.with_timezone(&Local), p)
+                    render(&now.with_timezone(&Local), p)
                 })
             },
         )
@@ -139,9 +139,9 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 .with_context(|| format!("{value} is outside the range of representable dates"))?;
 
                 Ok(if p.flag("utc") {
-                    render(moment, p)
+                    render(&moment, p)
                 } else {
-                    render(moment.with_timezone(&Local), p)
+                    render(&moment.with_timezone(&Local), p)
                 })
             },
         )
@@ -202,7 +202,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
     );
 }
 
-fn render<Tz: TimeZone>(moment: DateTime<Tz>, p: &crate::params::Params) -> String
+fn render<Tz: TimeZone>(moment: &DateTime<Tz>, p: &crate::params::Params) -> String
 where
     Tz::Offset: std::fmt::Display,
 {

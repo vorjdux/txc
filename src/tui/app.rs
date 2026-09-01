@@ -1,5 +1,7 @@
 //! State of the interactive interface.
 
+use std::fmt::Write;
+
 use crate::registry::{self, Category, Feed, Op};
 use crate::tui::options::OptionsEditor;
 use crate::tui::textarea::TextArea;
@@ -20,12 +22,12 @@ pub enum Focus {
 }
 
 impl Focus {
-    const ORDER: [Focus; 5] = [
-        Focus::Search,
-        Focus::Categories,
-        Focus::Operations,
-        Focus::Input,
-        Focus::Options,
+    const ORDER: [Self; 5] = [
+        Self::Search,
+        Self::Categories,
+        Self::Operations,
+        Self::Input,
+        Self::Options,
     ];
 }
 
@@ -47,9 +49,10 @@ impl Outcome {
     /// assert_eq!(Outcome::Ready("HELLO".into()).text(), "HELLO");
     /// assert_eq!(Outcome::Failed("bad input".into()).text(), "bad input");
     /// ```
+    #[must_use]
     pub fn text(&self) -> &str {
         match self {
-            Outcome::Ready(text) | Outcome::Failed(text) => text,
+            Self::Ready(text) | Self::Failed(text) => text,
         }
     }
 
@@ -61,8 +64,9 @@ impl Outcome {
     /// assert!(Outcome::Failed("bad input".into()).is_error());
     /// assert!(!Outcome::Ready("HELLO".into()).is_error());
     /// ```
-    pub fn is_error(&self) -> bool {
-        matches!(self, Outcome::Failed(_))
+    #[must_use]
+    pub const fn is_error(&self) -> bool {
+        matches!(self, Self::Failed(_))
     }
 }
 
@@ -126,18 +130,18 @@ pub struct App {
 
 impl Default for App {
     fn default() -> Self {
-        App::new()
+        Self::new()
     }
 }
 
 impl App {
     /// Builds the interface state, with a sample sentence in the input so the
     /// output panel shows something useful straight away.
-    pub fn new() -> App {
+    pub fn new() -> Self {
         let mut categories = vec![None];
         categories.extend(Category::ALL.iter().copied().map(Some));
 
-        let mut app = App {
+        let mut app = Self {
             categories,
             category_index: 0,
             operations: Vec::new(),
@@ -166,6 +170,7 @@ impl App {
     ///
     /// A generator has no input to edit and an operation without parameters
     /// has no options, so neither panel is drawn nor focused.
+    #[must_use]
     pub fn focus_order(&self) -> Vec<Focus> {
         Focus::ORDER
             .iter()
@@ -180,24 +185,27 @@ impl App {
 
     /// Whether a window is covering the interface, which changes what the
     /// next keystroke means.
-    pub fn overlay_is_open(&self) -> bool {
+    #[must_use]
+    pub const fn overlay_is_open(&self) -> bool {
         self.show_help || self.show_about
     }
 
     /// Closes whichever window is open.
-    pub fn close_overlay(&mut self) {
+    pub const fn close_overlay(&mut self) {
         self.show_help = false;
         self.show_about = false;
     }
 
     /// Whether the selected operation reads any input.
+    #[must_use]
     pub fn shows_input(&self) -> bool {
         self.selected_operation()
             .is_some_and(|op| op.feed != Feed::None)
     }
 
     /// Whether the selected operation has any options to set.
-    pub fn shows_options(&self) -> bool {
+    #[must_use]
+    pub const fn shows_options(&self) -> bool {
         !self.options.is_empty()
     }
 
@@ -296,6 +304,7 @@ impl App {
     }
 
     /// Whether running again would produce something different.
+    #[must_use]
     pub fn varies(&self) -> bool {
         self.selected_operation().is_some_and(|op| op.varies)
     }
@@ -329,10 +338,10 @@ impl App {
 
     /// Asks where the output should be written.
     pub fn begin_save(&mut self) {
-        let suggestion = self
-            .selected_operation()
-            .map(|op| format!("{}.txt", op.name))
-            .unwrap_or_else(|| "txc-output.txt".to_string());
+        let suggestion = self.selected_operation().map_or_else(
+            || "txc-output.txt".to_string(),
+            |op| format!("{}.txt", op.name),
+        );
         self.prompt = Some(Prompt {
             title: "Save the output as".to_string(),
             hint: "enter to save, esc to cancel, ~ is your home directory".to_string(),
@@ -422,6 +431,7 @@ impl App {
     /// // The interface always opens on a working operation.
     /// assert!(App::new().selected_operation().is_some());
     /// ```
+    #[must_use]
     pub fn selected_operation(&self) -> Option<&'static Op> {
         self.operations.get(self.operation_index).copied()
     }
@@ -434,6 +444,7 @@ impl App {
     /// // The interface opens showing every category.
     /// assert_eq!(App::new().selected_category(), None);
     /// ```
+    #[must_use]
     pub fn selected_category(&self) -> Option<Category> {
         self.categories.get(self.category_index).copied().flatten()
     }
@@ -484,7 +495,7 @@ impl App {
             Err(error) => {
                 let mut message = error.to_string();
                 for cause in error.chain().skip(1) {
-                    message.push_str(&format!("\n  caused by: {cause}"));
+                    let _ = write!(message, "\n  caused by: {cause}");
                 }
                 Outcome::Failed(message)
             }

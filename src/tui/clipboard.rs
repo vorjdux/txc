@@ -38,7 +38,8 @@ pub type Program = (&'static str, &'static [&'static str]);
 /// // Every platform has at least one, or copying could never work.
 /// assert!(!programs().is_empty());
 /// ```
-pub fn programs() -> &'static [Program] {
+#[must_use]
+pub const fn programs() -> &'static [Program] {
     #[cfg(target_os = "macos")]
     {
         &[("pbcopy", &[])]
@@ -163,6 +164,7 @@ fn passthrough() -> Passthrough {
 /// assert_eq!(passthrough_for(None, Some("xterm-256color")), Passthrough::None);
 /// assert_eq!(passthrough_for(None, None), Passthrough::None);
 /// ```
+#[must_use]
 pub fn passthrough_for(tmux: Option<&str>, term: Option<&str>) -> Passthrough {
     if tmux.is_some_and(|value| !value.is_empty()) {
         return Passthrough::Tmux;
@@ -186,6 +188,7 @@ pub fn passthrough_for(tmux: Option<&str>, term: Option<&str>) -> Passthrough {
 /// assert_eq!(sequence("hello", Passthrough::None), "\x1b]52;c;aGVsbG8=\x07");
 /// assert_eq!(sequence("hello", Passthrough::Screen), "\x1bP\x1b]52;c;aGVsbG8=\x07\x1b\\");
 /// ```
+#[must_use]
 pub fn sequence(text: &str, passthrough: Passthrough) -> String {
     let payload = format!(
         "\x1b]52;c;{}\x07",
@@ -217,6 +220,7 @@ fn send_sequence(text: &str, passthrough: Passthrough) -> Result<()> {
 ///
 /// assert_eq!(report(&Route::Program("wl-copy".into())), "output copied with wl-copy");
 /// ```
+#[must_use]
 pub fn report(route: &Route) -> String {
     match route {
         Route::Program(program) => format!("output copied with {program}"),

@@ -44,13 +44,14 @@ impl Params {
     /// assert_eq!(params.supplied("shift"), None);
     /// assert_eq!(params.get("shift"), "3");
     /// ```
-    pub fn for_op(op: &Op) -> Params {
+    #[must_use]
+    pub fn for_op(op: &Op) -> Self {
         let defaults = op
             .params
             .iter()
             .filter_map(|p| p.default_value().map(|d| (p.name, d)))
             .collect();
-        Params {
+        Self {
             values: HashMap::new(),
             flags: HashSet::new(),
             defaults,
@@ -92,6 +93,7 @@ impl Params {
     ///
     /// assert!(!Params::default().flag("never-mentioned"));
     /// ```
+    #[must_use]
     pub fn flag(&self, name: &str) -> bool {
         self.flags.contains(name)
     }
@@ -229,8 +231,8 @@ impl Params {
     /// assert!(Params::parse_kv(op, "shift=\"3").is_err());
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    pub fn parse_kv(op: &Op, text: &str) -> Result<Params> {
-        let mut params = Params::for_op(op);
+    pub fn parse_kv(op: &Op, text: &str) -> Result<Self> {
+        let mut params = Self::for_op(op);
         for token in split_tokens(text)? {
             let (key, value) = match token.split_once('=') {
                 Some((k, v)) => (k.trim().to_string(), Some(v.to_string())),

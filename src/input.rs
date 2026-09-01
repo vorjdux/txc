@@ -145,35 +145,32 @@ fn decode(bytes: Vec<u8>, path: Option<&Path>) -> Result<String> {
 pub fn write(text: &str, destination: Option<&Path>, newline: bool) -> Result<()> {
     let needs_newline = newline && !text.is_empty() && !text.ends_with('\n');
 
-    match destination {
-        Some(path) => {
-            let mut file = fs::File::create(path)
-                .with_context(|| format!("cannot write {}", path.display()))?;
-            file.write_all(text.as_bytes())?;
-            if needs_newline {
-                file.write_all(b"\n")?;
-            }
-            file.flush()?;
+    if let Some(path) = destination {
+        let mut file =
+            fs::File::create(path).with_context(|| format!("cannot write {}", path.display()))?;
+        file.write_all(text.as_bytes())?;
+        if needs_newline {
+            file.write_all(b"\n")?;
         }
-        None => {
-            let stdout = io::stdout();
-            let mut out = io::BufWriter::new(stdout.lock());
-            // A closed pipe is how `txc ... | head` ends; it is not an error.
-            let written = out
-                .write_all(text.as_bytes())
-                .and_then(|()| {
-                    if needs_newline {
-                        out.write_all(b"\n")
-                    } else {
-                        Ok(())
-                    }
-                })
-                .and_then(|()| out.flush());
-            if let Err(e) = written
-                && e.kind() != io::ErrorKind::BrokenPipe
-            {
-                return Err(e.into());
-            }
+        file.flush()?;
+    } else {
+        let stdout = io::stdout();
+        let mut out = io::BufWriter::new(stdout.lock());
+        // A closed pipe is how `txc ... | head` ends; it is not an error.
+        let written = out
+            .write_all(text.as_bytes())
+            .and_then(|()| {
+                if needs_newline {
+                    out.write_all(b"\n")
+                } else {
+                    Ok(())
+                }
+            })
+            .and_then(|()| out.flush());
+        if let Err(e) = written
+            && e.kind() != io::ErrorKind::BrokenPipe
+        {
+            return Err(e.into());
         }
     }
     Ok(())

@@ -492,8 +492,15 @@ alpha	1",
                     return Ok(String::new());
                 }
                 let count: isize = p.parse("count")?;
-                let len = graphemes.len() as isize;
-                let split = (count.rem_euclid(len)) as usize;
+                // Reduced without leaving the unsigned domain, so a rotation
+                // larger than the text cannot wrap the cast instead.
+                let len = graphemes.len();
+                let magnitude = count.unsigned_abs() % len;
+                let split = if count < 0 {
+                    (len - magnitude) % len
+                } else {
+                    magnitude
+                };
                 Ok([&graphemes[split..], &graphemes[..split]].concat().concat())
             },
         )
@@ -687,7 +694,7 @@ fn circled_digits() -> Vec<(char, u32)> {
     table
 }
 
-fn small_cap(ch: char) -> char {
+const fn small_cap(ch: char) -> char {
     const CAPS: [char; 26] = [
         '\u{1D00}', '\u{0299}', '\u{1D04}', '\u{1D05}', '\u{1D07}', '\u{A730}', '\u{0262}',
         '\u{029C}', '\u{026A}', '\u{1D0A}', '\u{1D0B}', '\u{029F}', '\u{1D0D}', '\u{0274}',
@@ -757,8 +764,7 @@ fn flip(ch: char) -> char {
     PAIRS
         .iter()
         .find(|(from, _)| *from == lower)
-        .map(|(_, to)| *to)
-        .unwrap_or(ch)
+        .map_or(ch, |(_, to)| *to)
 }
 
 #[cfg(test)]

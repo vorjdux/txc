@@ -42,6 +42,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
 /// assert_eq!(split_words("snake_case-and.dots"), ["snake", "case", "and", "dots"]);
 /// assert!(split_words("").is_empty());
 /// ```
+#[must_use]
 pub fn split_words(input: &str) -> Vec<String> {
     let mut words: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -84,6 +85,7 @@ pub fn split_words(input: &str) -> Vec<String> {
 /// assert_eq!(capitalize_first("hELLO"), "HELLO");
 /// assert_eq!(capitalize_first(""), "");
 /// ```
+#[must_use]
 pub fn capitalize_first(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
@@ -100,6 +102,7 @@ pub fn capitalize_first(word: &str) -> String {
 /// assert_eq!(capitalize_only("hELLO"), "Hello");
 /// assert_eq!(capitalize_only(""), "");
 /// ```
+#[must_use]
 pub fn capitalize_only(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
@@ -117,6 +120,7 @@ pub fn capitalize_only(word: &str) -> String {
 /// assert_eq!(to_hex(&[0xde, 0xad], true), "DEAD");
 /// assert_eq!(to_hex(&[], false), "");
 /// ```
+#[must_use]
 pub fn to_hex(bytes: &[u8], upper: bool) -> String {
     const LOWER_DIGITS: &[u8; 16] = b"0123456789abcdef";
     const UPPER_DIGITS: &[u8; 16] = b"0123456789ABCDEF";

@@ -21,9 +21,9 @@ pub struct Field {
 }
 
 impl Field {
-    fn new(param: &'static Param) -> Field {
+    fn new(param: &'static Param) -> Self {
         let value = param.starting_value().to_string();
-        Field {
+        Self {
             cursor: value.chars().count(),
             param,
             value,
@@ -32,6 +32,7 @@ impl Field {
     }
 
     /// How the field reads in the panel.
+    #[must_use]
     pub fn display(&self) -> String {
         if self.param.is_flag() {
             (if self.enabled { "on" } else { "off" }).to_string()
@@ -44,8 +45,7 @@ impl Field {
         self.value
             .char_indices()
             .nth(column)
-            .map(|(i, _)| i)
-            .unwrap_or(self.value.len())
+            .map_or(self.value.len(), |(i, _)| i)
     }
 }
 
@@ -69,8 +69,8 @@ impl OptionsEditor {
     /// // The panel starts from a working set of values, not an empty box.
     /// assert!(op.apply("abc", &editor.params(op), None).is_ok());
     /// ```
-    pub fn for_op(op: &Op) -> OptionsEditor {
-        OptionsEditor {
+    pub fn for_op(op: &Op) -> Self {
+        Self {
             fields: op.params.iter().map(Field::new).collect(),
             selected: 0,
         }
@@ -86,12 +86,14 @@ impl OptionsEditor {
     /// let editor = OptionsEditor::for_op(op);
     /// assert_eq!(editor.fields().len(), op.params.len());
     /// ```
+    #[must_use]
     pub fn fields(&self) -> &[Field] {
         &self.fields
     }
 
     /// Index of the field the cursor is on.
-    pub fn selected(&self) -> usize {
+    #[must_use]
+    pub const fn selected(&self) -> usize {
         self.selected
     }
 
@@ -105,12 +107,14 @@ impl OptionsEditor {
     /// let op = find("upper").expect("upper is registered");
     /// assert!(OptionsEditor::for_op(op).is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.fields.is_empty()
     }
 
     /// How many fields the panel holds.
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.fields.len()
     }
 
@@ -128,6 +132,7 @@ impl OptionsEditor {
     /// assert_eq!(op.apply("abc", &editor.params(op), None)?, "def");
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    #[must_use]
     pub fn params(&self, op: &Op) -> Params {
         let mut params = Params::for_op(op);
         for field in &self.fields {
@@ -155,14 +160,14 @@ impl OptionsEditor {
     /// }
     /// assert_eq!(editor.selected(), 0); // all the way round
     /// ```
-    pub fn select_next(&mut self) {
+    pub const fn select_next(&mut self) {
         if !self.fields.is_empty() {
             self.selected = (self.selected + 1) % self.fields.len();
         }
     }
 
     /// Moves to the previous field, wrapping round at the start.
-    pub fn select_previous(&mut self) {
+    pub const fn select_previous(&mut self) {
         if !self.fields.is_empty() {
             self.selected = (self.selected + self.fields.len() - 1) % self.fields.len();
         }
@@ -174,6 +179,7 @@ impl OptionsEditor {
 
     /// Whether the selected field is a switch, which changes what the space
     /// and enter keys do.
+    #[must_use]
     pub fn selected_is_flag(&self) -> bool {
         self.fields
             .get(self.selected)
@@ -273,11 +279,9 @@ impl OptionsEditor {
     }
 
     /// Cursor position within the selected field, for drawing.
+    #[must_use]
     pub fn cursor(&self) -> usize {
-        self.fields
-            .get(self.selected)
-            .map(|f| f.cursor)
-            .unwrap_or(0)
+        self.fields.get(self.selected).map_or(0, |f| f.cursor)
     }
 }
 

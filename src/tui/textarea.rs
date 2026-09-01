@@ -15,7 +15,7 @@ pub struct TextArea {
 
 impl Default for TextArea {
     fn default() -> Self {
-        TextArea {
+        Self {
             lines: vec![String::new()],
             row: 0,
             column: 0,
@@ -34,8 +34,8 @@ impl TextArea {
     /// assert_eq!(area.lines(), ["one", "two"]);
     /// assert_eq!(area.cursor(), (1, 3));
     /// ```
-    pub fn from_text(text: &str) -> TextArea {
-        let mut area = TextArea {
+    pub fn from_text(text: &str) -> Self {
+        let mut area = Self {
             lines: text.split('\n').map(str::to_string).collect(),
             row: 0,
             column: 0,
@@ -56,11 +56,13 @@ impl TextArea {
     ///
     /// assert_eq!(TextArea::from_text("one\ntwo").text(), "one\ntwo");
     /// ```
+    #[must_use]
     pub fn text(&self) -> String {
         self.lines.join("\n")
     }
 
     /// The individual lines, for rendering.
+    #[must_use]
     pub fn lines(&self) -> &[String] {
         &self.lines
     }
@@ -75,7 +77,8 @@ impl TextArea {
     /// // Four characters, even though "é" takes two bytes.
     /// assert_eq!(TextArea::from_text("café").cursor(), (0, 4));
     /// ```
-    pub fn cursor(&self) -> (usize, usize) {
+    #[must_use]
+    pub const fn cursor(&self) -> (usize, usize) {
         (self.row, self.column)
     }
 
@@ -87,6 +90,7 @@ impl TextArea {
     /// assert!(TextArea::default().is_empty());
     /// assert!(!TextArea::from_text("x").is_empty());
     /// ```
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.lines.len() == 1 && self.lines[0].is_empty()
     }
@@ -102,7 +106,7 @@ impl TextArea {
     /// assert_eq!(area.cursor(), (0, 0));
     /// ```
     pub fn clear(&mut self) {
-        *self = TextArea::default();
+        *self = Self::default();
     }
 
     /// Inserts one character at the cursor, moving it right.
@@ -262,7 +266,7 @@ impl TextArea {
     }
 
     /// Moves the cursor to the start of the current line.
-    pub fn move_home(&mut self) {
+    pub const fn move_home(&mut self) {
         self.column = 0;
         self.goal_column = 0;
     }
@@ -318,8 +322,7 @@ impl TextArea {
         self.lines[row]
             .char_indices()
             .nth(column)
-            .map(|(i, _)| i)
-            .unwrap_or(self.lines[row].len())
+            .map_or(self.lines[row].len(), |(i, _)| i)
     }
 }
 

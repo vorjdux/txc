@@ -82,6 +82,23 @@
 //! [`anyhow::Result<String>`]: https://docs.rs/anyhow/latest/anyhow/type.Result.html
 
 #![warn(missing_docs)]
+#![warn(clippy::pedantic)]
+// Two lints worth having from the nursery group. They are named individually
+// rather than enabling the group, which changes between Rust releases and
+// would fail the build on a toolchain bump rather than on a real problem.
+#![warn(clippy::use_self)]
+#![warn(clippy::missing_const_for_fn)]
+// The registration functions are long by design: each is one flat table of
+// operations, and splitting them would only scatter the catalogue.
+#![allow(clippy::too_many_lines)]
+// Terminal geometry is u16 and text lengths are usize. The conversions are
+// bounded by the size of a terminal, and a lost pixel is not a correctness
+// problem.
+#![allow(clippy::cast_possible_truncation)]
+// Statistics are reported to one decimal place, where f64 is ample.
+#![allow(clippy::cast_precision_loss)]
+// The interface state really does hold that many independent switches.
+#![allow(clippy::struct_excessive_bools)]
 
 pub mod about;
 pub mod cli;

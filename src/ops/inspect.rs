@@ -84,7 +84,11 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     word_characters as f64 / words as f64
                 };
                 // 200 words per minute is the usual figure for silent reading.
-                let reading_seconds = (words as f64 / 200.0 * 60.0).round() as u64;
+                //
+                // Rounded to the nearest second in whole numbers. Doing it in
+                // f64 read 205 words as 61 seconds rather than 62, because
+                // 61.5 is not representable and the value landed just under.
+                let reading_seconds = (words as u64 * 60 + 100) / 200;
 
                 Ok(format!(
                     "characters       {characters}\n\
@@ -171,7 +175,10 @@ And a new paragraph.",
                         .filter(|g| !g.trim().is_empty())
                         .map(str::to_string)
                         .collect(),
-                    "line" | "lines" => to_lines(&text).iter().map(|l| l.to_string()).collect(),
+                    "line" | "lines" => to_lines(&text)
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect(),
                     other => anyhow::bail!("unknown unit {other:?}, use word, char or line"),
                 };
 
