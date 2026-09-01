@@ -1,4 +1,18 @@
 //! Checksums and cryptographic digests.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("sha256").expect("sha256 is registered");
+//! assert_eq!(
+//!     op.apply("txc", &Params::for_op(op), None)?,
+//!     "b104cfa8e854e23c632d8248beb5d7de2a70a558c0e9666ed6f98d4f5676989a",
+//! );
+//!
+//! let op = find("crc32").expect("crc32 is registered");
+//! assert_eq!(op.apply("txc", &Params::for_op(op), None)?, "9fe4da82");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use digest::Digest;
 use hmac::{Hmac, KeyInit, Mac};

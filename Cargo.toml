@@ -2,7 +2,7 @@
 name = "txc"
 description = "Offline text utilities for the terminal: encode, hash, convert, inspect and generate text without sending it anywhere"
 authors = ["Matheus Santos <vorj.dux@gmail.com>"]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.88"
 readme = "README.md"

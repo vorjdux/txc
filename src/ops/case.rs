@@ -1,4 +1,18 @@
 //! Case conversion.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("snake").expect("snake is registered");
+//! assert_eq!(op.apply("userFirstName", &Params::for_op(op), None)?, "user_first_name");
+//!
+//! let op = find("kebab").expect("kebab is registered");
+//! assert_eq!(op.apply("userFirstName", &Params::for_op(op), None)?, "user-first-name");
+//!
+//! let op = find("title").expect("title is registered");
+//! assert_eq!(op.apply("hello world", &Params::for_op(op), None)?, "Hello World");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use rand::RngExt;
 
@@ -269,6 +283,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
     );
 }
 
+#[derive(Clone, Copy)]
 enum Casing {
     Lower,
     Upper,

@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # An advisory can be published without anything here changing, so the
+    # dependency audit also runs weekly rather than only on a push.
+    - cron: '0 6 * * 1'
 
 env:
   CARGO_TERM_COLOR: always
@@ -39,6 +43,25 @@ jobs:
         run: cargo fmt --all --check
       - name: Run clippy
         run: cargo clippy --locked --all-targets -- -D warnings
+
+      # Broken links and malformed doc comments do not fail an ordinary build,
+      # so they would only show up as a mangled page on docs.rs.
+      - name: Build the documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --no-deps --lib
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit
+        run: cargo audit --deny warnings
 
   minimum-rust-version:
     name: Build on the minimum supported Rust version

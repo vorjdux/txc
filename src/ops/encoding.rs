@@ -1,7 +1,26 @@
 //! Encoding, decoding and classic ciphers.
+//!
+//! Every encoding has a matching decoder, so they round trip.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let encode = find("base64-encode").expect("base64-encode is registered");
+//! let decode = find("base64-decode").expect("base64-decode is registered");
+//!
+//! let encoded = encode.apply("txc", &Params::for_op(encode), None)?;
+//! assert_eq!(encoded, "dHhj");
+//! assert_eq!(decode.apply(&encoded, &Params::for_op(decode), None)?, "txc");
+//!
+//! let url = find("url-encode").expect("url-encode is registered");
+//! assert_eq!(url.apply("a b", &Params::for_op(url), None)?, "a%20b");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::{Context, Result, bail};
 use data_encoding::{BASE32, BASE32_NOPAD, BASE64, BASE64_NOPAD, BASE64URL, BASE64URL_NOPAD};
+
+use std::fmt::Write;
 
 use crate::ops::{bytes_to_string, from_hex, to_hex};
 use crate::params::Params;
@@ -498,7 +517,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     }
                     let mut buffer = [0u16; 2];
                     for unit in ch.encode_utf16(&mut buffer) {
-                        out.push_str(&format!("\\u{unit:04x}"));
+                        let _ = write!(out, "\\u{unit:04x}");
                     }
                 }
                 Ok(out)
@@ -704,7 +723,7 @@ fn unicode_unescape(input: &str) -> Result<String> {
                         if (0xd800..=0xdbff).contains(&unit) {
                             pending_high = Some(unit);
                         } else {
-                            out.push(char::from_u32(unit as u32).unwrap_or('\u{fffd}'));
+                            out.push(char::from_u32(u32::from(unit)).unwrap_or('\u{fffd}'));
                         }
                     }
                 }

@@ -6,9 +6,32 @@ use crate::params::Params;
 use crate::registry::{self, Feed, Op, ParamKind};
 
 /// Global options are reserved so no operation may claim these short flags.
+///
+/// ```
+/// use txc::cli::RESERVED_SHORTS;
+///
+/// // -f is --file, so no operation may use it for anything else.
+/// assert!(RESERVED_SHORTS.contains(&'f'));
+/// ```
 pub const RESERVED_SHORTS: &[char] = &['f', 'n', 'o', 'h', 'V'];
 
 /// Builds the whole command tree.
+///
+/// Every registered operation becomes a subcommand, with its aliases and its
+/// parameters, so the command line can never drift from the registry.
+///
+/// ```
+/// use txc::cli::build;
+///
+/// let command = build();
+/// assert_eq!(command.get_name(), "txc");
+///
+/// // Parsing goes through the generated subcommands.
+/// let matches = build().try_get_matches_from(["txc", "upper", "hello"])?;
+/// assert_eq!(matches.subcommand_name(), Some("upper"));
+/// # Ok::<(), clap::Error>(())
+/// ```
+#[must_use]
 pub fn build() -> Command {
     let mut cmd = Command::new("txc")
         .version(env!("CARGO_PKG_VERSION"))
@@ -182,6 +205,21 @@ fn subcommand_for(op: &'static Op) -> Command {
 }
 
 /// Collects the parameter values clap parsed for `op`.
+///
+/// ```
+/// use txc::cli::{build, params_from};
+/// use txc::find;
+///
+/// let matches = build().try_get_matches_from(["txc", "caesar", "--shift", "3", "abc"])?;
+/// let (name, sub) = matches.subcommand().expect("a subcommand was given");
+///
+/// let op = find(name).expect("the subcommand is a registered operation");
+/// let params = params_from(op, sub);
+///
+/// assert_eq!(op.apply("abc", &params, None)?, "def");
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+#[must_use]
 pub fn params_from(op: &'static Op, matches: &clap::ArgMatches) -> Params {
     let mut params = Params::for_op(op);
     for param in op.params {

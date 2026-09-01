@@ -1,6 +1,17 @@
 //! Reordering, filtering and reshaping lines.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("sort").expect("sort is registered");
+//! assert_eq!(op.apply("b\na\nc", &Params::for_op(op), None)?, "a\nb\nc");
+//!
+//! let op = find("unique").expect("unique is registered");
+//! assert_eq!(op.apply("a\nb\na", &Params::for_op(op), None)?, "a\nb");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use rand::seq::SliceRandom;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -534,7 +545,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             CAT,
             Feed::Lines,
             "Pad every line on the left to a width",
-            |s, p| pad(s, p.parse("width")?, p.get("char"), true),
+            |s, p| Ok(pad(s, p.parse("width")?, p.get("char"), true)),
         )
         .aliases(&["left-pad", "align-right"])
         .params(P_PAD)
@@ -547,7 +558,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             CAT,
             Feed::Lines,
             "Pad every line on the right to a width",
-            |s, p| pad(s, p.parse("width")?, p.get("char"), false),
+            |s, p| Ok(pad(s, p.parse("width")?, p.get("char"), false)),
         )
         .aliases(&["right-pad", "align-left"])
         .params(P_PAD),
@@ -565,7 +576,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 let graphemes: Vec<&str> = s.graphemes(true).collect();
                 Ok(graphemes
                     .chunks(size)
-                    .map(|chunk| chunk.concat())
+                    .map(<[&str]>::concat)
                     .collect::<Vec<_>>()
                     .join("\n"))
             },
@@ -590,6 +601,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
 
 /// Splits input into lines, ignoring one trailing newline and normalising
 /// Windows line endings.
+#[must_use]
 pub fn to_lines(input: &str) -> Vec<&str> {
     let body = input.strip_suffix('\n').unwrap_or(input);
     if body.is_empty() {
@@ -610,18 +622,18 @@ fn leading_number(line: &str) -> f64 {
     trimmed[..end].parse().unwrap_or(f64::NEG_INFINITY)
 }
 
-fn pad(line: &str, width: usize, fill: &str, left: bool) -> Result<String> {
+fn pad(line: &str, width: usize, fill: &str, left: bool) -> String {
     let fill_char = fill.chars().next().unwrap_or(' ');
     let len = line.chars().count();
     if len >= width {
-        return Ok(line.to_string());
+        return line.to_string();
     }
     let padding: String = std::iter::repeat_n(fill_char, width - len).collect();
-    Ok(if left {
+    if left {
         format!("{padding}{line}")
     } else {
         format!("{line}{padding}")
-    })
+    }
 }
 
 #[cfg(test)]

@@ -3,18 +3,38 @@
 //! Everything here comes from the package metadata, so the answer cannot drift
 //! away from what is actually published.
 
+use std::fmt::Write;
+
 use crate::registry::{self, Category};
 
+/// The crate name, which is also the name of the binary.
 pub const NAME: &str = env!("CARGO_PKG_NAME");
+/// The published version, as `txc --version` reports it.
+///
+/// ```
+/// assert!(txc::about::VERSION.split('.').count() >= 3);
+/// ```
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The one line description from the manifest.
 pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
+/// The licence expression the crate is published under.
+///
+/// ```
+/// assert_eq!(txc::about::LICENSE, "MIT OR Apache-2.0");
+/// ```
 pub const LICENSE: &str = env!("CARGO_PKG_LICENSE");
+/// Where the source lives.
 pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
 /// The year the project started, for the copyright line.
 pub const SINCE: &str = "2022";
 
 /// The authors, one per entry. Cargo separates them with colons.
+///
+/// ```
+/// assert!(!txc::about::authors().is_empty());
+/// ```
+#[must_use]
 pub fn authors() -> Vec<&'static str> {
     env!("CARGO_PKG_AUTHORS")
         .split(':')
@@ -23,6 +43,12 @@ pub fn authors() -> Vec<&'static str> {
 }
 
 /// The author line as it should be read, without the address.
+///
+/// ```
+/// // The email address is dropped; the name is kept.
+/// assert!(!txc::about::author_names().contains('<'));
+/// ```
+#[must_use]
 pub fn author_names() -> String {
     authors()
         .iter()
@@ -32,11 +58,25 @@ pub fn author_names() -> String {
 }
 
 /// How many operations are registered, and across how many categories.
+///
+/// ```
+/// let (operations, categories) = txc::about::catalogue();
+/// assert!(operations > 100);
+/// assert_eq!(categories, 10);
+/// ```
+#[must_use]
 pub fn catalogue() -> (usize, usize) {
     (registry::all().len(), Category::ALL.len())
 }
 
 /// The label rows shown in the About view and by `txc about`.
+///
+/// ```
+/// let rows = txc::about::rows();
+/// assert!(rows.iter().any(|(label, _)| *label == "Version"));
+/// assert!(rows.iter().all(|(_, value)| !value.is_empty()));
+/// ```
+#[must_use]
 pub fn rows() -> Vec<(&'static str, String)> {
     let (operations, categories) = catalogue();
     let mut rows = vec![
@@ -59,6 +99,13 @@ pub fn rows() -> Vec<(&'static str, String)> {
 }
 
 /// The whole thing as text, for `txc about`.
+///
+/// ```
+/// let report = txc::about::report();
+/// assert!(report.contains(txc::about::VERSION));
+/// assert!(report.contains("MIT OR Apache-2.0"));
+/// ```
+#[must_use]
 pub fn report() -> String {
     let width = rows()
         .iter()
@@ -69,9 +116,9 @@ pub fn report() -> String {
     let mut out = format!("{NAME} — {DESCRIPTION}\n\n");
     for (label, value) in rows() {
         if label.is_empty() {
-            out.push_str(&format!("{:width$}  {value}\n", ""));
+            let _ = writeln!(out, "{:width$}  {value}", "");
         } else {
-            out.push_str(&format!("{label:width$}  {value}\n"));
+            let _ = writeln!(out, "{label:width$}  {value}");
         }
     }
     out.push_str(

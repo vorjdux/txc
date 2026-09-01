@@ -17,6 +17,16 @@ use crate::tui::app::{App, Focus};
 ///
 /// Reports a plain error when there is no terminal to draw on, such as when
 /// `txc tui` is run from a script or a pipeline.
+///
+/// # Errors
+///
+/// Returns an error when there is no terminal, or when drawing to it fails.
+///
+/// ```no_run
+/// // Blocks until the reader quits, so this needs a real terminal.
+/// txc::tui::run()?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn run() -> Result<()> {
     let mut terminal = ratatui::try_init()
         .context("the interactive interface needs a terminal; run txc <operation> instead")?;

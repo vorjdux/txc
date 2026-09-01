@@ -11,6 +11,18 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 
 /// Where the text for an operation comes from.
+///
+/// ```
+/// use txc::input::Source;
+///
+/// // Positional arguments are joined with a single space.
+/// let source = Source {
+///     args: vec!["hello".to_string(), "world".to_string()],
+///     ..Default::default()
+/// };
+/// assert_eq!(source.read()?, "hello world");
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 #[derive(Debug, Default, Clone)]
 pub struct Source {
     /// Trailing positional arguments, joined with a single space.
@@ -34,6 +46,22 @@ impl Source {
     /// When there is nothing to read and standard input is a terminal this
     /// reports an error rather than blocking forever on a prompt that never
     /// arrives.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read, when the bytes are not
+    /// valid UTF-8, or when there is nothing to read at all.
+    ///
+    /// ```
+    /// use txc::input::Source;
+    ///
+    /// let source = Source {
+    ///     args: vec!["one".to_string(), "two".to_string()],
+    ///     ..Default::default()
+    /// };
+    /// assert_eq!(source.read()?, "one two");
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub fn read(&self) -> Result<String> {
         if let Some(path) = &self.file {
             if path.as_os_str() == "-" {
@@ -94,38 +122,55 @@ fn decode(bytes: Vec<u8>, path: Option<&Path>) -> Result<String> {
 ///
 /// A trailing newline is added unless the text already ends with one or
 /// `newline` is false, which keeps `txc` composable in shell substitutions.
+///
+/// # Errors
+///
+/// Returns an error when the destination cannot be created or written to.
+///
+/// ```
+/// use txc::input::write;
+///
+/// let path = std::env::temp_dir().join("txc-doc-write.txt");
+///
+/// write("hello", Some(&path), true)?;
+/// assert_eq!(std::fs::read_to_string(&path)?, "hello\n");
+///
+/// // Asking for no newline leaves the text exactly as given.
+/// write("hello", Some(&path), false)?;
+/// assert_eq!(std::fs::read_to_string(&path)?, "hello");
+///
+/// std::fs::remove_file(&path)?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn write(text: &str, destination: Option<&Path>, newline: bool) -> Result<()> {
     let needs_newline = newline && !text.is_empty() && !text.ends_with('\n');
 
-    match destination {
-        Some(path) => {
-            let mut file = fs::File::create(path)
-                .with_context(|| format!("cannot write {}", path.display()))?;
-            file.write_all(text.as_bytes())?;
-            if needs_newline {
-                file.write_all(b"\n")?;
-            }
-            file.flush()?;
+    if let Some(path) = destination {
+        let mut file =
+            fs::File::create(path).with_context(|| format!("cannot write {}", path.display()))?;
+        file.write_all(text.as_bytes())?;
+        if needs_newline {
+            file.write_all(b"\n")?;
         }
-        None => {
-            let stdout = io::stdout();
-            let mut out = io::BufWriter::new(stdout.lock());
-            // A closed pipe is how `txc ... | head` ends; it is not an error.
-            let written = out
-                .write_all(text.as_bytes())
-                .and_then(|()| {
-                    if needs_newline {
-                        out.write_all(b"\n")
-                    } else {
-                        Ok(())
-                    }
-                })
-                .and_then(|()| out.flush());
-            if let Err(e) = written
-                && e.kind() != io::ErrorKind::BrokenPipe
-            {
-                return Err(e.into());
-            }
+        file.flush()?;
+    } else {
+        let stdout = io::stdout();
+        let mut out = io::BufWriter::new(stdout.lock());
+        // A closed pipe is how `txc ... | head` ends; it is not an error.
+        let written = out
+            .write_all(text.as_bytes())
+            .and_then(|()| {
+                if needs_newline {
+                    out.write_all(b"\n")
+                } else {
+                    Ok(())
+                }
+            })
+            .and_then(|()| out.flush());
+        if let Err(e) = written
+            && e.kind() != io::ErrorKind::BrokenPipe
+        {
+            return Err(e.into());
         }
     }
     Ok(())
