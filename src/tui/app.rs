@@ -862,7 +862,11 @@ mod tests {
 
     #[test]
     fn a_leading_tilde_means_the_home_directory() {
-        let home = std::env::var("HOME").expect("a home directory");
+        // Windows names it differently, and that is the name expand_home falls
+        // back to there.
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .expect("a home directory");
         assert_eq!(
             expand_home("~/notes.txt"),
             std::path::Path::new(&home).join("notes.txt")

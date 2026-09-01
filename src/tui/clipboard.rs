@@ -179,6 +179,63 @@ fn terminal_report(has_display: bool, is_macos: bool) -> String {
 mod tests {
     use super::*;
 
+    /// Turns owned arguments into the `'static` slice a [`Program`] holds.
+    fn leak(args: Vec<String>) -> &'static [&'static str] {
+        Box::leak(
+            args.into_iter()
+                .map(|arg| &*Box::leak(arg.into_boxed_str()))
+                .collect::<Vec<&'static str>>()
+                .into_boxed_slice(),
+        )
+    }
+
+    /// A program that writes its standard input, byte for byte, to `path`.
+    ///
+    /// These tests exercise the pipe itself, and no one program reads standard
+    /// input on every platform. The Windows one copies the stream rather than
+    /// reading lines, so text outside ASCII is not put through the console code
+    /// page on the way.
+    fn writes_stdin_to(path: &std::path::Path) -> Program {
+        #[cfg(windows)]
+        {
+            (
+                "powershell",
+                leak(vec![
+                    "-NoProfile".to_string(),
+                    "-Command".to_string(),
+                    format!(
+                        "$out = [IO.File]::Create('{}'); \
+                         [Console]::OpenStandardInput().CopyTo($out); \
+                         $out.Close()",
+                        path.display()
+                    ),
+                ]),
+            )
+        }
+
+        #[cfg(not(windows))]
+        {
+            (
+                "sh",
+                leak(vec!["-c".to_string(), format!("cat > {}", path.display())]),
+            )
+        }
+    }
+
+    /// A program that runs and reports failure, to stand for a clipboard
+    /// program that is installed but cannot take the text.
+    fn always_fails() -> Program {
+        #[cfg(windows)]
+        {
+            ("cmd", &["/C", "exit 1"])
+        }
+
+        #[cfg(not(windows))]
+        {
+            ("sh", &["-c", "exit 1"])
+        }
+    }
+
     fn decode(sequence: &str) -> String {
         let payload = sequence
             .trim_start_matches("\x1b]52;c;")
@@ -237,13 +294,12 @@ mod tests {
     fn the_first_program_that_works_takes_the_text() {
         let target = std::env::temp_dir().join("txc-clipboard-first.txt");
         let _ = std::fs::remove_file(&target);
-        let script: &'static str =
-            Box::leak(format!("cat > {}", target.display()).into_boxed_str());
+        let writer = writes_stdin_to(&target);
 
-        let programs: Vec<Program> = vec![("sh", Box::leak(Box::new(["-c", script])))];
+        let programs: Vec<Program> = vec![writer];
         let route = copy_with(&programs, "clipboard text").unwrap();
 
-        assert_eq!(route, Route::Program("sh".to_string()));
+        assert_eq!(route, Route::Program(writer.0.to_string()));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "clipboard text");
         let _ = std::fs::remove_file(target);
     }
@@ -252,16 +308,12 @@ mod tests {
     fn a_program_that_is_not_installed_is_skipped() {
         let target = std::env::temp_dir().join("txc-clipboard-second.txt");
         let _ = std::fs::remove_file(&target);
-        let script: &'static str =
-            Box::leak(format!("cat > {}", target.display()).into_boxed_str());
+        let writer = writes_stdin_to(&target);
 
-        let programs: Vec<Program> = vec![
-            ("txc-no-such-clipboard-program", &[]),
-            ("sh", Box::leak(Box::new(["-c", script]))),
-        ];
+        let programs: Vec<Program> = vec![("txc-no-such-clipboard-program", &[]), writer];
         let route = copy_with(&programs, "second choice").unwrap();
 
-        assert_eq!(route, Route::Program("sh".to_string()));
+        assert_eq!(route, Route::Program(writer.0.to_string()));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "second choice");
         let _ = std::fs::remove_file(target);
     }
@@ -270,7 +322,7 @@ mod tests {
     fn a_program_that_fails_is_not_treated_as_success() {
         // Falling back to the terminal writes to standard output, which is
         // harmless here and is the documented last resort.
-        let programs: Vec<Program> = vec![("sh", &["-c", "exit 1"])];
+        let programs: Vec<Program> = vec![always_fails()];
         assert_eq!(copy_with(&programs, "text").unwrap(), Route::Terminal);
     }
 
@@ -278,9 +330,7 @@ mod tests {
     fn text_outside_ascii_survives_the_pipe() {
         let target = std::env::temp_dir().join("txc-clipboard-unicode.txt");
         let _ = std::fs::remove_file(&target);
-        let script: &'static str =
-            Box::leak(format!("cat > {}", target.display()).into_boxed_str());
-        let programs: Vec<Program> = vec![("sh", Box::leak(Box::new(["-c", script])))];
+        let programs: Vec<Program> = vec![writes_stdin_to(&target)];
 
         let text = "caf\u{e9} \u{2014} \u{1f680}\nsecond line";
         copy_with(&programs, text).unwrap();
