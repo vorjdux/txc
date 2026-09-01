@@ -1,0 +1,8 @@
+# winget version manifest. Submit the three rendered files together as
+# manifests/v/vorjdux/txc/@VERSION@/ in a pull request to
+# https://github.com/microsoft/winget-pkgs
+PackageIdentifier: vorjdux.txc
+PackageVersion: "@VERSION@"
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

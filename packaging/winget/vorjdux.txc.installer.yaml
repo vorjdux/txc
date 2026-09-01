@@ -1,0 +1,22 @@
+PackageIdentifier: vorjdux.txc
+PackageVersion: "@VERSION@"
+InstallerType: zip
+NestedInstallerType: portable
+Commands:
+  - txc
+ReleaseDate: "@RELEASE_DATE@"
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/vorjdux/txc/releases/download/v@VERSION@/txc-@VERSION@-windows-x86_64.zip
+    InstallerSha256: @SHA256_WINDOWS_X86_64_UPPER@
+    NestedInstallerFiles:
+      - RelativeFilePath: txc-@VERSION@-windows-x86_64\txc.exe
+        PortableCommandAlias: txc
+  - Architecture: arm64
+    InstallerUrl: https://github.com/vorjdux/txc/releases/download/v@VERSION@/txc-@VERSION@-windows-arm64.zip
+    InstallerSha256: @SHA256_WINDOWS_ARM64_UPPER@
+    NestedInstallerFiles:
+      - RelativeFilePath: txc-@VERSION@-windows-arm64\txc.exe
+        PortableCommandAlias: txc
+ManifestType: installer
+ManifestVersion: 1.6.0

@@ -1,123 +1,193 @@
-use clap::{arg, Command};
+//! `txc` command line entry point.
 
-fn cli() -> Command<'static> {
-    Command::new("txc")
-        .about("Text utils CLI tools")
-        .subcommand_required(true)
-        .arg_required_else_help(true)
-        .allow_external_subcommands(true)
-        .allow_invalid_utf8_for_external_subcommands(true)
-        .subcommand(
-            Command::new("ud")
-                .about("txc::urlencode")
-                .arg(arg!(<INPUT> "Text to be converted").required(false)),
-        )
-        .subcommand(
-            Command::new("ud")
-                .about("txc::urldecode")
-                .arg(arg!(<INPUT> "Text to be converted").required(false)),
-        )
-        .subcommand(
-            Command::new("hd")
-                .about("txc::htmldecode|txc::htmlunescape")
-                .arg(arg!(<INPUT> "Text to be converted").required(false)),
-        )
-        .subcommand(
-            Command::new("he")
-                .about("txc:htmlencode|txc::htmlescape")
-                .arg(arg!(<INPUT> "Text to be converted").required(false)),
-        )
-        .subcommand(
-            Command::new("uuid")
-                .about("txc:new_uuid"),
-        )
-        .subcommand(
-            Command::new("uuid1")
-                .about("txc:new_uuid1"),
-        )
-        .subcommand(
-            Command::new("uuid3")
-                .about("txc:new_uuid3")
-                .arg(arg!(-n --names <NAMES> "Names to be used in the UUID3 generation, separated by commas").default_value("foo").required(false))
-                .arg(arg!(-q --quantity <QUANTITY> "How many UUID3's to ge genrated").default_value("1").required(false))
-        )
-        .subcommand(
-            Command::new("uuid4")
-                .about("txc:new_uuid4")
-                .arg(arg!(-q --quantity <QUANTITY> "How many UUID4's to ge genrated").default_value("1").required(false)),
-        )
-        .subcommand(
-            Command::new("uuid5")
-                .about("txc:new_uuid5"),
-        )
-}
+use std::io::IsTerminal;
+use std::path::PathBuf;
+use std::process::ExitCode;
 
-fn process<I: IntoIterator<Item = String>>(strings: I, command: &str) {
-    for string in strings {
-        match command {
-            "ue" => println!("{}", urlencoding::encode(&string)),
-            "ud" => println!("{}", urlencoding::decode(&string).unwrap()),
-            "he" => println!("{}", html_escape::encode_text(&string)),
-            "hd" => println!("{}", html_escape::decode_html_entities(&string)),
-            _ => {}
+use anyhow::Result;
+use clap_complete::Shell;
+
+use txc::cli;
+use txc::input::Source;
+use txc::registry::{self, Category};
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("txc: {error}");
+            for cause in error.chain().skip(1) {
+                eprintln!("  caused by: {cause}");
+            }
+            ExitCode::FAILURE
         }
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let matches = cli().get_matches();
+fn run() -> Result<()> {
+    let mut command = cli::build();
 
-    use std::io::BufRead;
+    // With no arguments at all, open the interactive interface when there is a
+    // terminal to draw on, and fall back to the help text otherwise.
+    if std::env::args_os().len() == 1 {
+        return if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
+            txc::tui::run()
+        } else {
+            command.print_help()?;
+            println!();
+            Ok(())
+        };
+    }
 
-    match matches.subcommand() {
-        Some((command @ ("ue" | "ud" | "he" | "hd"), sub_matches)) => {
-            match sub_matches.values_of("INPUT") {
-                Some(values) => process(values.map(|ln| ln.to_string()), command),
-                None => process(
-                    std::io::stdin().lock().lines().map(|ln| ln.unwrap()),
-                    command,
-                ),
-            }
-        },
-        Some((command @ ("uuid" | "uuid1" | "uuid2" | "uuid3" | "uuid4" | "uuid5"), sub_matches)) => {
-            
-            use uuid::Uuid;
+    let matches = command.clone().get_matches();
 
-            let q = sub_matches.value_of("quantity").unwrap().parse::<usize>().expect("Invalid number");
-
-            match command {
-                "uuid" => println!("{}", Uuid::new_v4().to_hyphenated()),
-                "uuid1" => {
-                    use uuid::v1::{Timestamp, Context};
-                    let context = Context::new(42);
-                    let ts = Timestamp::from_unix(&context, 1497624119, 1234);
-                    let uuid = Uuid::new_v1(ts, &[1, 2, 3, 4, 5, 6]).expect("failed to generate UUID");
-                    println!("{}", uuid.to_hyphenated())
-                },
-                "uuid3" => {
-                    let names = sub_matches.value_of("names").unwrap().split(",").map(|s| s.to_string()).collect::<Vec<String>>();
-
-                    if names.len() != q {
-                        panic!("Invalid number of names");
-                    }
-                    
-                    (0..q).into_iter()
-                        .map(|i| Uuid::new_v3(&Uuid::NAMESPACE_DNS, names[i].as_bytes()).to_hyphenated())
-                        .for_each(|uuid| println!("{}", uuid))
-                },
-                "uuid4" => {
-                    let q = sub_matches.value_of("quantity").unwrap().parse::<usize>().expect("Invalid number");
-                    (0..q).into_iter()
-                        .map(|_| Uuid::new_v4().to_hyphenated())
-                        .for_each(|uuid| println!("{}", uuid))
-                },
-                "uuid5" => println!("{}", Uuid::new_v5(&Uuid::NAMESPACE_DNS, &[1, 2, 3, 4, 5, 6]).to_hyphenated()),
-                _ => {}
-            }
-        },
-        _ => {}
+    let Some((name, sub_matches)) = matches.subcommand() else {
+        command.print_help()?;
+        println!();
+        return Ok(());
     };
 
-    Ok(())
+    match name {
+        "list" => {
+            let category = sub_matches
+                .get_one::<String>("category")
+                .map(String::as_str);
+            print!("{}", listing(category, sub_matches.get_flag("names"))?);
+            Ok(())
+        }
+        "completions" => {
+            let shell = *sub_matches
+                .get_one::<Shell>("shell")
+                .expect("shell is required");
+            // Generating into a buffer first keeps `txc completions bash | head`
+            // from failing on the closed pipe.
+            let mut script = Vec::new();
+            clap_complete::generate(shell, &mut command, "txc", &mut script);
+            txc::input::write(&String::from_utf8(script)?, None, false)
+        }
+        "about" => {
+            print!("{}", txc::about::report());
+            Ok(())
+        }
+        "tui" => txc::tui::run(),
+        _ => {
+            let op = registry::find(name)
+                .ok_or_else(|| anyhow::anyhow!("unknown operation {name:?}"))?;
 
+            // Generators declare no INPUT argument, so it must not be read.
+            let text = if op.feed == registry::Feed::None {
+                String::new()
+            } else {
+                Source {
+                    args: sub_matches
+                        .try_get_many::<String>("INPUT")
+                        .ok()
+                        .flatten()
+                        .map(|values| values.cloned().collect())
+                        .unwrap_or_default(),
+                    file: value(sub_matches, "file").map(PathBuf::from),
+                    raw: flag(sub_matches, "raw"),
+                }
+                .read()?
+            };
+
+            let line_mode = match (flag(sub_matches, "lines"), flag(sub_matches, "whole")) {
+                (true, false) => Some(true),
+                (false, true) => Some(false),
+                _ => None,
+            };
+
+            let params = cli::params_from(op, sub_matches);
+            let result = op.apply(&text, &params, line_mode)?;
+
+            let destination = value(sub_matches, "out").map(PathBuf::from);
+            txc::input::write(
+                &result,
+                destination.as_deref(),
+                !flag(sub_matches, "no-newline"),
+            )
+        }
+    }
+}
+
+/// Reads a switch that the matched operation may not declare.
+///
+/// Generators have no input options, so asking for one by name has to be a
+/// question rather than an assertion.
+fn flag(matches: &clap::ArgMatches, name: &str) -> bool {
+    matches
+        .try_get_one::<bool>(name)
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(false)
+}
+
+/// Reads a value that the matched operation may not declare.
+fn value<'a>(matches: &'a clap::ArgMatches, name: &str) -> Option<&'a String> {
+    matches.try_get_one::<String>(name).ok().flatten()
+}
+
+/// Renders `txc list`.
+fn listing(category: Option<&str>, names_only: bool) -> Result<String> {
+    let selected = match category {
+        Some(name) => {
+            let category = Category::from_id(name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unknown category {name:?}; try one of: {}",
+                    Category::ALL
+                        .iter()
+                        .map(|c| c.id())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?;
+            vec![category]
+        }
+        None => Category::ALL.to_vec(),
+    };
+
+    let mut out = String::new();
+
+    if names_only {
+        for category in selected {
+            for op in registry::in_category(category) {
+                out.push_str(op.name);
+                out.push('\n');
+            }
+        }
+        return Ok(out);
+    }
+
+    let width = registry::all()
+        .iter()
+        .map(|op| op.name.len())
+        .max()
+        .unwrap_or(20);
+
+    for category in selected {
+        out.push_str(&format!(
+            "{} — {}\n",
+            category.title().to_uppercase(),
+            category.about()
+        ));
+        for op in registry::in_category(category) {
+            out.push_str(&format!("  {:width$}  {}\n", op.name, op.about));
+            if !op.aliases.is_empty() {
+                out.push_str(&format!(
+                    "  {:width$}  also: {}\n",
+                    "",
+                    op.aliases.join(", ")
+                ));
+            }
+        }
+        out.push('\n');
+    }
+
+    out.push_str(&format!(
+        "{} operations in {} categories. Run txc <operation> --help for details.\n",
+        registry::all().len(),
+        Category::ALL.len()
+    ));
+    Ok(out)
 }

@@ -1,0 +1,377 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build every artifact without publishing a release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The archive names come from the tag while --version comes from the
+  # manifest, so tagging v0.4.0 against a manifest still reading 0.3.0 would
+  # ship txc-0.4.0-*.tar.gz containing a binary that reports 0.3.0.
+  # It runs unconditionally rather than only on tags: a skipped job skips
+  # everything that needs it, which would break workflow_dispatch.
+  check-version:
+    name: Tag matches Cargo.toml
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the tag with the manifest
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "not a tag, nothing to compare"; exit 0 ;;
+          esac
+          TAG="${GITHUB_REF_NAME#v}"
+          MANIFEST=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          echo "tag=${TAG} manifest=${MANIFEST}"
+          if [ "$TAG" != "$MANIFEST" ]; then
+            echo "::error::tag v${TAG} does not match Cargo.toml version ${MANIFEST}"
+            exit 1
+          fi
+
+  # CI runs on branches and pull requests, so without this a tag push would
+  # reach publish without a single test having run.
+  verify:
+    name: Tests and lints
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # The count is asserted because a suite that stops being discovered
+      # exits 0, and would wave a broken release straight through.
+      - name: Tests
+        run: |
+          set -o pipefail
+          cargo test --locked 2>&1 | tee test.log
+          grep -qE 'running [1-9][0-9]* tests?' test.log \
+            || { echo "::error::no tests were discovered"; exit 1; }
+
+      - name: Completions are current
+        run: |
+          cargo build --locked
+          ./target/debug/txc completions bash > completions/txc.bash
+          ./target/debug/txc completions zsh > completions/_txc
+          ./target/debug/txc completions fish > completions/txc.fish
+          ./target/debug/txc completions powershell > completions/txc.ps1
+          ./target/debug/txc completions elvish > completions/txc.elv
+          git diff --exit-code completions/ \
+            || { echo "::error::completions are stale; regenerate and commit them"; exit 1; }
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Binaries. Linux is built against musl so one tarball runs on every
+  # distribution regardless of its glibc.
+  # ────────────────────────────────────────────────────────────────────────
+  build:
+    name: ${{ matrix.label }}
+    needs: [check-version, verify]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x86_64 (static)
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+            slug: linux-x86_64
+            archive: tar.gz
+
+          - label: Linux aarch64 (static)
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-musl
+            slug: linux-aarch64
+            archive: tar.gz
+
+          - label: macOS x86_64
+            runner: macos-13
+            target: x86_64-apple-darwin
+            slug: macos-x86_64
+            archive: tar.gz
+
+          - label: macOS arm64
+            runner: macos-14
+            target: aarch64-apple-darwin
+            slug: macos-arm64
+            archive: tar.gz
+
+          - label: Windows x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            slug: windows-x86_64
+            archive: zip
+
+          - label: Windows arm64
+            runner: windows-latest
+            target: aarch64-pc-windows-msvc
+            slug: windows-arm64
+            archive: zip
+            # Cross compiled, so the binary is never run on this runner.
+            cross: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update -qq && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # Proves the artifact actually runs, which a compile alone does not.
+      # Skipped where the binary is for another architecture.
+      - name: Smoke test the binary
+        if: '!matrix.cross'
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/txc"
+          [ -f "$BIN.exe" ] && BIN="$BIN.exe"
+          "$BIN" --version
+          [ "$("$BIN" upper hello)" = "HELLO" ] || { echo "::error::binary misbehaves"; exit 1; }
+          [ "$("$BIN" list --names | wc -l)" -gt 100 ] || { echo "::error::catalogue is short"; exit 1; }
+
+      - name: Package
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ "$VERSION" = "$GITHUB_REF_NAME" ] && VERSION="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          DIR="txc-${VERSION}-${{ matrix.slug }}"
+          mkdir "$DIR"
+          if [ -f "target/${{ matrix.target }}/release/txc.exe" ]; then
+            cp "target/${{ matrix.target }}/release/txc.exe" "$DIR/"
+          else
+            cp "target/${{ matrix.target }}/release/txc" "$DIR/"
+          fi
+          cp README.md LICENSE-MIT LICENSE-APACHE "$DIR/"
+          # The committed completions are verified current by the verify job,
+          # so they can be shipped even for a cross compiled target.
+          cp -r completions "$DIR/"
+
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            ARCHIVE="${DIR}.zip"
+            7z a -tzip "$ARCHIVE" "$DIR" > /dev/null
+          else
+            ARCHIVE="${DIR}.tar.gz"
+            tar czf "$ARCHIVE" "$DIR"
+          fi
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.slug }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Distribution packages, built against glibc on the oldest supported
+  # runner: cargo-deb records the build machine's glibc as a dependency.
+  # ────────────────────────────────────────────────────────────────────────
+  packages:
+    name: deb and rpm · ${{ matrix.arch }}
+    needs: [check-version, verify]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install the package generators
+        run: cargo install cargo-deb cargo-generate-rpm --locked
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Build the deb
+        run: cargo deb --no-build --output target/debian/
+
+      - name: Build the rpm
+        run: cargo generate-rpm
+
+      # Reading the packages back catches an assets list that points at a file
+      # that moved, which otherwise ships as a package missing its binary.
+      - name: Inspect the packages
+        run: |
+          set -eu
+          sudo apt-get update -qq && sudo apt-get install -y rpm
+          DEB=$(find target/debian -name '*.deb' | head -1)
+          RPM=$(find target/generate-rpm -name '*.rpm' | head -1)
+          echo "── $DEB ──"; dpkg-deb -c "$DEB"
+          echo "── $RPM ──"; rpm -qlp "$RPM"
+          for package in "$DEB" "$RPM"; do
+            case "$package" in
+              *.deb) listing=$(dpkg-deb -c "$package" | awk '{print $NF}') ;;
+              *.rpm) listing=$(rpm -qlp "$package") ;;
+            esac
+            for required in /usr/bin/txc bash-completion fish zsh; do
+              echo "$listing" | grep -q "$required" \
+                || { echo "::error::$package is missing $required"; exit 1; }
+            done
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.arch }}
+          path: |
+            target/debian/*.deb
+            target/generate-rpm/*.rpm
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Collect, checksum, render the package manifests and publish.
+  # ────────────────────────────────────────────────────────────────────────
+  publish:
+    name: Publish
+    needs: [build, packages]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect into dist and checksum
+        run: |
+          set -eu
+          mkdir -p dist
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \
+            -o -name '*.deb' -o -name '*.rpm' \) -exec cp {} dist/ \;
+          cp install.sh install.ps1 dist/
+          checksum() (
+            # SHA256SUMS is excluded from its own listing by name. The
+            # redirect creates the file as the pipeline starts, so anything
+            # that merely deletes it first still walks over the empty file it
+            # is about to write, and records the hash of nothing: that entry
+            # then makes `sha256sum -c SHA256SUMS` fail on the very file doing
+            # the checking.
+            cd "$1"
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' \
+              | sort | xargs sha256sum > SHA256SUMS
+          )
+          checksum dist
+          echo "── dist ──"
+          ls -lh dist
+          cat dist/SHA256SUMS
+
+      - name: Render the package manifests
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ "$VERSION" = "$GITHUB_REF_NAME" ] && VERSION="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          packaging/render.sh "$VERSION" dist dist/packaging
+          tar czf dist/txc-"${VERSION}"-packaging.tar.gz -C dist packaging
+          rm -rf dist/packaging
+          # The checksum file has to cover the manifest bundle too.
+          cd dist
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' \
+            | sort | xargs sha256sum > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -f CHANGELOG.md ] && grep -q "^## \[\?${VERSION}" CHANGELOG.md; then
+            awk "/^## \[?${VERSION}\]?/{flag=1; next} /^## /{flag=0} flag" CHANGELOG.md > notes.md
+          else
+            echo "Release ${GITHUB_REF_NAME}" > notes.md
+          fi
+          {
+            echo
+            echo "### Install"
+            echo
+            echo '```sh'
+            echo "curl -sSf https://raw.githubusercontent.com/vorjdux/txc/main/install.sh | sh"
+            echo '```'
+            echo
+            echo '```powershell'
+            echo "irm https://raw.githubusercontent.com/vorjdux/txc/main/install.ps1 | iex"
+            echo '```'
+            echo
+            echo "Every archive is listed in \`SHA256SUMS\`."
+          } >> notes.md
+          cat notes.md
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/') && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          PRERELEASE=""
+          case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --title "txc ${VERSION}" --notes-file notes.md
+          else
+            gh release create "$TAG" dist/* \
+              --title "txc ${VERSION}" \
+              --notes-file notes.md \
+              $PRERELEASE
+          fi
+
+      - name: Dry run summary
+        if: ${{ !startsWith(github.ref, 'refs/tags/') || inputs.dry_run }}
+        run: |
+          echo "### Would publish" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -1 dist >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # Publishing to crates.io is what makes `cargo install txc` work. It runs
+  # only for a real tag, and only when a token has been configured.
+  crates-io:
+    name: crates.io
+    needs: [publish]
+    if: startsWith(github.ref, 'refs/tags/') && !inputs.dry_run
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::notice::CARGO_REGISTRY_TOKEN is not set, skipping crates.io"
+            exit 0
+          fi
+          cargo publish --locked

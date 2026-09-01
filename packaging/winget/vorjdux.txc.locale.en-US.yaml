@@ -1,0 +1,28 @@
+PackageIdentifier: vorjdux.txc
+PackageVersion: "@VERSION@"
+PackageLocale: en-US
+Publisher: Matheus Santos
+PublisherUrl: https://github.com/vorjdux
+PackageName: txc
+PackageUrl: https://github.com/vorjdux/txc
+License: MIT OR Apache-2.0
+LicenseUrl: https://github.com/vorjdux/txc/blob/main/LICENSE-MIT
+ShortDescription: Offline text utilities for the terminal
+Description: |-
+  Everything the online text tool sites do, done locally: your text never
+  leaves the machine, there is no network call, and there is nothing to paste
+  into a web form. Over a hundred operations covering case conversion,
+  encoding, hashing, line editing, format conversion, inspection and
+  generators, usable as arguments, over a pipe, or through an interactive
+  terminal interface.
+Moniker: txc
+Tags:
+  - cli
+  - text
+  - encoding
+  - hash
+  - terminal
+  - tui
+ReleaseNotesUrl: https://github.com/vorjdux/txc/releases/tag/v@VERSION@
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
