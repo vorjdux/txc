@@ -31,6 +31,13 @@ pub enum Route {
 pub type Program = (&'static str, &'static [&'static str]);
 
 /// The programs to try, in order, for the platform this was built for.
+///
+/// ```
+/// use txc::tui::clipboard::programs;
+///
+/// // Every platform has at least one, or copying could never work.
+/// assert!(!programs().is_empty());
+/// ```
 pub fn programs() -> &'static [Program] {
     #[cfg(target_os = "macos")]
     {
@@ -61,12 +68,35 @@ pub fn programs() -> &'static [Program] {
 }
 
 /// Copies `text`, reporting which route carried it.
+///
+/// # Errors
+///
+/// Returns an error only when no program took the text *and* the terminal
+/// could not be written to.
+///
+/// ```no_run
+/// use txc::tui::clipboard::{Route, copy};
+///
+/// match copy("text to copy")? {
+///     Route::Program(name) => println!("{name} took it"),
+///     Route::Terminal => println!("asked the terminal, which does not report back"),
+/// }
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn copy(text: &str) -> Result<Route> {
     copy_with(programs(), text)
 }
 
 /// The same, against a given list of programs, so the fallback order can be
 /// exercised without depending on what this machine happens to have installed.
+///
+/// The first program that takes the text wins. One that is not installed, or
+/// that exits non-zero, is passed over.
+///
+/// # Errors
+///
+/// Returns an error only when no program took the text *and* the terminal
+/// could not be written to.
 pub fn copy_with(programs: &[Program], text: &str) -> Result<Route> {
     for (program, args) in programs {
         if feed(program, args, text).is_ok() {
@@ -101,8 +131,13 @@ fn feed(program: &str, args: &[&str], text: &str) -> Result<()> {
 /// A multiplexer the escape sequence has to travel through.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Passthrough {
+    /// Nothing in the way: the sequence goes straight to the terminal.
     None,
+    /// Running under tmux, which needs the sequence wrapped and its escapes
+    /// doubled.
     Tmux,
+    /// Running under GNU screen, which needs the sequence wrapped but not
+    /// doubled.
     Screen,
 }
 
@@ -115,6 +150,19 @@ fn passthrough() -> Passthrough {
 }
 
 /// Decides from the environment, kept separate so it can be tested.
+///
+/// ```
+/// use txc::tui::clipboard::{Passthrough, passthrough_for};
+///
+/// // TMUX wins, because tmux may run under any TERM.
+/// assert_eq!(
+///     passthrough_for(Some("/tmp/tmux-1000/default,123,0"), Some("xterm")),
+///     Passthrough::Tmux,
+/// );
+/// assert_eq!(passthrough_for(None, Some("screen-256color")), Passthrough::Screen);
+/// assert_eq!(passthrough_for(None, Some("xterm-256color")), Passthrough::None);
+/// assert_eq!(passthrough_for(None, None), Passthrough::None);
+/// ```
 pub fn passthrough_for(tmux: Option<&str>, term: Option<&str>) -> Passthrough {
     if tmux.is_some_and(|value| !value.is_empty()) {
         return Passthrough::Tmux;
@@ -130,6 +178,14 @@ pub fn passthrough_for(tmux: Option<&str>, term: Option<&str>) -> Passthrough {
 /// A bare sequence sent from inside tmux is consumed by tmux rather than
 /// reaching the terminal, so it has to be wrapped for passthrough, with the
 /// escapes inside doubled.
+///
+/// ```
+/// use txc::tui::clipboard::{Passthrough, sequence};
+///
+/// // The payload is base64, whatever the wrapping.
+/// assert_eq!(sequence("hello", Passthrough::None), "\x1b]52;c;aGVsbG8=\x07");
+/// assert_eq!(sequence("hello", Passthrough::Screen), "\x1bP\x1b]52;c;aGVsbG8=\x07\x1b\\");
+/// ```
 pub fn sequence(text: &str, passthrough: Passthrough) -> String {
     let payload = format!(
         "\x1b]52;c;{}\x07",
@@ -155,6 +211,12 @@ fn send_sequence(text: &str, passthrough: Passthrough) -> Result<()> {
 ///
 /// The terminal route cannot be confirmed, so on a machine that has a display
 /// the message says what to install rather than claiming success.
+///
+/// ```
+/// use txc::tui::clipboard::{Route, report};
+///
+/// assert_eq!(report(&Route::Program("wl-copy".into())), "output copied with wl-copy");
+/// ```
 pub fn report(route: &Route) -> String {
     match route {
         Route::Program(program) => format!("output copied with {program}"),

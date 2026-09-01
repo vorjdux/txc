@@ -1,4 +1,22 @@
 //! Generators: identifiers, passwords, random data and placeholder text.
+//!
+//! These ignore their input, and most of them give a different answer every
+//! time, so the examples check the shape rather than the value.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("uuid").expect("uuid is registered");
+//! let uuid = op.apply("", &Params::for_op(op), None)?;
+//! assert_eq!(uuid.len(), 36);
+//! assert_eq!(uuid.matches('-').count(), 4);
+//!
+//! let op = find("lorem").expect("lorem is registered");
+//! let mut params = Params::for_op(op);
+//! params.set("words", "3");
+//! assert_eq!(op.apply("", &params, None)?.split_whitespace().count(), 3);
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::{Result, bail};
 use rand::RngExt;

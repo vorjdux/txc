@@ -32,6 +32,16 @@ pub(crate) fn register(out: &mut Vec<Op>) {
 /// Separators are any non alphanumeric character, and boundaries are also
 /// recognised inside runs of letters, so `parseHTTPResponse` yields
 /// `["parse", "HTTP", "Response"]`.
+///
+/// ```
+/// use txc::ops::split_words;
+///
+/// assert_eq!(split_words("hello world"), ["hello", "world"]);
+/// assert_eq!(split_words("userFirstName"), ["user", "First", "Name"]);
+/// assert_eq!(split_words("parseHTTPResponse"), ["parse", "HTTP", "Response"]);
+/// assert_eq!(split_words("snake_case-and.dots"), ["snake", "case", "and", "dots"]);
+/// assert!(split_words("").is_empty());
+/// ```
 pub fn split_words(input: &str) -> Vec<String> {
     let mut words: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -66,6 +76,14 @@ pub fn split_words(input: &str) -> Vec<String> {
 }
 
 /// Uppercases the first character and leaves the rest untouched.
+///
+/// ```
+/// use txc::ops::capitalize_first;
+///
+/// assert_eq!(capitalize_first("hello"), "Hello");
+/// assert_eq!(capitalize_first("hELLO"), "HELLO");
+/// assert_eq!(capitalize_first(""), "");
+/// ```
 pub fn capitalize_first(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
@@ -75,6 +93,13 @@ pub fn capitalize_first(word: &str) -> String {
 }
 
 /// Uppercases the first character and lowercases the rest.
+///
+/// ```
+/// use txc::ops::capitalize_only;
+///
+/// assert_eq!(capitalize_only("hELLO"), "Hello");
+/// assert_eq!(capitalize_only(""), "");
+/// ```
 pub fn capitalize_only(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
@@ -84,6 +109,14 @@ pub fn capitalize_only(word: &str) -> String {
 }
 
 /// Renders bytes as hexadecimal.
+///
+/// ```
+/// use txc::ops::to_hex;
+///
+/// assert_eq!(to_hex(b"txc", false), "747863");
+/// assert_eq!(to_hex(&[0xde, 0xad], true), "DEAD");
+/// assert_eq!(to_hex(&[], false), "");
+/// ```
 pub fn to_hex(bytes: &[u8], upper: bool) -> String {
     const LOWER_DIGITS: &[u8; 16] = b"0123456789abcdef";
     const UPPER_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
@@ -97,6 +130,26 @@ pub fn to_hex(bytes: &[u8], upper: bool) -> String {
 }
 
 /// Parses hexadecimal, ignoring whitespace and the common `0x` prefix.
+///
+/// # Errors
+///
+/// Returns an error for an odd number of digits, or for a pair that is not
+/// hexadecimal.
+///
+/// ```
+/// use txc::ops::{from_hex, to_hex};
+///
+/// assert_eq!(from_hex("747863")?, b"txc");
+/// assert_eq!(from_hex("74 78 63")?, b"txc");   // whitespace ignored
+/// assert_eq!(from_hex("0x747863")?, b"txc");   // and the 0x prefix
+///
+/// // Round trips with to_hex.
+/// assert_eq!(from_hex(&to_hex(b"round trip", false))?, b"round trip");
+///
+/// assert!(from_hex("747").is_err());           // odd number of digits
+/// assert!(from_hex("zz").is_err());            // not hexadecimal
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn from_hex(input: &str) -> anyhow::Result<Vec<u8>> {
     let cleaned: String = input
         .split_whitespace()
@@ -119,6 +172,21 @@ pub fn from_hex(input: &str) -> anyhow::Result<Vec<u8>> {
 }
 
 /// Turns decoded bytes into text, with a clear message when they are not text.
+///
+/// # Errors
+///
+/// Returns an error naming the byte offset where the bytes stopped being
+/// valid UTF-8.
+///
+/// ```
+/// use txc::ops::bytes_to_string;
+///
+/// assert_eq!(bytes_to_string(b"txc".to_vec())?, "txc");
+///
+/// let error = bytes_to_string(vec![0x74, 0xff]).unwrap_err().to_string();
+/// assert!(error.contains("byte 1"));
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn bytes_to_string(bytes: Vec<u8>) -> anyhow::Result<String> {
     String::from_utf8(bytes).map_err(|e| {
         anyhow::anyhow!(

@@ -1,4 +1,21 @@
 //! Number bases, roman numerals and number spelling.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("roman-encode").expect("roman-encode is registered");
+//! assert_eq!(op.apply("2024", &Params::for_op(op), None)?, "MMXXIV");
+//!
+//! let op = find("spell").expect("spell is registered");
+//! assert_eq!(op.apply("42", &Params::for_op(op), None)?, "forty-two");
+//!
+//! let op = find("base-convert").expect("base-convert is registered");
+//! let mut params = Params::for_op(op);
+//! params.set("from", "10");
+//! params.set("to", "16");
+//! assert_eq!(op.apply("255", &params, None)?, "ff");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::bail;
 

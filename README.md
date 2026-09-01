@@ -1,5 +1,11 @@
 # txc
 
+[![CI](https://github.com/vorjdux/txc/actions/workflows/ci.yml/badge.svg)](https://github.com/vorjdux/txc/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/txc.svg?logo=rust)](https://crates.io/crates/txc)
+[![docs.rs](https://img.shields.io/docsrs/txc?logo=docsdotrs)](https://docs.rs/txc)
+[![MSRV](https://img.shields.io/crates/msrv/txc?logo=rust)](https://github.com/vorjdux/txc#from-source)
+[![Licence](https://img.shields.io/crates/l/txc.svg)](#license)
+
 Text utilities for the terminal. Everything the online text tool sites do, done
 locally: your text never leaves the machine, there is no network call, and
 there is nothing to paste into a web form.
@@ -603,7 +609,8 @@ Timestamps and date formatting.
 ## Using it as a library
 
 The operation registry is exposed as a library, so the same catalogue is
-available from Rust:
+available from Rust. The API documentation is on
+[docs.rs](https://docs.rs/txc).
 
 ```rust
 use txc::{Params, find};

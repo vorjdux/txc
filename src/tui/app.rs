@@ -7,10 +7,15 @@ use crate::tui::textarea::TextArea;
 /// Which panel keystrokes are going to.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Focus {
+    /// The search box above the operation list.
     Search,
+    /// The category list down the left.
     Categories,
+    /// The operation list.
     Operations,
+    /// The input text panel.
     Input,
+    /// The options panel, shown only when the operation takes parameters.
     Options,
 }
 
@@ -27,17 +32,35 @@ impl Focus {
 /// The result of running the selected operation over the current input.
 #[derive(Clone, Debug)]
 pub enum Outcome {
+    /// The operation ran, and this is what it produced.
     Ready(String),
+    /// The operation failed, and this is the message to show instead.
     Failed(String),
 }
 
 impl Outcome {
+    /// The text to display, whether the operation succeeded or not.
+    ///
+    /// ```
+    /// use txc::tui::app::Outcome;
+    ///
+    /// assert_eq!(Outcome::Ready("HELLO".into()).text(), "HELLO");
+    /// assert_eq!(Outcome::Failed("bad input".into()).text(), "bad input");
+    /// ```
     pub fn text(&self) -> &str {
         match self {
             Outcome::Ready(text) | Outcome::Failed(text) => text,
         }
     }
 
+    /// Whether this is a failure, which the output panel colours differently.
+    ///
+    /// ```
+    /// use txc::tui::app::Outcome;
+    ///
+    /// assert!(Outcome::Failed("bad input".into()).is_error());
+    /// assert!(!Outcome::Ready("HELLO".into()).is_error());
+    /// ```
     pub fn is_error(&self) -> bool {
         matches!(self, Outcome::Failed(_))
     }
@@ -46,19 +69,34 @@ impl Outcome {
 /// A question asked in a small window over the interface.
 #[derive(Clone, Debug)]
 pub struct Prompt {
+    /// Heading of the little window.
     pub title: String,
+    /// One line of guidance under the title.
     pub hint: String,
+    /// What the reader is typing in answer.
     pub input: TextArea,
 }
 
+/// Everything the interactive interface needs to draw itself and respond to a
+/// keystroke.
+///
+/// The state is deliberately plain data, so a test can drive the interface
+/// without a terminal attached.
 pub struct App {
-    /// `None` stands for the entry that shows every category at once.
+    /// The categories down the left. `None` stands for the entry that shows
+    /// every category at once.
     pub categories: Vec<Option<Category>>,
+    /// Which category is selected.
     pub category_index: usize,
+    /// The operations matching the category and the search text.
     pub operations: Vec<&'static Op>,
+    /// Which operation is selected.
     pub operation_index: usize,
+    /// The search text narrowing the operation list.
     pub search: String,
+    /// The text the operation is run over.
     pub input: TextArea,
+    /// The parameters panel for the selected operation.
     pub options: OptionsEditor,
     /// True while the input still holds the sample loaded for the selected
     /// operation, which is what makes it safe to replace on the next change.
@@ -70,13 +108,19 @@ pub struct App {
     pub prompt: Option<Prompt>,
     /// Text the event loop should hand to the terminal's clipboard.
     pub pending_clipboard: Option<String>,
+    /// What the selected operation last produced.
     pub outcome: Outcome,
+    /// Which panel the keystrokes go to.
     pub focus: Focus,
+    /// How far the output panel is scrolled.
     pub output_scroll: u16,
+    /// Whether the help overlay is over the interface.
     pub show_help: bool,
     /// Whether the About view is over the interface.
     pub show_about: bool,
+    /// The message along the bottom of the interface.
     pub status: String,
+    /// Cleared to end the event loop and leave the interface.
     pub running: bool,
 }
 
@@ -157,12 +201,16 @@ impl App {
         !self.options.is_empty()
     }
 
+    /// Moves focus to the next panel, skipping any the operation does not
+    /// show, and wrapping round at the end.
     pub fn focus_next(&mut self) {
         let order = self.focus_order();
         let index = order.iter().position(|f| *f == self.focus).unwrap_or(0);
         self.focus = order[(index + 1) % order.len()];
     }
 
+    /// Moves focus to the previous panel, skipping any the operation does not
+    /// show, and wrapping round at the start.
     pub fn focus_previous(&mut self) {
         let order = self.focus_order();
         let index = order.iter().position(|f| *f == self.focus).unwrap_or(0);
@@ -366,10 +414,26 @@ impl App {
         None
     }
 
+    /// The operation the reader is on, if the list is not empty.
+    ///
+    /// ```
+    /// use txc::tui::app::App;
+    ///
+    /// // The interface always opens on a working operation.
+    /// assert!(App::new().selected_operation().is_some());
+    /// ```
     pub fn selected_operation(&self) -> Option<&'static Op> {
         self.operations.get(self.operation_index).copied()
     }
 
+    /// The category the reader has narrowed to, or `None` for all of them.
+    ///
+    /// ```
+    /// use txc::tui::app::App;
+    ///
+    /// // The interface opens showing every category.
+    /// assert_eq!(App::new().selected_category(), None);
+    /// ```
     pub fn selected_category(&self) -> Option<Category> {
         self.categories.get(self.category_index).copied().flatten()
     }
@@ -427,6 +491,8 @@ impl App {
         };
     }
 
+    /// Moves to the next operation, wrapping round, and loads its sample and
+    /// options.
     pub fn select_next_operation(&mut self) {
         if self.operations.is_empty() {
             return;
@@ -435,6 +501,8 @@ impl App {
         self.load_operation();
     }
 
+    /// Moves to the previous operation, wrapping round, and loads its sample
+    /// and options.
     pub fn select_previous_operation(&mut self) {
         if self.operations.is_empty() {
             return;
@@ -444,6 +512,8 @@ impl App {
         self.load_operation();
     }
 
+    /// Moves to the next category, wrapping round, and refilters the operation
+    /// list.
     pub fn select_next_category(&mut self) {
         self.category_index = (self.category_index + 1) % self.categories.len();
         self.operation_index = 0;
@@ -451,6 +521,8 @@ impl App {
         self.load_operation();
     }
 
+    /// Moves to the previous category, wrapping round, and refilters the
+    /// operation list.
     pub fn select_previous_category(&mut self) {
         self.category_index =
             (self.category_index + self.categories.len() - 1) % self.categories.len();

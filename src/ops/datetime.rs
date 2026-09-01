@@ -1,4 +1,15 @@
 //! Timestamps and date formatting.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("from-timestamp").expect("from-timestamp is registered");
+//! assert_eq!(op.apply("1700000000", &Params::for_op(op), None)?, "2023-11-14 22:13:20");
+//!
+//! let op = find("to-timestamp").expect("to-timestamp is registered");
+//! assert_eq!(op.apply("2023-11-14", &Params::for_op(op), None)?, "1699920000");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::Context;
 use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};

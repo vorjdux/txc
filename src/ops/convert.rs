@@ -1,4 +1,17 @@
 //! Conversions between JSON, YAML, TOML and CSV.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("json-to-yaml").expect("json-to-yaml is registered");
+//! // The library hands back exactly what the converter produced, trailing
+//! // newline and all; the command line is what trims it.
+//! assert_eq!(op.apply(r#"{"name":"txc"}"#, &Params::for_op(op), None)?, "name: txc\n");
+//!
+//! let op = find("json-minify").expect("json-minify is registered");
+//! assert_eq!(op.apply(r#"{ "a" : 1 }"#, &Params::for_op(op), None)?, r#"{"a":1}"#);
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::{Context, Result};
 

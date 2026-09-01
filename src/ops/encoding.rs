@@ -1,4 +1,21 @@
 //! Encoding, decoding and classic ciphers.
+//!
+//! Every encoding has a matching decoder, so they round trip.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let encode = find("base64-encode").expect("base64-encode is registered");
+//! let decode = find("base64-decode").expect("base64-decode is registered");
+//!
+//! let encoded = encode.apply("txc", &Params::for_op(encode), None)?;
+//! assert_eq!(encoded, "dHhj");
+//! assert_eq!(decode.apply(&encoded, &Params::for_op(decode), None)?, "txc");
+//!
+//! let url = find("url-encode").expect("url-encode is registered");
+//! assert_eq!(url.apply("a b", &Params::for_op(url), None)?, "a%20b");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::{Context, Result, bail};
 use data_encoding::{BASE32, BASE32_NOPAD, BASE64, BASE64_NOPAD, BASE64URL, BASE64URL_NOPAD};

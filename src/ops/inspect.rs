@@ -1,4 +1,17 @@
 //! Counting, statistics and character inspection.
+//!
+//! These report on text rather than changing it.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("count-words").expect("count-words is registered");
+//! assert_eq!(op.apply("hello world", &Params::for_op(op), None)?, "2");
+//!
+//! let op = find("count-chars").expect("count-chars is registered");
+//! assert_eq!(op.apply("hello", &Params::for_op(op), None)?, "5");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use std::collections::HashMap;
 

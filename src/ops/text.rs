@@ -1,4 +1,16 @@
 //! Searching, replacing, cleaning and restyling text.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("slugify").expect("slugify is registered");
+//! assert_eq!(op.apply("Hello, World!", &Params::for_op(op), None)?, "hello-world");
+//!
+//! // Reversing counts graphemes, not bytes.
+//! let op = find("reverse").expect("reverse is registered");
+//! assert_eq!(op.apply("abc", &Params::for_op(op), None)?, "cba");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::{Context, Result};
 use unicode_normalization::UnicodeNormalization;

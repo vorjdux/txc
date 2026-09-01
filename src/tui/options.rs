@@ -10,6 +10,7 @@ use crate::registry::{Op, Param};
 /// One parameter, with the value the reader has chosen for it.
 #[derive(Clone, Debug)]
 pub struct Field {
+    /// The parameter this field stands for.
     pub param: &'static Param,
     /// Current text of a value parameter, unused by switches.
     pub value: String,
@@ -57,6 +58,17 @@ pub struct OptionsEditor {
 
 impl OptionsEditor {
     /// Builds the fields for an operation, pre-filled with its defaults.
+    ///
+    /// ```
+    /// use txc::find;
+    /// use txc::tui::options::OptionsEditor;
+    ///
+    /// let op = find("caesar").expect("caesar is registered");
+    /// let editor = OptionsEditor::for_op(op);
+    ///
+    /// // The panel starts from a working set of values, not an empty box.
+    /// assert!(op.apply("abc", &editor.params(op), None).is_ok());
+    /// ```
     pub fn for_op(op: &Op) -> OptionsEditor {
         OptionsEditor {
             fields: op.params.iter().map(Field::new).collect(),
@@ -64,18 +76,40 @@ impl OptionsEditor {
         }
     }
 
+    /// The fields, in the order the operation declared its parameters.
+    ///
+    /// ```
+    /// use txc::find;
+    /// use txc::tui::options::OptionsEditor;
+    ///
+    /// let op = find("caesar").expect("caesar is registered");
+    /// let editor = OptionsEditor::for_op(op);
+    /// assert_eq!(editor.fields().len(), op.params.len());
+    /// ```
     pub fn fields(&self) -> &[Field] {
         &self.fields
     }
 
+    /// Index of the field the cursor is on.
     pub fn selected(&self) -> usize {
         self.selected
     }
 
+    /// Whether the operation has no parameters, in which case the panel is
+    /// not drawn at all.
+    ///
+    /// ```
+    /// use txc::find;
+    /// use txc::tui::options::OptionsEditor;
+    ///
+    /// let op = find("upper").expect("upper is registered");
+    /// assert!(OptionsEditor::for_op(op).is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.fields.is_empty()
     }
 
+    /// How many fields the panel holds.
     pub fn len(&self) -> usize {
         self.fields.len()
     }
@@ -84,6 +118,16 @@ impl OptionsEditor {
     ///
     /// A value that is still empty is left out, so a parameter with no default
     /// behaves exactly as it would if it had not been mentioned at all.
+    ///
+    /// ```
+    /// use txc::find;
+    /// use txc::tui::options::OptionsEditor;
+    ///
+    /// let op = find("caesar").expect("caesar is registered");
+    /// let editor = OptionsEditor::for_op(op);
+    /// assert_eq!(op.apply("abc", &editor.params(op), None)?, "def");
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
     pub fn params(&self, op: &Op) -> Params {
         let mut params = Params::for_op(op);
         for field in &self.fields {
@@ -98,12 +142,26 @@ impl OptionsEditor {
         params
     }
 
+    /// Moves to the next field, wrapping round at the end.
+    ///
+    /// ```
+    /// use txc::find;
+    /// use txc::tui::options::OptionsEditor;
+    ///
+    /// let op = find("caesar").expect("caesar is registered");
+    /// let mut editor = OptionsEditor::for_op(op);
+    /// for _ in 0..editor.len() {
+    ///     editor.select_next();
+    /// }
+    /// assert_eq!(editor.selected(), 0); // all the way round
+    /// ```
     pub fn select_next(&mut self) {
         if !self.fields.is_empty() {
             self.selected = (self.selected + 1) % self.fields.len();
         }
     }
 
+    /// Moves to the previous field, wrapping round at the start.
     pub fn select_previous(&mut self) {
         if !self.fields.is_empty() {
             self.selected = (self.selected + self.fields.len() - 1) % self.fields.len();
@@ -133,6 +191,7 @@ impl OptionsEditor {
         }
     }
 
+    /// Types one character into the selected value field. Switches ignore it.
     pub fn insert(&mut self, ch: char) {
         if let Some(field) = self.current()
             && !field.param.is_flag()
@@ -143,6 +202,7 @@ impl OptionsEditor {
         }
     }
 
+    /// Deletes the character before the cursor in the selected value field.
     pub fn backspace(&mut self) {
         if let Some(field) = self.current()
             && !field.param.is_flag()
@@ -155,6 +215,7 @@ impl OptionsEditor {
         }
     }
 
+    /// Deletes the character after the cursor in the selected value field.
     pub fn delete(&mut self) {
         if let Some(field) = self.current()
             && !field.param.is_flag()
@@ -166,24 +227,28 @@ impl OptionsEditor {
         }
     }
 
+    /// Moves the cursor one character left within the selected value.
     pub fn move_left(&mut self) {
         if let Some(field) = self.current() {
             field.cursor = field.cursor.saturating_sub(1);
         }
     }
 
+    /// Moves the cursor one character right within the selected value.
     pub fn move_right(&mut self) {
         if let Some(field) = self.current() {
             field.cursor = (field.cursor + 1).min(field.value.chars().count());
         }
     }
 
+    /// Moves the cursor to the start of the selected value.
     pub fn move_home(&mut self) {
         if let Some(field) = self.current() {
             field.cursor = 0;
         }
     }
 
+    /// Moves the cursor to the end of the selected value.
     pub fn move_end(&mut self) {
         if let Some(field) = self.current() {
             field.cursor = field.value.chars().count();

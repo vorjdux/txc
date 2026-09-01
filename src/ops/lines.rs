@@ -1,4 +1,15 @@
 //! Reordering, filtering and reshaping lines.
+//!
+//! ```
+//! use txc::{Params, find};
+//!
+//! let op = find("sort").expect("sort is registered");
+//! assert_eq!(op.apply("b\na\nc", &Params::for_op(op), None)?, "a\nb\nc");
+//!
+//! let op = find("unique").expect("unique is registered");
+//! assert_eq!(op.apply("a\nb\na", &Params::for_op(op), None)?, "a\nb");
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use anyhow::{Context, Result};
 use rand::seq::SliceRandom;
