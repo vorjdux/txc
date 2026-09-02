@@ -37,23 +37,23 @@ type.
 │Case          │╰──────────────────────────╯│                                              │
 │Encoding      │┏ Operations (1) ━━━━━━━━━━┓│                                              │
 │Hashing       │┃caesar                    ┃│                                              │
-│Lines         │┃                          ┃│                                              │
-│Text          │┃                          ┃╰──────────────────────────────────────────────╯
-│Numbers       │┃                          ┃╭ Options ─────────────────────────────────────╮
-│Convert       │┃                          ┃│  shift  3                                    │
-│Inspect       │┃                          ┃╰──────────────────────────────────────────────╯
-│Generate      │┃                          ┃╭ Output (43 characters) ──────────────────────╮
-│Time          │┃                          ┃│Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj   │
-│              │┃                          ┃│                                              │
-│              │┃                          ┃│                                              │
+│Lines         │┃                          ┃╰──────────────────────────────────────────────╯
+│Text          │┃                          ┃╭ Options ─────────────────────────────────────╮
+│Numbers       │┃                          ┃│  shift  3                                    │
+│Convert       │┃                          ┃╰──────────────────────────────────────────────╯
+│Inspect       │┃                          ┃╭ Output (43 characters) ──────────────────────╮
+│Generate      │┃                          ┃│Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj   │
+│Time          │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
- arg  txc caesar 'The quick brown fox jumps over the lazy dog'
- pipe echo 'The quick brown fox jumps over the lazy dog' | txc caesar
+╭ Command line ────────────────────────────────────────────────────────────────────────────╮
+│arg   txc caesar 'The quick brown fox jumps over the lazy dog'                            │
+│pipe  echo 'The quick brown fox jumps over the lazy dog' | txc caesar                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────╯
  tab panel   ^up/^down op   ^y copy   ^s save   ? help   F2 about   ^c quit
 ```
 
@@ -93,11 +93,15 @@ back.
 │Text          │┃                          ┃│  compact    off                              │
 │Numbers       │┃                          ┃╰──────────────────────────────────────────────╯
 │Convert       │┃                          ┃╭ Output (36 characters, ^n for another) ──────╮
-│Inspect       │┃                          ┃│38e556f9-619e-4461-988f-13d217b99674          │
+│Inspect       │┃                          ┃│6733f105-f83e-4002-9996-a53b4ceb6257          │
 │Generate      │┃                          ┃│                                              │
 │Time          │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
- arg  txc uuid --name example.com
+╭ Command line ────────────────────────────────────────────────────────────────────────────╮
+│arg   txc uuid --name example.com                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────╯
  tab panel   ^up/^down op   ^n new   ^y copy   ^s save   ? help   F2 about   ^c quit
 ```
 
@@ -132,13 +136,15 @@ output is live straight away.
 
 ### The command line, alongside
 
-Along the bottom, above the key reference, the interface writes out the command
-that would do what you are looking at. It follows the panels as you go, so the
-options you change and the text you type are already in it:
+A panel of its own along the bottom writes out the command that would do what
+you are looking at. It follows the panels above as you go, so the options you
+change and the text you type are already in it:
 
 ```
- arg  txc hex-encode --upper --sep ' ' 'The quick brown fox'
- pipe echo 'The quick brown fox' | txc hex -u -s ' '
+╭ Command line ────────────────────────────────────────────────────────────────────────────╮
+│arg   txc hex-encode --upper --sep ' ' 'The quick brown fox'                              │
+│pipe  echo 'The quick brown fox' | txc hex -u -s ' '                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 The two lines are the same command written two ways. `arg` spells everything
@@ -155,8 +161,8 @@ many lines, to sit on one line becomes `< input.txt` rather than a wrapped wall
 of quoting, and an operation that generates rather than transforms, such as
 `uuid`, has no `pipe` line because there is nothing to pipe into it.
 
-The lines are dropped on a terminal shorter than 16 rows, where the panels need
-the space more.
+The panel is dropped on a terminal shorter than 20 rows, where the panels above
+need the space more. The key reference stays: it is how you leave.
 
 ### Running again
 

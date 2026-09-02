@@ -10,12 +10,12 @@ All notable changes to txc are recorded here. The format follows
 
 ### Added
 
-- The interface writes the command line for the selected operation along the
-  bottom, in two forms: `arg` spells it out in full, `pipe` says the same thing
-  as briefly as the operation allows. Both follow the options panel and the
-  input, so they reproduce what is on screen rather than a generic example.
-  They are dropped on a terminal shorter than 16 rows, where the panels need
-  the space more.
+- A Command line panel along the bottom, writing the selected operation out in
+  two forms: `arg` spells it out in full, `pipe` says the same thing as briefly
+  as the operation allows. Both follow the options panel and the input, so they
+  reproduce what is on screen rather than a generic example. The panel is
+  dropped on a terminal shorter than 20 rows, where the panels above need the
+  space more.
 
 ### Fixed
 

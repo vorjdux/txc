@@ -39,7 +39,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let [header, body, footer] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(6),
-        Constraint::Length(1 + hints.len() as u16),
+        Constraint::Length(footer_rows(hints.len())),
     ])
     .areas(frame.area());
 
@@ -393,9 +393,15 @@ fn draw_output(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-/// How tall the terminal must be before the footer also spells out the command
-/// line. Below this the rows are better spent on the panels.
-const HINTS_NEED_ROWS: u16 = 16;
+/// How tall the terminal must be before the command panel is drawn as well as
+/// the key reference. Below this the rows are better spent on the panels above.
+const HINTS_NEED_ROWS: u16 = 20;
+
+/// How many rows the bottom of the screen takes: the key reference, plus the
+/// command panel and the frame around it when there is one.
+const fn footer_rows(hints: usize) -> u16 {
+    if hints == 0 { 1 } else { hints as u16 + 3 }
+}
 
 /// The two command lines for the selected operation, as they appear along the
 /// bottom. Empty when nothing is selected.
@@ -417,8 +423,10 @@ fn command_hints(app: &App) -> Vec<(&'static str, String)> {
 
 /// Draws the command lines and the key reference along the bottom.
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static str, String)>) {
+    // A panel of its own, so the command lines read as something to copy rather
+    // than as more of the key reference below them.
     let [hint_area, area] = Layout::vertical([
-        Constraint::Length(hints.len() as u16),
+        Constraint::Length(footer_rows(hints.len()) - 1),
         Constraint::Length(1),
     ])
     .areas(area);
@@ -429,14 +437,17 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static st
             .map(|(label, text)| {
                 Line::from(vec![
                     Span::styled(
-                        format!(" {label:<5}"),
+                        format!("{label:<5} "),
                         Style::default().fg(MUTED).add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(text, Style::default().fg(ACCENT)),
                 ])
             })
             .collect();
-        frame.render_widget(Paragraph::new(lines), hint_area);
+        frame.render_widget(
+            Paragraph::new(lines).block(panel("Command line", false)),
+            hint_area,
+        );
     }
 
     let keys: Vec<(&str, &str)> = if app.status.is_empty() {
@@ -814,8 +825,12 @@ mod tests {
         app.load_operation();
         let (screen, _) = render_with_cursor(&mut app, 100, 30);
 
-        assert!(screen.contains(" arg  txc hex-encode"), "{screen}");
-        assert!(screen.contains(" pipe echo "), "{screen}");
+        assert!(
+            screen.contains("Command line"),
+            "in a panel of its own:\n{screen}"
+        );
+        assert!(screen.contains("arg   txc hex-encode"), "{screen}");
+        assert!(screen.contains("pipe  echo "), "{screen}");
         assert!(
             screen.contains("| txc hex"),
             "the pipe form is the short one"
@@ -854,7 +869,7 @@ mod tests {
         app.load_operation();
         let (screen, _) = render_with_cursor(&mut app, 100, 30);
 
-        assert!(screen.contains(" arg  txc uuid"), "{screen}");
+        assert!(screen.contains("arg   txc uuid"), "{screen}");
         assert!(
             !screen.contains(" pipe "),
             "nothing to pipe into it:\n{screen}"
@@ -866,7 +881,8 @@ mod tests {
         let mut app = App::new();
         let (screen, _) = render_with_cursor(&mut app, 100, HINTS_NEED_ROWS - 1);
 
-        assert!(!screen.contains(" arg  "), "{screen}");
+        assert!(!screen.contains("Command line"), "{screen}");
+        assert!(!screen.contains("arg   "), "{screen}");
         assert!(
             screen.contains("quit"),
             "leaving must stay on screen:\n{screen}"
