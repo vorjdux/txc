@@ -2,10 +2,12 @@
 
 pub mod app;
 pub mod clipboard;
+pub mod command;
 pub mod options;
 pub mod textarea;
 mod ui;
 
+use std::io::IsTerminal;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -28,6 +30,15 @@ use crate::tui::app::{App, Focus};
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub fn run() -> Result<()> {
+    // Asked before handing over to ratatui, because on Windows crossterm reads
+    // the console the process is attached to rather than the standard streams.
+    // Under a pipe it therefore starts happily and then blocks for ever in
+    // `event::read`, waiting for a key nothing will send.
+    anyhow::ensure!(
+        std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+        "the interactive interface needs a terminal; run txc <operation> instead"
+    );
+
     let mut terminal = ratatui::try_init()
         .context("the interactive interface needs a terminal; run txc <operation> instead")?;
     let result = event_loop(&mut terminal);

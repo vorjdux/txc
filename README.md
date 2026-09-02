@@ -31,27 +31,29 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.3.0 Shift letters by a fixed amount
+ txc  0.4.1 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
 │Encoding      │┏ Operations (1) ━━━━━━━━━━┓│                                              │
 │Hashing       │┃caesar                    ┃│                                              │
-│Lines         │┃                          ┃│                                              │
-│Text          │┃                          ┃╰──────────────────────────────────────────────╯
-│Numbers       │┃                          ┃╭ Options ─────────────────────────────────────╮
-│Convert       │┃                          ┃│  shift  3                                    │
-│Inspect       │┃                          ┃╰──────────────────────────────────────────────╯
-│Generate      │┃                          ┃╭ Output (43 characters) ──────────────────────╮
-│Time          │┃                          ┃│Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj   │
-│              │┃                          ┃│                                              │
-│              │┃                          ┃│                                              │
+│Lines         │┃                          ┃╰──────────────────────────────────────────────╯
+│Text          │┃                          ┃╭ Options ─────────────────────────────────────╮
+│Numbers       │┃                          ┃│  shift  3                                    │
+│Convert       │┃                          ┃╰──────────────────────────────────────────────╯
+│Inspect       │┃                          ┃╭ Output (43 characters) ──────────────────────╮
+│Generate      │┃                          ┃│Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj   │
+│Time          │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 │              │┃                          ┃│                                              │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
+╭ Command line ────────────────────────────────────────────────────────────────────────────╮
+│arg   txc caesar 'The quick brown fox jumps over the lazy dog'                            │
+│pipe  echo 'The quick brown fox jumps over the lazy dog' | txc caesar                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────╯
  tab panel   ^up/^down op   ^y copy   ^s save   ? help   F2 about   ^c quit
 ```
 
@@ -81,7 +83,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.3.0 Generate UUIDs
+ txc  0.4.1 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -91,8 +93,16 @@ back.
 │Text          │┃                          ┃│  compact    off                              │
 │Numbers       │┃                          ┃╰──────────────────────────────────────────────╯
 │Convert       │┃                          ┃╭ Output (36 characters, ^n for another) ──────╮
-│Inspect       │┃                          ┃│0eee13a3-a1b3-4aff-bf1a-c7e7be89f88b          │
+│Inspect       │┃                          ┃│6733f105-f83e-4002-9996-a53b4ceb6257          │
+│Generate      │┃                          ┃│                                              │
+│Time          │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
+│              │┃                          ┃│                                              │
 ╰──────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────────╯
+╭ Command line ────────────────────────────────────────────────────────────────────────────╮
+│arg   txc uuid --name example.com                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────╯
+ tab panel   ^up/^down op   ^n new   ^y copy   ^s save   ? help   F2 about   ^c quit
 ```
 
 ### Sample text
@@ -123,6 +133,36 @@ Type to change a value, and press `space` to turn a switch on or off. The panel
 title explains whichever parameter is selected. Parameters that are required on
 the command line, such as `replace --find`, start from a worked example so the
 output is live straight away.
+
+### The command line, alongside
+
+A panel of its own along the bottom writes out the command that would do what
+you are looking at. It follows the panels above as you go, so the options you
+change and the text you type are already in it:
+
+```
+╭ Command line ────────────────────────────────────────────────────────────────────────────╮
+│arg   txc hex-encode --upper --sep ' ' 'The quick brown fox'                              │
+│pipe  echo 'The quick brown fox' | txc hex -u -s ' '                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+The two lines are the same command written two ways. `arg` spells everything
+out: the canonical operation name, every parameter as `--name`, and the text as
+an argument. That is the form to read. `pipe` is the same operation as briefly
+as it can be said: the shortest alias that reaches it, single letter flags where
+a parameter has one, and the text arriving through a pipe. That is the form to
+type. Either can be selected out of the terminal and run as it stands.
+
+Only the parameters that matter appear. A value left where the operation would
+have put it anyway is left out, so changing `caesar --shift` from 3 to 7 adds
+`--shift 7` and changing it back removes it again. Input too long, or with too
+many lines, to sit on one line becomes `< input.txt` rather than a wrapped wall
+of quoting, and an operation that generates rather than transforms, such as
+`uuid`, has no `pipe` line because there is nothing to pipe into it.
+
+The panel is dropped on a terminal shorter than 20 rows, where the panels above
+need the space more. The key reference stays: it is how you leave.
 
 ### Running again
 

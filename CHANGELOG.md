@@ -6,6 +6,32 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1]
+
+### Added
+
+- A Command line panel along the bottom, writing the selected operation out in
+  two forms: `arg` spells it out in full, `pipe` says the same thing as briefly
+  as the operation allows. Both follow the options panel and the input, so they
+  reproduce what is on screen rather than a generic example. The panel is
+  dropped on a terminal shorter than 20 rows, where the panels above need the
+  space more.
+
+### Fixed
+
+- `txc tui` no longer hangs when its input is not a terminal. On Windows
+  crossterm reads the console the process is attached to rather than the
+  standard streams, so under a pipe the interface started and then waited for
+  a key that would never arrive. It now reports the same error there as
+  everywhere else. This is what left a CI job running for six hours.
+
+### Changed
+
+- Every CI and release job has a timeout, so a job that blocks rather than
+  fails costs minutes instead of the six hour default.
+- The end to end tests kill a `txc` that has not finished within a minute and
+  fail, rather than waiting on it.
+
 ## [0.4.0]
 
 A documentation release: the library half of txc is now documented in full,
@@ -90,6 +116,8 @@ are all generated.
 
 - Initial draft.
 
-[Unreleased]: https://github.com/vorjdux/txc/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/vorjdux/txc/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/vorjdux/txc/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/vorjdux/txc/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vorjdux/txc/releases/tag/v0.3.0
 [0.1.0]: https://github.com/vorjdux/txc/releases/tag/v0.1.0
