@@ -12,6 +12,7 @@ use ratatui::widgets::{
 use crate::about;
 use crate::registry::Feed;
 use crate::tui::app::{App, Focus};
+use crate::tui::command;
 
 const ACCENT: Color = Color::Cyan;
 /// Secondary text: panel titles, option names, hints and the key reference.
@@ -27,10 +28,18 @@ const ERROR: Color = Color::Red;
 const SAMPLE: Color = Color::Gray;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    // The command lines are the first thing to go when the terminal is short:
+    // they explain the interface, while the key reference is how to leave it.
+    let hints = if frame.area().height >= HINTS_NEED_ROWS {
+        command_hints(app)
+    } else {
+        Vec::new()
+    };
+
     let [header, body, footer] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(6),
-        Constraint::Length(1),
+        Constraint::Length(1 + hints.len() as u16),
     ])
     .areas(frame.area());
 
@@ -52,7 +61,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_right_column(frame, right, app);
 
-    draw_footer(frame, footer, app);
+    draw_footer(frame, footer, app, hints);
 
     if app.show_help {
         draw_help(frame, frame.area());
@@ -384,7 +393,52 @@ fn draw_output(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
+/// How tall the terminal must be before the footer also spells out the command
+/// line. Below this the rows are better spent on the panels.
+const HINTS_NEED_ROWS: u16 = 16;
+
+/// The two command lines for the selected operation, as they appear along the
+/// bottom. Empty when nothing is selected.
+fn command_hints(app: &App) -> Vec<(&'static str, String)> {
+    let Some(op) = app.selected_operation() else {
+        return Vec::new();
+    };
+
+    // Built from the parameters as they stand in the panel, so the line
+    // reproduces what the reader is looking at rather than a generic example.
+    let shown = command::invocation(op, &app.options.params(op), &app.input.text());
+
+    let mut hints = vec![("arg", shown.argument)];
+    if let Some(pipe) = shown.pipe {
+        hints.push(("pipe", pipe));
+    }
+    hints
+}
+
+/// Draws the command lines and the key reference along the bottom.
+fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static str, String)>) {
+    let [hint_area, area] = Layout::vertical([
+        Constraint::Length(hints.len() as u16),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+
+    if !hints.is_empty() {
+        let lines: Vec<Line> = hints
+            .into_iter()
+            .map(|(label, text)| {
+                Line::from(vec![
+                    Span::styled(
+                        format!(" {label:<5}"),
+                        Style::default().fg(MUTED).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(text, Style::default().fg(ACCENT)),
+                ])
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), hint_area);
+    }
+
     let keys: Vec<(&str, &str)> = if app.status.is_empty() {
         let mut keys = vec![("tab", "panel"), ("^up/^down", "op")];
         if app.varies() {
@@ -611,7 +665,11 @@ mod tests {
             app.show_about = true;
         }
         let width = 92;
-        let mut terminal = Terminal::new(TestBackend::new(width, 22)).expect("terminal");
+        let rows = std::env::var("TXC_SHOT_ROWS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(24);
+        let mut terminal = Terminal::new(TestBackend::new(width, rows)).expect("terminal");
         terminal.draw(|frame| draw(frame, &mut app)).expect("draw");
         let screen = terminal
             .backend()
@@ -746,6 +804,73 @@ mod tests {
         let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
         let (column, row) = find(&screen, "uuid.txt");
         assert_eq!(cursor, (column + "uuid.txt".len() as u16, row));
+    }
+
+    #[test]
+    fn the_footer_spells_out_both_ways_to_run_the_operation() {
+        let mut app = App::new();
+        app.search = "hex-encode".into();
+        app.refresh_operations();
+        app.load_operation();
+        let (screen, _) = render_with_cursor(&mut app, 100, 30);
+
+        assert!(screen.contains(" arg  txc hex-encode"), "{screen}");
+        assert!(screen.contains(" pipe echo "), "{screen}");
+        assert!(
+            screen.contains("| txc hex"),
+            "the pipe form is the short one"
+        );
+    }
+
+    #[test]
+    fn the_footer_follows_the_options_panel() {
+        let mut app = App::new();
+        app.search = "hex-encode".into();
+        app.refresh_operations();
+        app.load_operation();
+
+        let plain = render_with_cursor(&mut app, 100, 30).0;
+        assert!(!plain.contains("--upper"), "{plain}");
+
+        // Turning the switch on in the panel puts it into the command.
+        while !app.options.selected_is_flag() {
+            app.options.select_next();
+        }
+        app.options.toggle();
+
+        let changed = render_with_cursor(&mut app, 100, 30).0;
+        assert!(changed.contains("--upper"), "{changed}");
+        assert!(
+            changed.contains(" -u"),
+            "and its short form in the pipe line"
+        );
+    }
+
+    #[test]
+    fn a_generator_gets_no_pipe_line() {
+        let mut app = App::new();
+        app.search = "uuid".into();
+        app.refresh_operations();
+        app.load_operation();
+        let (screen, _) = render_with_cursor(&mut app, 100, 30);
+
+        assert!(screen.contains(" arg  txc uuid"), "{screen}");
+        assert!(
+            !screen.contains(" pipe "),
+            "nothing to pipe into it:\n{screen}"
+        );
+    }
+
+    #[test]
+    fn a_short_terminal_keeps_the_keys_and_drops_the_command_lines() {
+        let mut app = App::new();
+        let (screen, _) = render_with_cursor(&mut app, 100, HINTS_NEED_ROWS - 1);
+
+        assert!(!screen.contains(" arg  "), "{screen}");
+        assert!(
+            screen.contains("quit"),
+            "leaving must stay on screen:\n{screen}"
+        );
     }
 
     #[test]
