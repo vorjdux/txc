@@ -1,12 +1,26 @@
 //! End to end tests that run the built `txc` binary.
 
 use std::io::Write;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_txc");
 
+/// Long enough that a slow runner is never mistaken for a hang, short enough
+/// that one costs a minute rather than the six hours a stuck job would sit on
+/// a runner for. `txc tui` under a pipe once blocked here for exactly that.
+const PATIENCE: Duration = Duration::from_secs(60);
+
 fn run(args: &[&str]) -> Output {
-    Command::new(BIN).args(args).output().expect("txc runs")
+    let child = Command::new(BIN)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("txc starts");
+    finish(child, args)
 }
 
 fn pipe(args: &[&str], input: &str) -> Output {
@@ -23,7 +37,51 @@ fn pipe(args: &[&str], input: &str) -> Output {
         .expect("stdin is piped")
         .write_all(input.as_bytes())
         .expect("input is written");
-    child.wait_with_output().expect("txc finishes")
+    finish(child, args)
+}
+
+/// Waits for the child, killing it rather than waiting for ever.
+///
+/// A watchdog thread does the killing while this thread stays in
+/// `wait_with_output`, so the pipes keep draining. Polling instead would
+/// deadlock the moment an operation wrote more than one pipe buffer.
+fn finish(mut child: Child, args: &[&str]) -> Output {
+    // Closing stdin is what tells an operation reading the pipe that the input
+    // has ended.
+    drop(child.stdin.take());
+
+    let (finished, waiting) = mpsc::channel::<()>();
+    let id = child.id();
+    let watchdog = std::thread::spawn(move || match waiting.recv_timeout(PATIENCE) {
+        // The sender is dropped once the child is reaped, which is the ordinary
+        // way out. Only running out of time means it is still going.
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            kill(id);
+            true
+        }
+        _ => false,
+    });
+
+    let output = child.wait_with_output().expect("txc finishes");
+    drop(finished);
+    let killed = watchdog.join().expect("the watchdog does not panic");
+    assert!(
+        !killed,
+        "txc {args:?} did not finish within {PATIENCE:?} and was killed"
+    );
+    output
+}
+
+#[cfg(unix)]
+fn kill(pid: u32) {
+    let _ = Command::new("kill").arg("-9").arg(pid.to_string()).status();
+}
+
+#[cfg(windows)]
+fn kill(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/F", "/PID", &pid.to_string()])
+        .status();
 }
 
 fn stdout_of(output: &Output) -> String {
