@@ -50,6 +50,7 @@ mod home;
 mod keyring;
 pub mod model;
 pub mod prompt;
+mod recent;
 mod trust;
 
 #[cfg(debug_assertions)]
@@ -57,6 +58,7 @@ pub use crypto::TEST_WORK_FACTOR_VARIABLE;
 pub use document::Vault;
 pub use home::{HOME_VARIABLE, Home};
 pub use keyring::{Change, Inspection, Keyring, NewEntry, NotTrusted, Opened};
+pub use recent::{MAX_RECENT, Use, ago};
 pub use trust::Standing;
 
 /// Fixtures shared with the interface's tests.

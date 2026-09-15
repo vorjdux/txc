@@ -109,6 +109,28 @@ impl TextArea {
         *self = Self::default();
     }
 
+    /// Overwrites the text in place, then empties the editor.
+    ///
+    /// For text that should not linger in memory once the editor is done with
+    /// it, such as a note from the vault. Copies left behind earlier, when a
+    /// line grew and was moved to a larger buffer, are beyond its reach.
+    ///
+    /// ```
+    /// use txc::tui::textarea::TextArea;
+    ///
+    /// let mut area = TextArea::from_text("private\nnote");
+    /// area.wipe();
+    /// assert!(area.is_empty());
+    /// ```
+    pub fn wipe(&mut self) {
+        for line in &mut self.lines {
+            let len = line.len();
+            line.clear();
+            line.extend(std::iter::repeat_n('\0', len));
+        }
+        self.clear();
+    }
+
     /// Inserts one character at the cursor, moving it right.
     ///
     /// ```

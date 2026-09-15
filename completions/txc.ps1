@@ -2422,9 +2422,11 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
             [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault')
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or the entries of one')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
             [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show an entry, with its secrets masked')
+            [CompletionResult]::new('favourite', 'favourite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
+            [CompletionResult]::new('favorite', 'favorite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
@@ -2464,26 +2466,32 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;list' {
+            [CompletionResult]::new('--kind', '--kind', [CompletionResultType]::ParameterName, 'Only entries of this kind')
             [CompletionResult]::new('--tag', '--tag', [CompletionResultType]::ParameterName, 'Only entries with this tag')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--favourites', '--favourites', [CompletionResultType]::ParameterName, 'Only starred entries')
+            [CompletionResult]::new('--favorites', '--favorites', [CompletionResultType]::ParameterName, 'Only starred entries')
+            [CompletionResult]::new('--recent', '--recent', [CompletionResultType]::ParameterName, 'The entries used most recently on this device, newest first')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
         'txc;vault;add' {
-            [CompletionResult]::new('--kind', '--kind', [CompletionResultType]::ParameterName, 'login, api-key, secret or note')
+            [CompletionResult]::new('--kind', '--kind', [CompletionResultType]::ParameterName, 'What the entry is; the kinds and their fields are listed below')
             [CompletionResult]::new('--length', '--length', [CompletionResultType]::ParameterName, 'Characters in a generated password')
             [CompletionResult]::new('--username', '--username', [CompletionResultType]::ParameterName, 'The username, stored in the clear inside the vault')
             [CompletionResult]::new('--url', '--url', [CompletionResultType]::ParameterName, 'The address, stored in the clear inside the vault')
-            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Set a plain field; never use this for a secret, which arguments expose')
-            [CompletionResult]::new('--secret-field', '--secret-field', [CompletionResultType]::ParameterName, 'Add another sealed field, asked for at the terminal')
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Set a field that is not secret; secret fields are refused here, since arguments are visible to other programs')
+            [CompletionResult]::new('--secret-field', '--secret-field', [CompletionResultType]::ParameterName, 'Add another secret field, asked for at the terminal')
             [CompletionResult]::new('--tag', '--tag', [CompletionResultType]::ParameterName, 'Add a tag')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
-            [CompletionResult]::new('--generate', '--generate', [CompletionResultType]::ParameterName, 'Generate a random password as the main secret')
+            [CompletionResult]::new('--generate', '--generate', [CompletionResultType]::ParameterName, 'Generate the main secret: a password, or a PIN where that is what it is')
             [CompletionResult]::new('--no-symbols', '--no-symbols', [CompletionResultType]::ParameterName, 'Generate from letters and digits only')
-            [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input')
+            [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input, which may run over several lines')
+            [CompletionResult]::new('--favourite', '--favourite', [CompletionResultType]::ParameterName, 'Star it straight away')
+            [CompletionResult]::new('--favorite', '--favorite', [CompletionResultType]::ParameterName, 'Star it straight away')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2491,6 +2499,22 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;show' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;favourite' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Unstar it instead')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;favorite' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Unstar it instead')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2510,17 +2534,17 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--length', '--length', [CompletionResultType]::ParameterName, 'Characters in a generated password')
             [CompletionResult]::new('--username', '--username', [CompletionResultType]::ParameterName, 'The username, stored in the clear inside the vault')
             [CompletionResult]::new('--url', '--url', [CompletionResultType]::ParameterName, 'The address, stored in the clear inside the vault')
-            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Set a plain field; never use this for a secret, which arguments expose')
-            [CompletionResult]::new('--secret-field', '--secret-field', [CompletionResultType]::ParameterName, 'Add or replace a sealed field, asked for at the terminal')
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Set a field that is not secret; secret fields are refused here, since arguments are visible to other programs')
+            [CompletionResult]::new('--secret-field', '--secret-field', [CompletionResultType]::ParameterName, 'Add or replace a secret field, asked for at the terminal')
             [CompletionResult]::new('--remove-field', '--remove-field', [CompletionResultType]::ParameterName, 'Remove a field')
             [CompletionResult]::new('--tag', '--tag', [CompletionResultType]::ParameterName, 'Add a tag')
             [CompletionResult]::new('--untag', '--untag', [CompletionResultType]::ParameterName, 'Remove a tag')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--set-secret', '--set-secret', [CompletionResultType]::ParameterName, 'Replace the main secret, asked for at the terminal')
-            [CompletionResult]::new('--generate', '--generate', [CompletionResultType]::ParameterName, 'Generate a random password as the main secret')
+            [CompletionResult]::new('--generate', '--generate', [CompletionResultType]::ParameterName, 'Generate the main secret: a password, or a PIN where that is what it is')
             [CompletionResult]::new('--no-symbols', '--no-symbols', [CompletionResultType]::ParameterName, 'Generate from letters and digits only')
-            [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input')
+            [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input, which may run over several lines')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2555,9 +2579,10 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
             [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault')
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or the entries of one')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
             [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show an entry, with its secrets masked')
+            [CompletionResult]::new('favourite', 'favourite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
@@ -2585,6 +2610,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;show' {
+            break
+        }
+        'txc;vault;help;favourite' {
             break
         }
         'txc;vault;help;copy' {
@@ -3214,9 +3242,10 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
             [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault')
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or the entries of one')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
             [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show an entry, with its secrets masked')
+            [CompletionResult]::new('favourite', 'favourite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
@@ -3243,6 +3272,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;show' {
+            break
+        }
+        'txc;help;vault;favourite' {
             break
         }
         'txc;help;vault;copy' {

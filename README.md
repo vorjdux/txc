@@ -13,9 +13,9 @@ there is nothing to paste into a web form.
 143 operations across 10 categories, each usable as an argument, over a pipe,
 or from an interactive interface.
 
-It also keeps an encrypted vault for passwords, API keys and other secrets,
-just as local, with secrets that leave it only through a clipboard that clears
-itself: see [the vault](#the-vault).
+It also keeps an encrypted vault for passwords, cards, API keys, notes and other
+secrets, just as local, which shows a secret only when you ask and copies it to
+a clipboard that clears itself: see [the vault](#the-vault).
 
 ```
 $ txc url-encode "This string will be URL encoded"
@@ -210,44 +210,106 @@ means your home directory:
 
 ## The vault
 
-`txc vault` keeps passwords, API keys, logins and private notes in encrypted
-files on your own machine. Nothing is sent anywhere. A secret leaves the vault
-only by being copied to the clipboard, which is cleared again, or by being
-piped into another program.
+`txc vault` keeps passwords, payment cards, API keys, SSH keys, notes and other
+secrets in encrypted files on your own machine. Nothing is sent anywhere. A
+secret is shown only when you ask, and leaves the vault only by being copied
+to the clipboard, which is cleared again, or by being piped into another
+program.
 
 ```sh
 txc vault init                     # create your identity and the personal vault
-txc vault add github --username octocat --url https://github.com --generate
+txc vault add github --username octocat --url https://github.com --generate --favourite
+txc vault add visa --kind card --field cardholder='A N Other' --field expiry=12/30 \
+  --secret-field cvv               # the card number and the security code are asked for
 txc vault add work/openai --kind api-key --secret-from-stdin < key.txt
-txc vault list personal
-txc vault show github              # secrets are shown masked
+txc vault list --favourites        # starred entries, from every vault
+txc vault list --recent            # what you used last on this device
+txc vault show visa                # secrets are shown masked
 txc vault copy github              # the password, cleared from the clipboard after 20s
-txc vault copy github --field username
+txc vault copy visa --field cvv
 export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 ```
 
-In the interactive interface, `F3` opens the same vaults. Secrets are typed
-into fields that show only dots, sealed values are drawn as a fixed mask that
-says nothing about their length, `c` copies and `u` copies the username, and
-the vault locks itself after five minutes without a key and whenever the
-interface closes.
+### In the interactive interface
+
+`F3` opens the same vaults. Down the left are the ways in: **Favourites**,
+**Recently used** on this device, **All items**, each kind that has entries,
+and each vault. The list is in the middle and the selected entry on the right.
+
+```
+ txc  0.4.1 Vault unlocked · 3 entries in 1 vault
+╭ Browse ────────────────╮╭ Search ──────────────────────────────╮╭ GitHub ──────────────────────────────────╮
+│★ Favourites          1 ││/ to search                           ││ Login · personal  ★ favourite            │
+│◷ Recently used       0 │╰──────────────────────────────────────╯│                                          │
+│▤ All items           3 │┏ All items (3) ━━━━━━━━━━━━━━━━━━━━━━━┓│  Username  octocat                       │
+│ Kinds                  │┃★ GitHub                         Login┃│  Password  ••••••••                      │
+│  Logins              1 │┃  Home network           Wi-Fi network┃│  Website   https://github.com            │
+│  Payment cards       1 │┃  Visa                    Payment card┃│                                          │
+│  Wi-Fi networks      1 │┃                                      ┃│  Updated   2026-09-15 17:05              │
+│ Vaults                 │┃                                      ┃│                                          │
+│  personal            3 │┃                                      ┃│                                          │
+╰────────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────╯
+ c copy   u user   r reveal   f star   a add   e edit   d delete   / search   1 2 3 jump   l lock
+```
+
+| Key | Action |
+| --- | --- |
+| `1` `2` `3` | Favourites, recently used, all items |
+| `/` | Search names, usernames, websites, tags and every other plain field |
+| `c` or `enter` | Copy the main secret; on the right, the selected field |
+| `u` | Copy the username |
+| `r` | Show the secret for 15 seconds, or open a note to read |
+| `f` | Star or unstar the entry |
+| `a` | Add an entry: choose its kind, then fill in that kind's form |
+| `e`, `d` | Edit or delete the entry |
+| `n` | New vault |
+| `t` | Trust a vault that is new to this device or has changed |
+| `l` or `ctrl+l` | Lock |
+
+The form for a new entry has the fields that kind has: a payment card asks
+for the cardholder, number, expiry, security code and PIN, a Wi-Fi network for
+its name, password and security. Secret fields show dots as you type, `ctrl+r`
+shows what you typed, and `ctrl+g` generates a password, or a PIN where that is
+what the field wants. Notes are written in a real editor where `enter` starts
+a new line, and pasting a multi line value such as a private key arrives in
+one piece. `esc` asks before throwing away what you typed.
+
+Checking the passphrase takes a moment on purpose, so a spinner says so while
+it runs. The vault locks itself after five minutes without a key and whenever
+the interface closes.
 
 ### Entries
 
 An entry is named `vault/entry`, or just `entry` for one in the `personal`
-vault. Its kind decides which field holds its main secret, which is what
-`copy` takes unless given `--field`:
+vault. Its kind decides its fields, and which of them is the main secret that
+`copy` takes unless given `--field`. Fields marked with * are kept secret:
 
-| Kind | Main secret | For |
-| --- | --- | --- |
-| `login` | `password` | A username and password for a site or service |
-| `api-key` | `key` | A key or token for an API |
-| `secret` | `value` | Any single secret value |
-| `note` | `text` | Free text that should stay private |
+| Kind | Fields, main secret first |
+| --- | --- |
+| `login` | password\*, username, url, notes\* |
+| `card` | number\*, cardholder, expiry, cvv\*, pin\*, notes\* |
+| `note` | text\* |
+| `api-key` | key\*, url, username, expires, notes\* |
+| `ssh-key` | private-key\*, passphrase\*, host, username, public-key, notes\* |
+| `database` | password\*, host, port, database, username, notes\* |
+| `server` | password\*, host, username, notes\* |
+| `wifi` | password\*, ssid, security, notes\* |
+| `bank` | account-number\*, bank, holder, iban\*, swift, pin\*, notes\* |
+| `document` | number\*, full-name, issued, expires, country, notes\* |
+| `licence` | key\*, product, email, notes\* |
+| `wallet` | seed-phrase\*, address, password\*, notes\* |
+| `secret` | value\*, notes\* |
 
-`--username`, `--url` and `--field NAME=VALUE` add fields stored inside the
-vault's encryption and shown by `show`. `--secret-field NAME` adds another
-field sealed like the main secret and asked for at the terminal.
+The main secret is typed, generated or piped in. Other secret fields are
+given with `--secret-field NAME` and asked for at the terminal, and the rest
+with `--field NAME=VALUE`, or `--username` and `--url`. A secret field given
+with `--field` is refused, so a card's security code cannot end up in your
+shell history by mistake. `txc vault add --help` prints the same list.
+
+Favourites are stored in the vault, so a starred entry is starred on every
+device that opens it. What you used recently stays on this device, in a file
+of its own encrypted to your key, so copying a secret never rewrites the vault
+or sends it through a sync again.
 
 ### Getting secrets in and out
 
@@ -288,8 +350,10 @@ rests on keys alone.
   the file shows nothing but its size. Any change to the file makes it fail to
   open rather than decrypt to something else.
 - **Each secret** is sealed again as an age file of its own inside the vault.
-  Opening a vault to browse it decrypts none of them; copying opens exactly
-  one.
+  Opening a vault to browse it decrypts none of them. Copying a secret,
+  revealing it or opening a note decrypts exactly that one; a revealed secret
+  is hidden again after 15 seconds, and a note is wiped when its window
+  closes.
 - **Trust.** Encryption does not say who wrote a file: anyone who knows your
   public key can build a vault for it and list their own key beside yours, so
   that a secret you save into it goes to them as well. Each vault therefore
@@ -317,6 +381,7 @@ on Linux, `~/Library/Application Support/txc/vault` on macOS and
 vault/
 ├── identity.age              your private key, encrypted with your passphrase
 ├── trust.json                what this device trusts, authenticated by your key
+├── recent.age                what you used recently on this device, encrypted to your key
 └── vaults/
     ├── personal.vault.age    one age file per vault
     └── personal.vault.age.bak  the version before the last change
@@ -354,6 +419,8 @@ echo '<sealed value>' | base64 -d | rage -d -i identity.age
   catching the passphrase, or anyone with administrator rights on the machine.
 - Programs reading the clipboard during the seconds a secret is on it, and
   clipboard managers that ignore the request to leave it out of their history.
+- Anyone who can see your screen, or record it, while you reveal a secret or
+  read a note.
 - A forgotten passphrase, or a lost `identity.age`: neither can be recovered,
   and without them the vaults cannot be opened. Keep a copy of `identity.age`
   somewhere safe; it is encrypted.

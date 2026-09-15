@@ -8,10 +8,21 @@ All notable changes to txc are recorded here. The format follows
 
 ### Added
 
-- `txc vault`, an encrypted vault for passwords, API keys, logins and private
-  notes, kept in local files and built entirely on the age format: `init`,
-  `identity`, `passwd`, `create`, `list`, `add`, `show`, `copy`, `edit`, `rm`,
-  `recipients` and `trust`.
+- `txc vault`, an encrypted vault for passwords, payment cards, API keys,
+  notes and other secrets, kept in local files and built entirely on the age
+  format: `init`, `identity`, `passwd`, `create`, `list`, `add`, `show`,
+  `favourite`, `copy`, `edit`, `rm`, `recipients` and `trust`.
+- Thirteen kinds of entry, each with the fields that suit it: login, payment
+  card, secure note, API key, SSH key, database, server, Wi-Fi network, bank
+  account, ID document, software licence, crypto wallet and other secret.
+  Each field is plain or secret by definition, and a secret field given as a
+  plain `--field` is refused.
+- Favourites, stored in the vault so they follow it to other devices, and a
+  list of what was used recently, kept on the device in its own encrypted
+  file. `txc vault list` takes `--favourites`, `--recent` and `--kind`, across
+  every vault.
+- "Unlocking..." on the terminal while the passphrase is checked, which takes
+  a moment on purpose.
 - The identity is an age X25519 key encrypted with a passphrase through scrypt
   at N = 2^18. Each vault is one age file, encrypted to one or more public
   keys, and each secret inside it is sealed again on its own, so browsing a
@@ -29,10 +40,16 @@ All notable changes to txc are recorded here. The format follows
   refused when they are links or open to other users. Keys and secrets are
   wiped from memory when dropped, core dumps are disabled while the vault is
   in use, and on Linux the process is marked not dumpable.
-- A vault screen in the interactive interface, on `F3`, for unlocking,
-  browsing, adding, editing, removing and copying. Secrets are drawn only as
-  dots or a fixed mask, and the vault locks after five minutes without a key
-  and when the interface closes.
+- A vault screen in the interactive interface, on `F3`. Favourites, recently
+  used, all items, each kind and each vault are down the left; adding an
+  entry starts by choosing its kind and opens that kind's form, with
+  generated passwords and PINs and a real editor for notes. A secret can be
+  revealed for 15 seconds and a note opened to read; otherwise secrets are
+  drawn only as dots or a fixed mask. The passphrase is checked in the
+  background behind a spinner, and the vault locks after five minutes without
+  a key and when the interface closes.
+- Pasting into the interactive interface arrives in one piece, so a multi line
+  value no longer presses Enter part of the way through.
 - A `vault` cargo feature, on by default. `--no-default-features` builds txc
   without the vault and without its dependencies.
 
@@ -41,6 +58,8 @@ All notable changes to txc are recorded here. The format follows
 - Unsafe code is denied across the crate, except in the one module that makes
   system calls to harden the process.
 - The release binary is about 1.3 MiB larger with the vault built in.
+- The cryptography crates are optimised even in development builds, where
+  checking a passphrase otherwise took fifteen seconds rather than half of one.
 
 ## [0.4.1]
 

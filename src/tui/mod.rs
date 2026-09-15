@@ -8,8 +8,6 @@ pub mod textarea;
 mod ui;
 #[cfg(feature = "vault")]
 pub mod vault;
-#[cfg(feature = "vault")]
-mod vault_ui;
 
 use std::io::IsTerminal;
 use std::time::Duration;
@@ -45,7 +43,11 @@ pub fn run() -> Result<()> {
 
     let mut terminal = ratatui::try_init()
         .context("the interactive interface needs a terminal; run txc <operation> instead")?;
+    // Pasted text then arrives in one piece rather than as keystrokes, where a
+    // line break would press Enter halfway through a password or a key.
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste);
     let result = event_loop(&mut terminal);
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
     ratatui::restore();
     result
 }
@@ -72,10 +74,14 @@ fn run_app(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()>
         if !event::poll(Duration::from_millis(200))? {
             continue;
         }
-        if let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            handle_key(app, key);
+        match event::read()? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => handle_key(app, key),
+            Event::Paste(mut text) => {
+                handle_paste(app, &text);
+                // What was pasted may have been a secret.
+                wipe(&mut text);
+            }
+            _ => {}
         }
 
         if let Some(text) = app.pending_clipboard.take() {
@@ -96,6 +102,64 @@ fn run_app(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()>
         }
     }
     Ok(())
+}
+
+/// Takes pasted text into whatever has the keys.
+fn handle_paste(app: &mut App, text: &str) {
+    app.status.clear();
+    #[cfg(feature = "vault")]
+    if app.screen == crate::tui::app::Screen::Vault {
+        app.vault.handle_paste(text);
+        return;
+    }
+    if let Some(prompt) = app.prompt.as_mut() {
+        for ch in text.chars().filter(|ch| !ch.is_control()) {
+            prompt.input.insert(ch);
+        }
+        return;
+    }
+    match app.focus {
+        Focus::Input => {
+            // Terminals send a pasted line break as \r, \n or \r\n, depending
+            // on the terminal and on what sits in between, such as tmux.
+            let mut chars = text.chars().peekable();
+            while let Some(ch) = chars.next() {
+                match ch {
+                    '\r' => {
+                        if chars.peek() == Some(&'\n') {
+                            chars.next();
+                        }
+                        app.input.newline();
+                    }
+                    '\n' => app.input.newline(),
+                    ch => app.input.insert(ch),
+                }
+            }
+            app.mark_input_edited();
+            app.recompute();
+        }
+        Focus::Search => {
+            app.search
+                .extend(text.chars().filter(|ch| !ch.is_control()));
+            app.refresh_operations();
+            app.load_operation();
+        }
+        Focus::Options => {
+            for ch in text.chars().filter(|ch| !ch.is_control()) {
+                app.options.insert(ch);
+            }
+            app.recompute();
+        }
+        Focus::Categories | Focus::Operations => {}
+    }
+}
+
+/// Overwrites a string's bytes before letting it go.
+fn wipe(text: &mut String) {
+    let len = text.len();
+    text.clear();
+    text.extend(std::iter::repeat_n('\0', len));
+    text.clear();
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) {
@@ -660,6 +724,19 @@ mod tests {
         assert!(app.prompt.is_some());
         press_ctrl(&mut app, KeyCode::Char('c'));
         assert!(!app.running);
+    }
+
+    #[test]
+    fn pasted_text_lands_in_the_input_in_one_piece() {
+        let mut app = App::new();
+        app.search = "upper".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        app.focus = Focus::Input;
+        press_ctrl(&mut app, KeyCode::Char('l'));
+        handle_paste(&mut app, "one\r\ntwo\rthree\nfour");
+        assert_eq!(app.input.text(), "one\ntwo\nthree\nfour");
+        assert_eq!(app.outcome.text(), "ONE\nTWO\nTHREE\nFOUR");
     }
 
     #[cfg(feature = "vault")]

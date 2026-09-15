@@ -1,5 +1,11 @@
 //! What a vault holds, and the rules its names and values follow.
 //!
+//! Every entry has a [`Kind`], and each kind has the fields that make sense
+//! for it: a login has a username, a password and a website; a payment card
+//! has a card number, an expiry and a security code. Each field says how it
+//! is kept ([`Sensitivity`]), so a card number can never be stored in the
+//! clear by mistake.
+//!
 //! Everything here is checked when a vault is opened as well as when it is
 //! changed. Text that reaches the terminal from a vault therefore never
 //! carries an escape sequence, or an invisible character that disguises what a
@@ -37,57 +43,396 @@ pub const MAX_TAGS: usize = 16;
 /// the age header and tag, encoded.
 pub(crate) const MAX_SEALED_CHARS: usize = (MAX_SECRET_BYTES + 1024) * 4 / 3 + 4;
 
-/// What an entry is for, which decides the field `copy` takes by default.
+/// How a field is kept, and how the interface shows it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Sensitivity {
+    /// Kept inside the vault's encryption and shown with the entry: a
+    /// username, a website, a card's expiry.
+    Plain,
+    /// Sealed on its own and always masked. It is copied, or revealed for a
+    /// moment when asked: a password, a card number, a private key.
+    Secret,
+    /// Sealed on its own, and shown in full when it is opened: a note.
+    Private,
+}
+
+impl Sensitivity {
+    /// Whether values of this sensitivity are sealed on their own.
+    ///
+    /// ```
+    /// use txc::vault::model::Sensitivity;
+    ///
+    /// assert!(Sensitivity::Secret.is_sealed());
+    /// assert!(!Sensitivity::Plain.is_sealed());
+    /// ```
+    #[must_use]
+    pub const fn is_sealed(self) -> bool {
+        !matches!(self, Self::Plain)
+    }
+}
+
+/// What can fill a field in for you.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Generator {
+    /// A random password of letters, digits and symbols.
+    Password,
+    /// A random four digit PIN.
+    Pin,
+}
+
+/// One field a kind of entry has.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FieldSpec {
+    /// The name it is stored under, and given on the command line.
+    pub name: &'static str,
+    /// What the interface calls it.
+    pub label: &'static str,
+    /// How it is kept and shown.
+    pub sensitivity: Sensitivity,
+    /// Whether it may run over several lines.
+    pub multiline: bool,
+    /// What can fill it in, if anything.
+    pub generator: Option<Generator>,
+    /// An example of what goes in it, shown while it is empty.
+    pub hint: &'static str,
+}
+
+impl FieldSpec {
+    const fn plain(name: &'static str, label: &'static str) -> Self {
+        Self {
+            name,
+            label,
+            sensitivity: Sensitivity::Plain,
+            multiline: false,
+            generator: None,
+            hint: "",
+        }
+    }
+
+    const fn secret(name: &'static str, label: &'static str) -> Self {
+        Self {
+            sensitivity: Sensitivity::Secret,
+            ..Self::plain(name, label)
+        }
+    }
+
+    const fn password(name: &'static str, label: &'static str) -> Self {
+        Self {
+            generator: Some(Generator::Password),
+            ..Self::secret(name, label)
+        }
+    }
+
+    const fn pin(name: &'static str, label: &'static str) -> Self {
+        Self {
+            generator: Some(Generator::Pin),
+            ..Self::secret(name, label)
+        }
+    }
+
+    const fn private(name: &'static str, label: &'static str) -> Self {
+        Self {
+            sensitivity: Sensitivity::Private,
+            multiline: true,
+            ..Self::plain(name, label)
+        }
+    }
+
+    const fn lines(self) -> Self {
+        Self {
+            multiline: true,
+            ..self
+        }
+    }
+
+    const fn hinted(self, hint: &'static str) -> Self {
+        Self { hint, ..self }
+    }
+}
+
+const NOTES: FieldSpec = FieldSpec::private("notes", "Notes");
+
+static LOGIN: &[FieldSpec] = &[
+    FieldSpec::plain("username", "Username"),
+    FieldSpec::password("password", "Password"),
+    FieldSpec::plain("url", "Website").hinted("https://example.com"),
+    NOTES,
+];
+
+static CARD: &[FieldSpec] = &[
+    FieldSpec::plain("cardholder", "Cardholder"),
+    FieldSpec::secret("number", "Card number"),
+    FieldSpec::plain("expiry", "Expiry").hinted("MM/YY"),
+    FieldSpec::secret("cvv", "Security code"),
+    FieldSpec::pin("pin", "PIN"),
+    NOTES,
+];
+
+static NOTE: &[FieldSpec] = &[FieldSpec::private("text", "Note")];
+
+static API_KEY: &[FieldSpec] = &[
+    FieldSpec::secret("key", "Key"),
+    FieldSpec::plain("url", "Service").hinted("https://api.example.com"),
+    FieldSpec::plain("username", "Account"),
+    FieldSpec::plain("expires", "Expires").hinted("2027-01-31"),
+    NOTES,
+];
+
+static SSH_KEY: &[FieldSpec] = &[
+    FieldSpec::secret("private-key", "Private key").lines(),
+    FieldSpec::password("passphrase", "Passphrase"),
+    FieldSpec::plain("host", "Host").hinted("server.example.com"),
+    FieldSpec::plain("username", "Username"),
+    FieldSpec::plain("public-key", "Public key").hinted("ssh-ed25519 AAAA…"),
+    NOTES,
+];
+
+static DATABASE: &[FieldSpec] = &[
+    FieldSpec::plain("host", "Host").hinted("db.example.com"),
+    FieldSpec::plain("port", "Port").hinted("5432"),
+    FieldSpec::plain("database", "Database"),
+    FieldSpec::plain("username", "Username"),
+    FieldSpec::password("password", "Password"),
+    NOTES,
+];
+
+static SERVER: &[FieldSpec] = &[
+    FieldSpec::plain("host", "Host").hinted("server.example.com"),
+    FieldSpec::plain("username", "Username"),
+    FieldSpec::password("password", "Password"),
+    NOTES,
+];
+
+static WIFI: &[FieldSpec] = &[
+    FieldSpec::plain("ssid", "Network name"),
+    FieldSpec::password("password", "Password"),
+    FieldSpec::plain("security", "Security").hinted("WPA2, WPA3"),
+    NOTES,
+];
+
+static BANK: &[FieldSpec] = &[
+    FieldSpec::plain("bank", "Bank"),
+    FieldSpec::plain("holder", "Account holder"),
+    FieldSpec::secret("account-number", "Account number"),
+    FieldSpec::secret("iban", "IBAN"),
+    FieldSpec::plain("swift", "SWIFT or BIC"),
+    FieldSpec::pin("pin", "PIN"),
+    NOTES,
+];
+
+static DOCUMENT: &[FieldSpec] = &[
+    FieldSpec::plain("full-name", "Full name"),
+    FieldSpec::secret("number", "Document number"),
+    FieldSpec::plain("issued", "Issued").hinted("2020-05-01"),
+    FieldSpec::plain("expires", "Expires").hinted("2030-05-01"),
+    FieldSpec::plain("country", "Country"),
+    NOTES,
+];
+
+static LICENCE: &[FieldSpec] = &[
+    FieldSpec::plain("product", "Product"),
+    FieldSpec::secret("key", "Licence key"),
+    FieldSpec::plain("email", "Registered to"),
+    NOTES,
+];
+
+static WALLET: &[FieldSpec] = &[
+    FieldSpec::plain("address", "Address"),
+    FieldSpec::secret("seed-phrase", "Recovery phrase").lines(),
+    FieldSpec::password("password", "Wallet password"),
+    NOTES,
+];
+
+static SECRET: &[FieldSpec] = &[FieldSpec::secret("value", "Secret").lines(), NOTES];
+
+/// What an entry is, which decides the fields it has and the one `copy`
+/// takes by default.
 ///
 /// ```
-/// use txc::vault::model::Kind;
+/// use txc::vault::model::{Kind, Sensitivity};
 ///
-/// assert_eq!(Kind::from_id("api-key"), Some(Kind::ApiKey));
-/// assert_eq!(Kind::Login.primary(), "password");
+/// assert_eq!(Kind::from_id("card"), Some(Kind::Card));
+/// assert_eq!(Kind::Card.primary(), "number");
+/// assert_eq!(Kind::Card.spec("cvv").unwrap().sensitivity, Sensitivity::Secret);
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Kind {
     /// A username and password for a site or a service.
     Login,
-    /// A key or token for an API.
-    ApiKey,
-    /// Any single secret value.
-    Secret,
+    /// A credit or debit card.
+    Card,
     /// Free text that should stay private.
     Note,
+    /// A key or token for an API.
+    ApiKey,
+    /// An SSH private key and where it is used.
+    SshKey,
+    /// Credentials for a database.
+    Database,
+    /// Credentials for a server reached over SSH, FTP or similar.
+    Server,
+    /// A wireless network's password.
+    Wifi,
+    /// A bank account.
+    Bank,
+    /// A passport, identity card or driving licence.
+    Document,
+    /// A software licence key.
+    Licence,
+    /// A cryptocurrency wallet's recovery phrase.
+    Wallet,
+    /// Any other secret value.
+    Secret,
 }
 
 impl Kind {
     /// Every kind, in the order they are offered.
-    pub const ALL: [Self; 4] = [Self::Login, Self::ApiKey, Self::Secret, Self::Note];
+    pub const ALL: [Self; 13] = [
+        Self::Login,
+        Self::Card,
+        Self::Note,
+        Self::ApiKey,
+        Self::SshKey,
+        Self::Database,
+        Self::Server,
+        Self::Wifi,
+        Self::Bank,
+        Self::Document,
+        Self::Licence,
+        Self::Wallet,
+        Self::Secret,
+    ];
 
-    /// The name used on the command line.
+    /// The name used on the command line and in the vault file.
     #[must_use]
     pub const fn id(self) -> &'static str {
         match self {
             Self::Login => "login",
-            Self::ApiKey => "api-key",
-            Self::Secret => "secret",
+            Self::Card => "card",
             Self::Note => "note",
+            Self::ApiKey => "api-key",
+            Self::SshKey => "ssh-key",
+            Self::Database => "database",
+            Self::Server => "server",
+            Self::Wifi => "wifi",
+            Self::Bank => "bank",
+            Self::Document => "document",
+            Self::Licence => "licence",
+            Self::Wallet => "wallet",
+            Self::Secret => "secret",
         }
     }
 
-    /// Looks a kind up by the name used on the command line.
+    /// Looks a kind up by its command line name. `license` is accepted for
+    /// `licence`.
     #[must_use]
     pub fn from_id(id: &str) -> Option<Self> {
+        if id == "license" {
+            return Some(Self::Licence);
+        }
         Self::ALL.into_iter().find(|kind| kind.id() == id)
     }
 
-    /// The field holding the entry's main secret, which is what `copy` takes
-    /// unless asked for another.
+    /// What the interface calls one of this kind.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Login => "Login",
+            Self::Card => "Payment card",
+            Self::Note => "Secure note",
+            Self::ApiKey => "API key",
+            Self::SshKey => "SSH key",
+            Self::Database => "Database",
+            Self::Server => "Server",
+            Self::Wifi => "Wi-Fi network",
+            Self::Bank => "Bank account",
+            Self::Document => "ID document",
+            Self::Licence => "Software licence",
+            Self::Wallet => "Crypto wallet",
+            Self::Secret => "Other secret",
+        }
+    }
+
+    /// What the interface calls several of this kind.
+    #[must_use]
+    pub const fn plural(self) -> &'static str {
+        match self {
+            Self::Login => "Logins",
+            Self::Card => "Payment cards",
+            Self::Note => "Secure notes",
+            Self::ApiKey => "API keys",
+            Self::SshKey => "SSH keys",
+            Self::Database => "Databases",
+            Self::Server => "Servers",
+            Self::Wifi => "Wi-Fi networks",
+            Self::Bank => "Bank accounts",
+            Self::Document => "ID documents",
+            Self::Licence => "Software licences",
+            Self::Wallet => "Crypto wallets",
+            Self::Secret => "Other secrets",
+        }
+    }
+
+    /// One line on what the kind is for.
+    #[must_use]
+    pub const fn about(self) -> &'static str {
+        match self {
+            Self::Login => "a username and password for a website or app",
+            Self::Card => "a credit or debit card",
+            Self::Note => "private text, such as recovery codes",
+            Self::ApiKey => "a key or token for a service's API",
+            Self::SshKey => "an SSH private key and where it is used",
+            Self::Database => "the credentials for a database",
+            Self::Server => "the credentials for a server",
+            Self::Wifi => "a wireless network's password",
+            Self::Bank => "a bank account's numbers and PIN",
+            Self::Document => "a passport, ID card or driving licence",
+            Self::Licence => "a software licence key",
+            Self::Wallet => "a crypto wallet's recovery phrase",
+            Self::Secret => "any other secret value",
+        }
+    }
+
+    /// The fields an entry of this kind has, in the order they are shown.
+    #[must_use]
+    pub const fn fields(self) -> &'static [FieldSpec] {
+        match self {
+            Self::Login => LOGIN,
+            Self::Card => CARD,
+            Self::Note => NOTE,
+            Self::ApiKey => API_KEY,
+            Self::SshKey => SSH_KEY,
+            Self::Database => DATABASE,
+            Self::Server => SERVER,
+            Self::Wifi => WIFI,
+            Self::Bank => BANK,
+            Self::Document => DOCUMENT,
+            Self::Licence => LICENCE,
+            Self::Wallet => WALLET,
+            Self::Secret => SECRET,
+        }
+    }
+
+    /// The definition of one of this kind's fields.
+    #[must_use]
+    pub fn spec(self, name: &str) -> Option<&'static FieldSpec> {
+        self.fields().iter().find(|spec| spec.name == name)
+    }
+
+    /// The field holding the entry's main secret, which is required, and is
+    /// what `copy` takes unless asked for another.
     #[must_use]
     pub const fn primary(self) -> &'static str {
         match self {
-            Self::Login => "password",
-            Self::ApiKey => "key",
-            Self::Secret => "value",
+            Self::Login | Self::Database | Self::Server | Self::Wifi => "password",
+            Self::Card | Self::Document => "number",
             Self::Note => "text",
+            Self::ApiKey | Self::Licence => "key",
+            Self::SshKey => "private-key",
+            Self::Bank => "account-number",
+            Self::Wallet => "seed-phrase",
+            Self::Secret => "value",
         }
     }
 }
@@ -106,8 +451,8 @@ pub enum Value {
     /// usernames and addresses.
     Plain(String),
     /// Encrypted a second time, on its own, as base64 age ciphertext. It is
-    /// decrypted only at the moment it is copied, so browsing a vault never
-    /// puts the secrets themselves in memory.
+    /// decrypted only when it is copied, revealed or opened, so browsing a
+    /// vault never puts the secrets themselves in memory.
     Sealed(String),
 }
 
@@ -129,19 +474,24 @@ impl Field {
     }
 }
 
-/// One login, key, secret or note.
+/// One login, card, note, key or other secret.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
     /// The entry's name, unique within its vault regardless of case.
     pub name: String,
-    /// What the entry is for.
+    /// What the entry is.
     pub kind: Kind,
-    /// The values, plain and sealed, in the order they were added.
+    /// The values, plain and sealed, in the kind's order and then any others
+    /// in the order they were added.
     pub fields: Vec<Field>,
     /// Labels for finding entries.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Whether it is starred, to find it first. Kept in the vault, so it
+    /// follows the entry to other devices.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub favourite: bool,
     /// When the entry was added, as RFC 3339.
     pub created: String,
     /// When the entry last changed, as RFC 3339.
@@ -162,6 +512,46 @@ impl Entry {
             Some(Value::Plain(value)) => Some(value),
             _ => None,
         }
+    }
+
+    /// How a field is kept: as its kind defines it, or, for a field the kind
+    /// does not have, as it happens to be stored.
+    #[must_use]
+    pub fn sensitivity(&self, name: &str) -> Sensitivity {
+        match (self.kind.spec(name), self.field(name)) {
+            (Some(spec), _) => spec.sensitivity,
+            (None, Some(field)) if field.is_sealed() => Sensitivity::Secret,
+            _ => Sensitivity::Plain,
+        }
+    }
+
+    /// What a field is called in the interface.
+    #[must_use]
+    pub fn label<'a>(&self, name: &'a str) -> &'a str {
+        self.kind.spec(name).map_or(name, |spec| spec.label)
+    }
+
+    /// The plain value that best tells this entry apart in a list: its first
+    /// plain field that has a value, such as the username of a login.
+    #[must_use]
+    pub fn summary(&self) -> Option<&str> {
+        self.kind
+            .fields()
+            .iter()
+            .filter(|spec| spec.sensitivity == Sensitivity::Plain)
+            .find_map(|spec| self.plain(spec.name).filter(|value| !value.is_empty()))
+    }
+
+    /// Puts the fields in the kind's order, followed by any others in the
+    /// order they were added.
+    pub fn order_fields(&mut self) {
+        let fields = self.kind.fields();
+        self.fields.sort_by_key(|field| {
+            fields
+                .iter()
+                .position(|spec| spec.name == field.name)
+                .unwrap_or(fields.len())
+        });
     }
 
     /// Checks every name and value against the rules in this module.
@@ -396,6 +786,30 @@ pub fn is_unsafe_char(c: char) -> bool {
         )
 }
 
+/// Makes decrypted text safe to draw: tabs become spaces, and every other
+/// character that is unsafe to show becomes a visible replacement.
+///
+/// Notes and revealed secrets are not checked when they are saved, since any
+/// text may be a secret, so this is applied whenever one reaches the screen.
+///
+/// ```
+/// use txc::vault::model::displayable;
+///
+/// assert_eq!(displayable("a\tb\x1b[2J"), "a    b�[2J");
+/// ```
+#[must_use]
+pub fn displayable(text: &str) -> String {
+    let mut shown = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\t' => shown.push_str("    "),
+            ch if is_unsafe_char(ch) => shown.push('\u{FFFD}'),
+            ch => shown.push(ch),
+        }
+    }
+    shown
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,6 +829,7 @@ mod tests {
                 },
             ],
             tags: vec!["dev".to_string()],
+            favourite: false,
             created: "2026-01-01T00:00:00Z".to_string(),
             updated: "2026-01-01T00:00:00Z".to_string(),
         }
@@ -423,6 +838,81 @@ mod tests {
     #[test]
     fn a_well_formed_entry_passes() {
         entry().validate().unwrap();
+    }
+
+    #[test]
+    fn every_kind_has_a_sealed_primary_field_and_well_formed_fields() {
+        for kind in Kind::ALL {
+            let fields = kind.fields();
+            let primary = kind
+                .spec(kind.primary())
+                .unwrap_or_else(|| panic!("{kind} has no {} field", kind.primary()));
+            assert!(
+                primary.sensitivity.is_sealed(),
+                "the main field of {kind} is not sealed"
+            );
+            let mut names = HashSet::new();
+            for spec in fields {
+                check_field_name(spec.name).unwrap();
+                assert!(names.insert(spec.name), "{kind} repeats {}", spec.name);
+                assert!(
+                    spec.generator.is_none() || spec.sensitivity == Sensitivity::Secret,
+                    "{kind} generates a field that is not secret"
+                );
+            }
+            assert_eq!(Kind::from_id(kind.id()), Some(kind));
+            assert!(!kind.label().is_empty() && !kind.plural().is_empty());
+        }
+        assert_eq!(Kind::from_id("license"), Some(Kind::Licence));
+    }
+
+    #[test]
+    fn the_kinds_written_before_there_were_more_still_read() {
+        for (id, primary) in [
+            ("login", "password"),
+            ("api-key", "key"),
+            ("secret", "value"),
+            ("note", "text"),
+        ] {
+            let kind: Kind = serde_json::from_str(&format!("\"{id}\"")).unwrap();
+            assert_eq!(kind.primary(), primary);
+        }
+    }
+
+    #[test]
+    fn favourite_is_left_out_when_false_and_read_as_false_when_missing() {
+        let plain = serde_json::to_string(&entry()).unwrap();
+        assert!(!plain.contains("favourite"), "{plain}");
+        let read: Entry = serde_json::from_str(&plain).unwrap();
+        assert!(!read.favourite);
+
+        let mut starred = entry();
+        starred.favourite = true;
+        let text = serde_json::to_string(&starred).unwrap();
+        assert!(serde_json::from_str::<Entry>(&text).unwrap().favourite);
+    }
+
+    #[test]
+    fn fields_are_put_in_the_kinds_order_with_others_last() {
+        let mut entry = entry();
+        entry.fields.insert(
+            0,
+            Field {
+                name: "extra".to_string(),
+                value: Value::Plain("x".to_string()),
+            },
+        );
+        entry.fields.push(Field {
+            name: "url".to_string(),
+            value: Value::Plain("https://github.com".to_string()),
+        });
+        entry.order_fields();
+        let names: Vec<&str> = entry.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["username", "password", "url", "extra"]);
+        assert_eq!(entry.summary(), Some("octocat"));
+        assert_eq!(entry.label("url"), "Website");
+        assert_eq!(entry.sensitivity("password"), Sensitivity::Secret);
+        assert_eq!(entry.sensitivity("extra"), Sensitivity::Plain);
     }
 
     #[test]
@@ -443,6 +933,12 @@ mod tests {
         let mut bad = entry();
         bad.fields[0].value = Value::Plain("\x1b[2J".to_string());
         assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn decrypted_text_is_made_safe_to_draw() {
+        let shown = displayable("line\x1b]52;c;aGk=\x07\u{202e}end");
+        assert!(!shown.chars().any(is_unsafe_char), "{shown:?}");
     }
 
     #[test]

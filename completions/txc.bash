@@ -922,6 +922,9 @@ _txc() {
             txc__subcmd__help__subcmd__vault,edit)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__edit"
                 ;;
+            txc__subcmd__help__subcmd__vault,favourite)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__favourite"
+                ;;
             txc__subcmd__help__subcmd__vault,identity)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__identity"
                 ;;
@@ -957,6 +960,12 @@ _txc() {
                 ;;
             txc__subcmd__vault,edit)
                 cmd="txc__subcmd__vault__subcmd__edit"
+                ;;
+            txc__subcmd__vault,favorite)
+                cmd="txc__subcmd__vault__subcmd__favourite"
+                ;;
+            txc__subcmd__vault,favourite)
+                cmd="txc__subcmd__vault__subcmd__favourite"
                 ;;
             txc__subcmd__vault,help)
                 cmd="txc__subcmd__vault__subcmd__help"
@@ -996,6 +1005,9 @@ _txc() {
                 ;;
             txc__subcmd__vault__subcmd__help,edit)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__edit"
+                ;;
+            txc__subcmd__vault__subcmd__help,favourite)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__favourite"
                 ;;
             txc__subcmd__vault__subcmd__help,help)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__help"
@@ -4465,7 +4477,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault)
-            opts="init identity passwd create list add show copy edit rm recipients trust"
+            opts="init identity passwd create list add show favourite copy edit rm recipients trust"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4521,6 +4533,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault__subcmd__edit)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__favourite)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -8085,7 +8111,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault)
-            opts="-h --home --passphrase-file --help init identity passwd create list add show copy edit rm recipients trust help"
+            opts="-h --home --passphrase-file --help init identity passwd create list add show favourite favorite copy edit rm recipients trust help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -8107,14 +8133,14 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__add)
-            opts="-h --kind --generate --length --no-symbols --secret-from-stdin --username --url --field --secret-field --tag --home --passphrase-file --help"
+            opts="-h --kind --generate --length --no-symbols --secret-from-stdin --username --url --field --secret-field --tag --favorite --favourite --home --passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 --kind)
-                    COMPREPLY=($(compgen -W "login api-key secret note" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "login card note api-key ssh-key database server wifi bank document licence wallet secret" -- "${cur}"))
                     return 0
                     ;;
                 --length)
@@ -8270,8 +8296,30 @@ _txc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        txc__subcmd__vault__subcmd__favourite)
+            opts="-h --remove --home --passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         txc__subcmd__vault__subcmd__help)
-            opts="init identity passwd create list add show copy edit rm recipients trust help"
+            opts="init identity passwd create list add show favourite copy edit rm recipients trust help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -8327,6 +8375,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help__subcmd__edit)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__favourite)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -8511,12 +8573,16 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__list)
-            opts="-h --tag --home --passphrase-file --help"
+            opts="-h --favorites --favourites --recent --kind --tag --home --passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --kind)
+                    COMPREPLY=($(compgen -W "login card note api-key ssh-key database server wifi bank document licence wallet secret" -- "${cur}"))
+                    return 0
+                    ;;
                 --tag)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

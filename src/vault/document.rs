@@ -377,6 +377,7 @@ mod tests {
                 value: crate::vault::model::Value::Sealed(sealed),
             }],
             tags: Vec::new(),
+            favourite: false,
             created: now(),
             updated: now(),
         });

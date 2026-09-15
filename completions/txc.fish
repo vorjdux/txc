@@ -1297,22 +1297,24 @@ complete -c txc -n "__fish_txc_using_subcommand to-timestamp" -s n -l no-newline
 complete -c txc -n "__fish_txc_using_subcommand to-timestamp" -s u -l utc -d 'Read the input as UTC instead of local time'
 complete -c txc -n "__fish_txc_using_subcommand to-timestamp" -s m -l millis -d 'Print milliseconds instead of seconds'
 complete -c txc -n "__fish_txc_using_subcommand to-timestamp" -s h -l help -d 'Print help'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -s h -l help -d 'Print help (see more with \'--help\')'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "init" -d 'Create your identity and the personal vault'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "identity" -d 'Print your public key, for encrypting a vault to you elsewhere'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "passwd" -d 'Change the passphrase protecting your identity'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "create" -d 'Create a new, empty vault'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "list" -d 'List the vaults, or the entries of one'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "add" -d 'Add an entry; its secret is typed, generated or piped in'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "show" -d 'Show an entry, with its secrets masked'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "copy" -d 'Copy a secret to the clipboard, and clear it again after a while'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "edit" -d 'Change an entry'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "rm" -d 'Remove an entry'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "recipients" -d 'Show or change which public keys a vault is encrypted to'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "trust" -d 'Trust a vault that is new to this device, or that changed'
-complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show copy edit rm recipients trust help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "init" -d 'Create your identity and the personal vault'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "identity" -d 'Print your public key, for encrypting a vault to you elsewhere'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "passwd" -d 'Change the passphrase protecting your identity'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "create" -d 'Create a new, empty vault'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "list" -d 'List the vaults, or entries: of one vault, favourites, or recently used'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "add" -d 'Add an entry; its secret is typed, generated or piped in'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "show" -d 'Show an entry, with its secrets masked'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "favourite" -d 'Star an entry, so it is easy to find, or unstar it with --remove'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "favorite" -d 'Star an entry, so it is easy to find, or unstar it with --remove'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "copy" -d 'Copy a secret to the clipboard, and clear it again after a while'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "edit" -d 'Change an entry'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "rm" -d 'Remove an entry'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "recipients" -d 'Show or change which public keys a vault is encrypted to'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "trust" -d 'Trust a vault that is new to this device, or that changed'
+complete -c txc -n "__fish_txc_using_subcommand vault; and not __fish_seen_subcommand_from init identity passwd create list add show favourite favorite copy edit rm recipients trust help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from init" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from init" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from init" -s h -l help -d 'Print help (see more with \'--help\')'
@@ -1327,29 +1329,62 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from create" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from create" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from create" -s h -l help -d 'Print help'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from list" -l kind -d 'Only entries of this kind' -r -f -a "login\t'Login'
+card\t'Payment card'
+note\t'Secure note'
+api-key\t'API key'
+ssh-key\t'SSH key'
+database\t'Database'
+server\t'Server'
+wifi\t'Wi-Fi network'
+bank\t'Bank account'
+document\t'ID document'
+licence\t'Software licence'
+wallet\t'Crypto wallet'
+secret\t'Other secret'"
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from list" -l tag -d 'Only entries with this tag' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from list" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from list" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from list" -l favourites -l favorites -d 'Only starred entries'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from list" -l recent -d 'The entries used most recently on this device, newest first'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from list" -s h -l help -d 'Print help'
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l kind -d 'login, api-key, secret or note' -r -f -a "login\t''
-api-key\t''
-secret\t''
-note\t''"
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l kind -d 'What the entry is; the kinds and their fields are listed below' -r -f -a "login\t'Login'
+card\t'Payment card'
+note\t'Secure note'
+api-key\t'API key'
+ssh-key\t'SSH key'
+database\t'Database'
+server\t'Server'
+wifi\t'Wi-Fi network'
+bank\t'Bank account'
+document\t'ID document'
+licence\t'Software licence'
+wallet\t'Crypto wallet'
+secret\t'Other secret'"
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l length -d 'Characters in a generated password' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l username -d 'The username, stored in the clear inside the vault' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l url -d 'The address, stored in the clear inside the vault' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l field -d 'Set a plain field; never use this for a secret, which arguments expose' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l secret-field -d 'Add another sealed field, asked for at the terminal' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l field -d 'Set a field that is not secret; secret fields are refused here, since arguments are visible to other programs' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l secret-field -d 'Add another secret field, asked for at the terminal' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l tag -d 'Add a tag' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l generate -d 'Generate a random password as the main secret'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l generate -d 'Generate the main secret: a password, or a PIN where that is what it is'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l no-symbols -d 'Generate from letters and digits only'
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l secret-from-stdin -d 'Read the main secret from standard input'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l secret-from-stdin -d 'Read the main secret from standard input, which may run over several lines'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l favourite -l favorite -d 'Star it straight away'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -s h -l help -d 'Print help'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from show" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from show" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from show" -s h -l help -d 'Print help'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favourite" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favourite" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favourite" -l remove -d 'Unstar it instead'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favourite" -s h -l help -d 'Print help'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favorite" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favorite" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favorite" -l remove -d 'Unstar it instead'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from favorite" -s h -l help -d 'Print help'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from copy" -l field -d 'The field to copy, rather than the entry\'s main secret' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from copy" -l clear-after -d 'How long the secret stays on the clipboard' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from copy" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
@@ -1360,17 +1395,17 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l length -d 'Characters in a generated password' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l username -d 'The username, stored in the clear inside the vault' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l url -d 'The address, stored in the clear inside the vault' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l field -d 'Set a plain field; never use this for a secret, which arguments expose' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l secret-field -d 'Add or replace a sealed field, asked for at the terminal' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l field -d 'Set a field that is not secret; secret fields are refused here, since arguments are visible to other programs' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l secret-field -d 'Add or replace a secret field, asked for at the terminal' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l remove-field -d 'Remove a field' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l tag -d 'Add a tag' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l untag -d 'Remove a tag' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l set-secret -d 'Replace the main secret, asked for at the terminal'
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l generate -d 'Generate a random password as the main secret'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l generate -d 'Generate the main secret: a password, or a PIN where that is what it is'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l no-symbols -d 'Generate from letters and digits only'
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l secret-from-stdin -d 'Read the main secret from standard input'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -l secret-from-stdin -d 'Read the main secret from standard input, which may run over several lines'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from edit" -s h -l help -d 'Print help'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from rm" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from rm" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
@@ -1389,9 +1424,10 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "identity" -d 'Print your public key, for encrypting a vault to you elsewhere'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "passwd" -d 'Change the passphrase protecting your identity'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "create" -d 'Create a new, empty vault'
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "list" -d 'List the vaults, or the entries of one'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "list" -d 'List the vaults, or entries: of one vault, favourites, or recently used'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "add" -d 'Add an entry; its secret is typed, generated or piped in'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "show" -d 'Show an entry, with its secrets masked'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "favourite" -d 'Star an entry, so it is easy to find, or unstar it with --remove'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "copy" -d 'Copy a secret to the clipboard, and clear it again after a while'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "edit" -d 'Change an entry'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from help" -f -a "rm" -d 'Remove an entry'
@@ -1557,9 +1593,10 @@ complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "identity" -d 'Print your public key, for encrypting a vault to you elsewhere'
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "passwd" -d 'Change the passphrase protecting your identity'
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "create" -d 'Create a new, empty vault'
-complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "list" -d 'List the vaults, or the entries of one'
+complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "list" -d 'List the vaults, or entries: of one vault, favourites, or recently used'
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "add" -d 'Add an entry; its secret is typed, generated or piped in'
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "show" -d 'Show an entry, with its secrets masked'
+complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "favourite" -d 'Star an entry, so it is easy to find, or unstar it with --remove'
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "copy" -d 'Copy a secret to the clipboard, and clear it again after a while'
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "edit" -d 'Change an entry'
 complete -c txc -n "__fish_txc_using_subcommand help; and __fish_seen_subcommand_from vault" -f -a "rm" -d 'Remove an entry'

@@ -12,17 +12,18 @@ use std::time::{Duration, Instant};
 
 use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::{Context, Result, anyhow, ensure};
-use clap::builder::PossibleValuesParser;
+use clap::builder::{PossibleValue, PossibleValuesParser};
 use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 use rand::RngExt;
 
 use crate::vault::clipboard::{self, Held, MAX_CLEAR_SECONDS};
 use crate::vault::model::{
-    DEFAULT_VAULT, Entry, Kind, Reference, check_field_name, check_plain_value, check_tag,
-    check_vault_name,
+    DEFAULT_VAULT, Entry, FieldSpec, Generator, Kind, Reference, check_field_name,
+    check_plain_value, check_tag, check_vault_name,
 };
 use crate::vault::prompt::{self, Passphrase};
-use crate::vault::{Change, Home, Keyring, NewEntry, Standing, harden};
+use crate::vault::recent::ago;
+use crate::vault::{Change, Home, Keyring, NewEntry, Opened, Standing, harden};
 
 /// What a sealed value is shown as. Always the same, so it gives away nothing
 /// about the length of the secret.
@@ -31,11 +32,64 @@ pub const MASK: &str = "••••••••";
 /// The length of a generated password unless asked otherwise.
 pub const DEFAULT_GENERATED_LENGTH: u64 = 24;
 
+/// The length of a generated PIN.
+pub const PIN_LENGTH: usize = 4;
+
 // clap takes defaults as static text; a test keeps these equal to the numbers.
 const DEFAULT_GENERATED_LENGTH_TEXT: &str = "24";
 const DEFAULT_CLEAR_SECONDS_TEXT: &str = "20";
 
 const PASSPHRASE_PROMPT: &str = "Passphrase: ";
+
+/// Every kind, for `--kind`, with `license` accepted for `licence`.
+fn kind_values() -> Vec<PossibleValue> {
+    Kind::ALL
+        .iter()
+        .map(|kind| {
+            let value = PossibleValue::new(kind.id()).help(kind.label());
+            if *kind == Kind::Licence {
+                value.alias("license")
+            } else {
+                value
+            }
+        })
+        .collect()
+}
+
+/// The list of kinds and their fields shown under `add --help`.
+fn kinds_help() -> String {
+    let width = Kind::ALL
+        .iter()
+        .map(|kind| kind.id().len())
+        .max()
+        .unwrap_or(0);
+    let mut text = String::from(
+        "Examples:\n  \
+         txc vault add github --username octocat --url https://github.com --generate\n  \
+         txc vault add visa --kind card --field cardholder='A N Other' --field expiry=12/30\n  \
+         txc vault add work/openai --kind api-key --secret-from-stdin < key.txt\n  \
+         txc vault add recovery-codes --kind note --secret-from-stdin < codes.txt\n\n\
+         Kinds and their fields. The main secret comes first and is asked for; fields marked \
+         * are also secret and are given with --secret-field, the others with --field:\n",
+    );
+    for kind in Kind::ALL {
+        let primary = kind.primary();
+        let mut fields: Vec<&FieldSpec> = kind.fields().iter().collect();
+        fields.sort_by_key(|spec| spec.name != primary);
+        let names: Vec<String> = fields
+            .iter()
+            .map(|spec| {
+                if spec.sensitivity.is_sealed() {
+                    format!("{}*", spec.name)
+                } else {
+                    spec.name.to_string()
+                }
+            })
+            .collect();
+        let _ = writeln!(text, "  {:width$}  {}", kind.id(), names.join(", "));
+    }
+    text
+}
 
 /// Builds the `vault` subcommand.
 ///
@@ -126,8 +180,29 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("list")
-                .about("List the vaults, or the entries of one")
-                .arg(Arg::new("VAULT").help("The vault whose entries to list"))
+                .about("List the vaults, or entries: of one vault, favourites, or recently used")
+                .arg(Arg::new("VAULT").help("The vault whose entries to list; all when left out"))
+                .arg(
+                    Arg::new("favourites")
+                        .long("favourites")
+                        .visible_alias("favorites")
+                        .action(ArgAction::SetTrue)
+                        .help("Only starred entries"),
+                )
+                .arg(
+                    Arg::new("recent")
+                        .long("recent")
+                        .action(ArgAction::SetTrue)
+                        .help("The entries used most recently on this device, newest first"),
+                )
+                .arg(
+                    Arg::new("kind")
+                        .long("kind")
+                        .value_name("KIND")
+                        .value_parser(PossibleValuesParser::new(kind_values()))
+                        .hide_possible_values(true)
+                        .help("Only entries of this kind"),
+                )
                 .arg(
                     Arg::new("tag")
                         .long("tag")
@@ -145,28 +220,43 @@ pub fn command() -> Command {
                             .long("kind")
                             .value_name("KIND")
                             .default_value("login")
-                            .value_parser(PossibleValuesParser::new(Kind::ALL.map(Kind::id)))
-                            .help("login, api-key, secret or note"),
+                            .value_parser(PossibleValuesParser::new(kind_values()))
+                            .hide_possible_values(true)
+                            .help("What the entry is; the kinds and their fields are listed below"),
                     ),
             )
             .args(plain_args(&many))
             .arg(many(
                 "secret-field",
                 "NAME",
-                "Add another sealed field, asked for at the terminal",
+                "Add another secret field, asked for at the terminal",
             ))
             .arg(many("tag", "TAG", "Add a tag"))
-            .after_help(
-                "Examples:\n  \
-                 txc vault add github --username octocat --url https://github.com --generate\n  \
-                 txc vault add work/openai --kind api-key --secret-from-stdin < key.txt\n  \
-                 txc vault add recovery-codes --kind note",
-            ),
+            .arg(
+                Arg::new("favourite")
+                    .long("favourite")
+                    .visible_alias("favorite")
+                    .action(ArgAction::SetTrue)
+                    .help("Star it straight away"),
+            )
+            .after_help(kinds_help()),
         )
         .subcommand(
             Command::new("show")
                 .about("Show an entry, with its secrets masked")
                 .arg(reference()),
+        )
+        .subcommand(
+            Command::new("favourite")
+                .visible_alias("favorite")
+                .about("Star an entry, so it is easy to find, or unstar it with --remove")
+                .arg(reference())
+                .arg(
+                    Arg::new("remove")
+                        .long("remove")
+                        .action(ArgAction::SetTrue)
+                        .help("Unstar it instead"),
+                ),
         )
         .subcommand(
             Command::new("copy")
@@ -197,6 +287,7 @@ pub fn command() -> Command {
                     "Examples:\n  \
                      txc vault copy github\n  \
                      txc vault copy github --field username\n  \
+                     txc vault copy visa --field cvv\n  \
                      export OPENAI_API_KEY=\"$(txc vault copy work/openai --print)\"",
                 ),
         )
@@ -223,7 +314,7 @@ pub fn command() -> Command {
             .arg(many(
                 "secret-field",
                 "NAME",
-                "Add or replace a sealed field, asked for at the terminal",
+                "Add or replace a secret field, asked for at the terminal",
             ))
             .arg(many("remove-field", "NAME", "Remove a field"))
             .arg(many("tag", "TAG", "Add a tag"))
@@ -290,7 +381,7 @@ fn secret_source_args(command: Command) -> Command {
                 .long("generate")
                 .action(ArgAction::SetTrue)
                 .conflicts_with("secret-from-stdin")
-                .help("Generate a random password as the main secret"),
+                .help("Generate the main secret: a password, or a PIN where that is what it is"),
         )
         .arg(
             Arg::new("length")
@@ -312,7 +403,7 @@ fn secret_source_args(command: Command) -> Command {
             Arg::new("secret-from-stdin")
                 .long("secret-from-stdin")
                 .action(ArgAction::SetTrue)
-                .help("Read the main secret from standard input"),
+                .help("Read the main secret from standard input, which may run over several lines"),
         )
 }
 
@@ -330,7 +421,8 @@ fn plain_args(many: &dyn Fn(&'static str, &'static str, &'static str) -> Arg) ->
         many(
             "field",
             "NAME=VALUE",
-            "Set a plain field; never use this for a secret, which arguments expose",
+            "Set a field that is not secret; secret fields are refused here, since arguments \
+             are visible to other programs",
         ),
     ]
 }
@@ -363,6 +455,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "list" => context.list(sub),
         "add" => context.add(sub),
         "show" => context.show(sub),
+        "favourite" => context.favourite(sub),
         "copy" => context.copy(sub),
         "edit" => context.edit(sub),
         "rm" => context.remove(sub),
@@ -370,6 +463,25 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "trust" => context.trust(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
+}
+
+/// Runs slow work with a line on the terminal saying what is happening.
+///
+/// Deriving the key from a passphrase takes a moment on purpose, and a
+/// command that sits silently looks like one that has hung.
+fn working<T>(message: &str, work: impl FnOnce() -> Result<T>) -> Result<T> {
+    let shown = io::stderr().is_terminal();
+    if shown {
+        eprint!("{message}");
+        let _ = io::stderr().flush();
+    }
+    let result = work();
+    if shown {
+        // Back to the start of the line, and clear it.
+        eprint!("\r\x1b[2K");
+        let _ = io::stderr().flush();
+    }
+    result
 }
 
 /// What every subcommand needs: where the vaults are and how to ask for the
@@ -381,7 +493,8 @@ struct Session {
 
 impl Session {
     fn unlock(&self) -> Result<Keyring> {
-        Keyring::unlock(&self.home, &self.passphrase.ask(PASSPHRASE_PROMPT)?)
+        let passphrase = self.passphrase.ask(PASSPHRASE_PROMPT)?;
+        working("Unlocking...", || Keyring::unlock(&self.home, &passphrase))
     }
 
     fn init(&self) -> Result<()> {
@@ -400,7 +513,9 @@ impl Session {
                 prompt::MIN_PASSPHRASE_CHARS
             );
             let passphrase = self.passphrase.ask_new("New passphrase: ")?;
-            Keyring::create(&self.home, &passphrase)?
+            working("Protecting your identity...", || {
+                Keyring::create(&self.home, &passphrase)
+            })?
         };
 
         if self
@@ -430,7 +545,9 @@ impl Session {
             Passphrase::Terminal
         };
         let passphrase = source.ask_new("New passphrase: ")?;
-        keyring.change_passphrase(&passphrase)?;
+        working("Protecting your identity...", || {
+            keyring.change_passphrase(&passphrase)
+        })?;
         eprintln!("Passphrase changed.");
         Ok(())
     }
@@ -446,47 +563,103 @@ impl Session {
     }
 
     fn list(&self, sub: &ArgMatches) -> Result<()> {
-        let Some(name) = sub.get_one::<String>("VAULT") else {
+        let vault = sub.get_one::<String>("VAULT");
+        let tag = sub.get_one::<String>("tag");
+        let kind = sub
+            .get_one::<String>("kind")
+            .map(|id| Kind::from_id(id).expect("clap checked the kind"));
+        let favourites = sub.get_flag("favourites");
+        let recent = sub.get_flag("recent");
+
+        if vault.is_none() && tag.is_none() && kind.is_none() && !favourites && !recent {
             let names = self.home.vault_names()?;
             if names.is_empty() {
                 eprintln!("There are no vaults yet; start with: txc vault init");
                 return Ok(());
             }
             return output(&names.join("\n"));
-        };
-        check_vault_name(name)?;
-        let tag = sub.get_one::<String>("tag");
+        }
+        if let Some(vault) = vault {
+            check_vault_name(vault)?;
+        }
         if let Some(tag) = tag {
             check_tag(tag)?;
         }
 
         let keyring = self.unlock()?;
-        let vault = keyring.open(name)?;
-        let entries: Vec<&Entry> = vault
-            .vault()
-            .entries()
-            .iter()
-            .filter(|entry| tag.is_none_or(|tag| entry.tags.contains(tag)))
-            .collect();
-        if entries.is_empty() {
+        let names = match vault {
+            Some(vault) => vec![vault.clone()],
+            None => self.home.vault_names()?,
+        };
+        let mut opened: Vec<Opened> = Vec::new();
+        for name in &names {
+            match keyring.open(name) {
+                Ok(vault) => opened.push(vault),
+                // Across every vault, one that cannot be opened is reported
+                // and passed over rather than hiding all the others.
+                Err(error) if vault.is_none() => eprintln!("Skipped the vault {name}: {error:#}"),
+                Err(error) => return Err(error),
+            }
+        }
+
+        let wanted = |entry: &Entry| {
+            tag.is_none_or(|tag| entry.tags.contains(tag))
+                && kind.is_none_or(|kind| entry.kind == kind)
+                && (!favourites || entry.favourite)
+        };
+        // With several vaults listed, each name says which vault it is in.
+        let row = |vault: &Opened, entry: &Entry, detail: String| {
+            let mut name = if names.len() > 1 {
+                format!("{}/{}", vault.vault().name(), entry.name)
+            } else {
+                entry.name.clone()
+            };
+            if entry.favourite {
+                name.push_str(" ★");
+            }
+            [name, entry.kind.id().to_string(), detail]
+        };
+
+        let rows: Vec<[String; 3]> = if recent {
+            keyring
+                .recent()
+                .iter()
+                .filter_map(|used| {
+                    let vault = opened
+                        .iter()
+                        .find(|vault| vault.vault().name() == used.vault)?;
+                    let entry = vault
+                        .vault()
+                        .entries()
+                        .iter()
+                        .find(|entry| entry.name == used.entry)?;
+                    wanted(entry).then(|| row(vault, entry, ago(&used.at)))
+                })
+                .collect()
+        } else {
+            opened
+                .iter()
+                .flat_map(|vault| {
+                    vault
+                        .vault()
+                        .entries()
+                        .iter()
+                        .filter(|entry| wanted(entry))
+                        .map(move |entry| {
+                            row(
+                                vault,
+                                entry,
+                                entry.summary().unwrap_or_default().to_string(),
+                            )
+                        })
+                })
+                .collect()
+        };
+
+        if rows.is_empty() {
             eprintln!("No entries.");
             return Ok(());
         }
-
-        let rows: Vec<[String; 3]> = entries
-            .iter()
-            .map(|entry| {
-                [
-                    entry.name.clone(),
-                    entry.kind.id().to_string(),
-                    entry
-                        .plain("username")
-                        .or_else(|| entry.plain("url"))
-                        .unwrap_or_default()
-                        .to_string(),
-                ]
-            })
-            .collect();
         output(&table(&rows))
     }
 
@@ -496,6 +669,16 @@ impl Session {
         let plain = plain_fields(sub)?;
         let tags = checked_tags(sub, "tag")?;
         let secret_fields = checked_field_names(sub, "secret-field")?;
+        check_sensitivities(kind, &plain, &secret_fields)?;
+        let primary = main_spec(kind);
+        if sub.get_flag("generate") {
+            ensure!(
+                primary.generator.is_some(),
+                "the {} of {} cannot be generated; type it when asked, or pipe it in",
+                primary.label.to_lowercase(),
+                kind.label().to_lowercase()
+            );
+        }
 
         // Everything that can be checked is checked before any secret is typed.
         let keyring = self.unlock()?;
@@ -507,10 +690,11 @@ impl Session {
             reference.vault
         );
 
-        let (primary, generated) = main_secret(sub, kind.primary())?;
-        let mut secrets = vec![(kind.primary().to_string(), primary)];
+        let (secret, generated) = main_secret(sub, primary)?;
+        let mut secrets = vec![(primary.name.to_string(), secret)];
         for name in secret_fields {
-            let secret = prompt::secret_from_terminal(&name)?;
+            let label = kind.spec(&name).map_or(name.as_str(), |spec| spec.label);
+            let secret = prompt::secret_from_terminal(label)?;
             secrets.push((name, secret));
         }
 
@@ -520,6 +704,7 @@ impl Session {
             plain,
             secrets,
             tags,
+            favourite: sub.get_flag("favourite"),
         })?;
         vault.save(&keyring)?;
 
@@ -527,7 +712,7 @@ impl Session {
         if generated {
             eprintln!(
                 "Its {} was generated; copy it with: txc vault copy {reference}",
-                kind.primary()
+                primary.label.to_lowercase()
             );
         }
         Ok(())
@@ -540,23 +725,42 @@ impl Session {
         let entry = vault.entry(&reference.entry)?;
 
         let mut rows = vec![
-            ["name".to_string(), entry.name.clone()],
-            ["vault".to_string(), reference.vault.clone()],
-            ["kind".to_string(), entry.kind.id().to_string()],
+            ["Name".to_string(), entry.name.clone()],
+            ["Vault".to_string(), reference.vault.clone()],
+            ["Kind".to_string(), entry.kind.label().to_string()],
         ];
+        if entry.favourite {
+            rows.push(["Favourite".to_string(), "★".to_string()]);
+        }
         for field in &entry.fields {
             let shown = match entry.plain(&field.name) {
                 Some(value) => value.to_string(),
                 None => MASK.to_string(),
             };
-            rows.push([field.name.clone(), shown]);
+            rows.push([entry.label(&field.name).to_string(), shown]);
         }
         if !entry.tags.is_empty() {
-            rows.push(["tags".to_string(), entry.tags.join(", ")]);
+            rows.push(["Tags".to_string(), entry.tags.join(", ")]);
         }
-        rows.push(["created".to_string(), entry.created.clone()]);
-        rows.push(["updated".to_string(), entry.updated.clone()]);
+        rows.push(["Created".to_string(), entry.created.clone()]);
+        rows.push(["Updated".to_string(), entry.updated.clone()]);
         output(&table(&rows))
+    }
+
+    fn favourite(&self, sub: &ArgMatches) -> Result<()> {
+        let reference: Reference = required(sub, "ENTRY").parse()?;
+        let remove = sub.get_flag("remove");
+        let keyring = self.unlock()?;
+        let mut vault = keyring.open(&reference.vault)?;
+        let name = vault.entry(&reference.entry)?.name.clone();
+        vault.set_favourite(&name, !remove)?;
+        vault.save(&keyring)?;
+        if remove {
+            eprintln!("Unstarred {reference}.");
+        } else {
+            eprintln!("Starred {reference}.");
+        }
+        Ok(())
     }
 
     fn copy(&self, sub: &ArgMatches) -> Result<()> {
@@ -578,7 +782,11 @@ impl Session {
             .cloned()
             .unwrap_or_else(|| entry.kind.primary().to_string());
         let entry_name = entry.name.clone();
+        let label = entry.label(&field).to_lowercase();
         let secret = vault.reveal(&keyring, &entry_name, &field)?;
+        if let Err(error) = keyring.record_use(&reference.vault, &entry_name) {
+            eprintln!("Could not note this in the recently used list: {error:#}");
+        }
 
         // Only the one secret stays in memory while it waits: the key and the
         // vault are wiped now.
@@ -602,7 +810,7 @@ impl Session {
         let held = clipboard::copy(&secret)
             .map_err(|error| anyhow!("{error}; use --print to send it to a pipe instead"))?;
         drop(secret);
-        wait_then_clear(held, seconds, &format!("{field} of {reference}"))
+        wait_then_clear(held, seconds, &format!("{label} of {reference}"))
     }
 
     fn edit(&self, sub: &ArgMatches) -> Result<()> {
@@ -633,19 +841,34 @@ impl Session {
         let keyring = self.unlock()?;
         let mut vault = keyring.open(&reference.vault)?;
         let entry = vault.entry(&reference.entry)?;
-        let (name, primary) = (entry.name.clone(), entry.kind.primary());
+        let (name, kind) = (entry.name.clone(), entry.kind);
+        check_sensitivities(kind, &change.plain, &secret_fields)?;
+        let primary = main_spec(kind);
 
         if new_main {
+            if sub.get_flag("generate") {
+                ensure!(
+                    primary.generator.is_some(),
+                    "the {} of {} cannot be generated",
+                    primary.label.to_lowercase(),
+                    kind.label().to_lowercase()
+                );
+            }
             let (secret, _) = main_secret(sub, primary)?;
-            change.secrets.push((primary.to_string(), secret));
+            change.secrets.push((primary.name.to_string(), secret));
         }
         for field in secret_fields {
-            let secret = prompt::secret_from_terminal(&field)?;
+            let label = kind.spec(&field).map_or(field.as_str(), |spec| spec.label);
+            let secret = prompt::secret_from_terminal(label)?;
             change.secrets.push((field, secret));
         }
 
+        let renamed = change.rename.clone();
         vault.change(&name, change)?;
         vault.save(&keyring)?;
+        if let Some(new_name) = renamed {
+            let _ = keyring.rename_use(&reference.vault, &name, &new_name);
+        }
         eprintln!("Changed {reference}.");
         Ok(())
     }
@@ -664,6 +887,7 @@ impl Session {
         }
         vault.remove(&name)?;
         vault.save(&keyring)?;
+        let _ = keyring.forget_use(&reference.vault, &name);
         eprintln!("Removed {reference}.");
         Ok(())
     }
@@ -755,16 +979,65 @@ impl Session {
     }
 }
 
+/// The definition of a kind's main secret field.
+fn main_spec(kind: Kind) -> &'static FieldSpec {
+    kind.spec(kind.primary())
+        .expect("every kind defines its main field")
+}
+
+/// Refuses a secret field given as a plain value, and a plain one asked for
+/// as a secret, before anything is unlocked or typed.
+fn check_sensitivities(
+    kind: Kind,
+    plain: &[(String, String)],
+    secret_fields: &[String],
+) -> Result<()> {
+    for (name, _) in plain {
+        if let Some(spec) = kind.spec(name) {
+            ensure!(
+                !spec.sensitivity.is_sealed(),
+                "the {} of {} is secret, so it is not taken as an argument, where other \
+                 programs could see it; use --secret-field {name} to be asked for it",
+                spec.label.to_lowercase(),
+                kind.label().to_lowercase()
+            );
+        }
+    }
+    for name in secret_fields {
+        if let Some(spec) = kind.spec(name) {
+            ensure!(
+                spec.sensitivity.is_sealed(),
+                "the {} of {} is not secret; give it with --field {name}=VALUE",
+                spec.label.to_lowercase(),
+                kind.label().to_lowercase()
+            );
+        }
+    }
+    Ok(())
+}
+
 /// The main secret for `add` or `edit`: generated, piped in, or typed.
-fn main_secret(sub: &ArgMatches, label: &str) -> Result<(SecretString, bool)> {
+fn main_secret(sub: &ArgMatches, spec: &FieldSpec) -> Result<(SecretString, bool)> {
     if sub.get_flag("generate") {
-        let length = *sub.get_one::<u64>("length").expect("length has a default");
-        let length = usize::try_from(length).expect("the length is at most 128");
-        Ok((generate(length, !sub.get_flag("no-symbols")), true))
+        let secret = if spec.generator == Some(Generator::Pin) {
+            generate_pin(PIN_LENGTH)
+        } else {
+            let length = *sub.get_one::<u64>("length").expect("length has a default");
+            let length = usize::try_from(length).expect("the length is at most 128");
+            generate(length, !sub.get_flag("no-symbols"))
+        };
+        Ok((secret, true))
     } else if sub.get_flag("secret-from-stdin") {
         Ok((prompt::secret_from_stdin()?, false))
     } else {
-        Ok((prompt::secret_from_terminal(label)?, false))
+        if spec.multiline {
+            eprintln!(
+                "Type the {} on one line, or pipe it in with --secret-from-stdin to keep \
+                 several lines.",
+                spec.label.to_lowercase()
+            );
+        }
+        Ok((prompt::secret_from_terminal(spec.label)?, false))
     }
 }
 
@@ -799,6 +1072,25 @@ pub fn generate(length: usize, symbols: bool) -> SecretString {
         }
         zeroize::Zeroize::zeroize(&mut password);
     }
+}
+
+/// A random PIN of `length` digits.
+///
+/// ```
+/// use age::secrecy::ExposeSecret;
+///
+/// let pin = txc::vault::command::generate_pin(4);
+/// assert_eq!(pin.expose_secret().len(), 4);
+/// assert!(pin.expose_secret().bytes().all(|b| b.is_ascii_digit()));
+/// ```
+#[must_use]
+pub fn generate_pin(length: usize) -> SecretString {
+    let mut rng = rand::rng();
+    let mut pin = String::with_capacity(length);
+    for _ in 0..length {
+        pin.push(char::from(b'0' + rng.random_range(0..10_u8)));
+    }
+    SecretString::from(pin)
 }
 
 /// Waits for the time to run out, a key, or the clipboard to be taken over,
@@ -986,6 +1278,30 @@ mod tests {
             generate(24, true).expose_secret(),
             generate(24, true).expose_secret()
         );
+    }
+
+    #[test]
+    fn the_help_for_add_names_every_kind_and_marks_secret_fields() {
+        let help = kinds_help();
+        for kind in Kind::ALL {
+            assert!(
+                help.contains(kind.id()),
+                "{} is missing:\n{help}",
+                kind.id()
+            );
+        }
+        assert!(help.contains("number*, cardholder, expiry, cvv*"), "{help}");
+    }
+
+    #[test]
+    fn a_secret_field_given_as_an_argument_is_refused_before_unlocking() {
+        let plain = vec![("cvv".to_string(), "123".to_string())];
+        let error = check_sensitivities(Kind::Card, &plain, &[])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("--secret-field cvv"), "{error}");
+        assert!(check_sensitivities(Kind::Card, &[], &["expiry".to_string()]).is_err());
+        assert!(check_sensitivities(Kind::Card, &[], &["cvv".to_string()]).is_ok());
     }
 
     #[test]

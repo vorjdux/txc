@@ -30,7 +30,7 @@ const SAMPLE: Color = Color::Gray;
 pub fn draw(frame: &mut Frame, app: &mut App) {
     #[cfg(feature = "vault")]
     if app.screen == crate::tui::app::Screen::Vault {
-        super::vault_ui::draw(frame, &app.vault);
+        super::vault::draw::draw(frame, &app.vault);
         if app.show_about {
             draw_about(frame, frame.area());
         }

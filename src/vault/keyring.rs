@@ -14,6 +14,7 @@ use crate::vault::model::{
     Entry, Field, Kind, MAX_ENTRIES, MAX_SECRET_BYTES, Value, check_entry_name, check_field_name,
 };
 use crate::vault::prompt::check_new_passphrase;
+use crate::vault::recent::{self, Use};
 use crate::vault::trust::{Standing, Trust};
 
 const TRUST_KEY_LABEL: &str = "txc vault trust key v1";
@@ -254,6 +255,51 @@ impl Keyring {
         trust.save(&self.home)
     }
 
+    /// The entries used most recently on this device, newest first. A list
+    /// that cannot be read comes back empty rather than as an error, because
+    /// it is a convenience and never holds anything that cannot be rebuilt.
+    #[must_use]
+    pub fn recent(&self) -> Vec<Use> {
+        recent::load(&self.home, &self.identity).unwrap_or_default()
+    }
+
+    /// Records that an entry was just used, for the recent list.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the list cannot be written.
+    pub fn record_use(&self, vault: &str, entry: &str) -> Result<()> {
+        recent::update(&self.home, &self.identity, |uses| {
+            recent::record(uses, vault, entry);
+        })
+    }
+
+    /// Follows an entry to its new name in the recent list.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the list cannot be written.
+    pub fn rename_use(&self, vault: &str, old: &str, new: &str) -> Result<()> {
+        recent::update(&self.home, &self.identity, |uses| {
+            for found in uses.iter_mut() {
+                if found.vault == vault && found.entry == old {
+                    found.entry = new.to_string();
+                }
+            }
+        })
+    }
+
+    /// Takes an entry off the recent list.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the list cannot be written.
+    pub fn forget_use(&self, vault: &str, entry: &str) -> Result<()> {
+        recent::update(&self.home, &self.identity, |uses| {
+            uses.retain(|found| !(found.vault == vault && found.entry == entry));
+        })
+    }
+
     fn open_sealed(&self, sealed: &str) -> Result<SecretString> {
         let ciphertext = BASE64
             .decode(sealed.as_bytes())
@@ -322,6 +368,8 @@ pub struct NewEntry {
     pub secrets: Vec<(String, SecretString)>,
     /// Tags.
     pub tags: Vec<String>,
+    /// Whether it starts out starred.
+    pub favourite: bool,
 }
 
 /// Changes to an existing entry, all applied or none.
@@ -339,6 +387,8 @@ pub struct Change {
     pub tag: Vec<String>,
     /// Tags to remove.
     pub untag: Vec<String>,
+    /// Star or unstar it.
+    pub favourite: Option<bool>,
 }
 
 /// An open, trusted vault.
@@ -421,6 +471,7 @@ impl Opened {
             kind: new.kind,
             fields: Vec::new(),
             tags: Vec::new(),
+            favourite: new.favourite,
             created: now.clone(),
             updated: now,
         };
@@ -478,10 +529,29 @@ impl Opened {
         }
         for (name, value) in change.plain {
             check_field_name(&name)?;
+            // A field the kind keeps secret must never be stored in the
+            // clear, however it was asked for.
+            if let Some(spec) = entry.kind.spec(&name) {
+                ensure!(
+                    !spec.sensitivity.is_sealed(),
+                    "the {} of {} is kept secret, so it cannot be given as a plain value; \
+                     type it when asked, or pipe it in",
+                    spec.label.to_lowercase(),
+                    article(entry.kind)
+                );
+            }
             set_field(entry, name, Value::Plain(value));
         }
         for (name, secret) in &change.secrets {
             check_field_name(name)?;
+            if let Some(spec) = entry.kind.spec(name) {
+                ensure!(
+                    spec.sensitivity.is_sealed(),
+                    "the {} of {} is not secret; give it as a plain value",
+                    spec.label.to_lowercase(),
+                    article(entry.kind)
+                );
+            }
             set_field(
                 entry,
                 name.clone(),
@@ -495,7 +565,23 @@ impl Opened {
         }
         entry.tags.retain(|tag| !change.untag.contains(tag));
         entry.tags.sort();
+        if let Some(favourite) = change.favourite {
+            entry.favourite = favourite;
+        }
+        entry.order_fields();
         entry.validate()
+    }
+
+    /// Stars or unstars an entry. Unlike other changes, this leaves the
+    /// entry's updated time alone: nothing in it changed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there is no such entry.
+    pub fn set_favourite(&mut self, name: &str, favourite: bool) -> Result<()> {
+        let index = self.index(name)?;
+        self.vault.entries[index].favourite = favourite;
+        Ok(())
     }
 
     /// Removes an entry.
@@ -604,6 +690,13 @@ impl Opened {
     }
 }
 
+/// "a login", "an API key": the kind's label with its article, for messages.
+fn article(kind: Kind) -> String {
+    let label = kind.label().to_lowercase();
+    let vowel = matches!(label.chars().next(), Some('a' | 'e' | 'i' | 'o' | 'u'));
+    format!("{} {label}", if vowel { "an" } else { "a" })
+}
+
 /// Adds a field, or replaces the value of one with the same name.
 fn set_field(entry: &mut Entry, name: String, value: Value) {
     match entry.fields.iter_mut().find(|field| field.name == name) {
@@ -649,7 +742,91 @@ pub(crate) mod tests {
             plain: vec![("username".to_string(), "octocat".to_string())],
             secrets: vec![("password".to_string(), secret(password))],
             tags: vec!["dev".to_string()],
+            favourite: false,
         }
+    }
+
+    #[test]
+    fn a_secret_field_cannot_be_stored_in_the_clear_nor_a_plain_one_sealed() {
+        let (_scratch, keyring) = keyring("sensitivity");
+        keyring.create_vault("personal", &[]).unwrap();
+        let mut vault = keyring.open("personal").unwrap();
+
+        let card = |plain: Vec<(&str, &str)>, secrets: Vec<(&str, &str)>| NewEntry {
+            name: "visa".to_string(),
+            kind: Kind::Card,
+            plain: plain
+                .into_iter()
+                .map(|(n, v)| (n.to_string(), v.to_string()))
+                .collect(),
+            secrets: secrets
+                .into_iter()
+                .map(|(n, v)| (n.to_string(), secret(v)))
+                .collect(),
+            tags: Vec::new(),
+            favourite: false,
+        };
+
+        let error = vault
+            .add(card(vec![("cvv", "123")], vec![("number", "4111")]))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("security code of a payment card is kept secret"),
+            "{error}"
+        );
+
+        let error = vault
+            .add(card(
+                Vec::new(),
+                vec![("number", "4111"), ("expiry", "12/30")],
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("not secret"), "{error}");
+
+        vault
+            .add(card(
+                vec![("expiry", "12/30"), ("cardholder", "A N Other")],
+                vec![("cvv", "123"), ("number", "4111")],
+            ))
+            .unwrap();
+        let names: Vec<&str> = vault
+            .entry("visa")
+            .unwrap()
+            .fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+        assert_eq!(names, ["cardholder", "number", "expiry", "cvv"]);
+    }
+
+    #[test]
+    fn a_favourite_is_saved_in_the_vault_without_touching_the_updated_time() {
+        let (_scratch, keyring) = keyring("favourite");
+        keyring.create_vault("personal", &[]).unwrap();
+        let mut vault = keyring.open("personal").unwrap();
+        vault.add(login("site", "p")).unwrap();
+        let updated = vault.entry("site").unwrap().updated.clone();
+        vault.set_favourite("site", true).unwrap();
+        vault.save(&keyring).unwrap();
+
+        let vault = keyring.open("personal").unwrap();
+        let entry = vault.entry("site").unwrap();
+        assert!(entry.favourite);
+        assert_eq!(entry.updated, updated);
+    }
+
+    #[test]
+    fn the_recent_list_follows_renames_and_removals() {
+        let (_scratch, keyring) = keyring("recent-uses");
+        keyring.record_use("personal", "one").unwrap();
+        keyring.record_use("personal", "two").unwrap();
+        keyring.rename_use("personal", "one", "uno").unwrap();
+        keyring.forget_use("personal", "two").unwrap();
+        let uses = keyring.recent();
+        assert_eq!(uses.len(), 1);
+        assert_eq!(uses[0].entry, "uno");
     }
 
     #[test]

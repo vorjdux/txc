@@ -491,3 +491,89 @@ fn names_that_could_escape_the_vault_directory_are_refused() {
     }
     fails(&sandbox.vault_piped(&["add", "bad\u{1b}[2Jname", "--secret-from-stdin"], "x"));
 }
+
+#[test]
+fn each_kind_keeps_its_secret_fields_secret() {
+    let sandbox = Sandbox::new("kinds");
+    sandbox.init();
+
+    // A card's security code is secret, so it is refused as an argument.
+    let error = fails(&sandbox.vault_piped(
+        &[
+            "add",
+            "visa",
+            "--kind",
+            "card",
+            "--field",
+            "cvv=123",
+            "--secret-from-stdin",
+        ],
+        "4111111111111111",
+    ));
+    assert!(error.contains("--secret-field cvv"), "{error}");
+
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "visa",
+            "--kind",
+            "card",
+            "--field",
+            "cardholder=A N Other",
+            "--field",
+            "expiry=12/30",
+            "--secret-from-stdin",
+        ],
+        "4111111111111111",
+    ));
+    let show = succeeds(&sandbox.vault(&["show", "visa"]));
+    assert!(show.contains("Payment card"), "{show}");
+    assert!(show.contains("Card number"), "{show}");
+    assert!(show.contains("A N Other"), "{show}");
+    assert!(!show.contains("4111"), "{show}");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "visa", "--print"])),
+        "4111111111111111"
+    );
+
+    // A card number is not something to make up.
+    let error = fails(&sandbox.vault(&["add", "other", "--kind", "card", "--generate"]));
+    assert!(error.contains("cannot be generated"), "{error}");
+}
+
+#[test]
+fn favourites_and_recently_used_entries_can_be_listed() {
+    let sandbox = Sandbox::new("favourites");
+    sandbox.init();
+    for name in ["alpha", "beta", "gamma"] {
+        succeeds(&sandbox.vault_piped(&["add", name, "--secret-from-stdin"], "x"));
+    }
+
+    succeeds(&sandbox.vault(&["favourite", "beta"]));
+    let favourites = succeeds(&sandbox.vault(&["list", "--favourites"]));
+    assert!(favourites.contains("beta ★"), "{favourites}");
+    assert!(!favourites.contains("alpha"), "{favourites}");
+
+    succeeds(&sandbox.vault(&["copy", "gamma", "--print"]));
+    succeeds(&sandbox.vault(&["copy", "alpha", "--print"]));
+    let recent = succeeds(&sandbox.vault(&["list", "--recent"]));
+    let lines: Vec<&str> = recent.lines().collect();
+    assert_eq!(lines.len(), 2, "{recent}");
+    assert!(lines[0].contains("alpha"), "{recent}");
+    assert!(lines[1].contains("gamma"), "{recent}");
+    assert!(recent.contains("just now"), "{recent}");
+
+    succeeds(&sandbox.vault(&["favourite", "beta", "--remove"]));
+    let output = sandbox.vault(&["list", "--favourites"]);
+    assert!(stdout(&output).trim().is_empty(), "{}", stdout(&output));
+}
+
+#[test]
+fn the_help_for_add_lists_the_kinds_and_their_fields() {
+    let sandbox = Sandbox::new("kinds-help");
+    let help = succeeds(&sandbox.vault(&["add", "--help"]));
+    for kind in ["login", "card", "ssh-key", "wifi", "wallet", "licence"] {
+        assert!(help.contains(kind), "{kind} is missing:\n{help}");
+    }
+    assert!(help.contains("cvv*"), "{help}");
+}
