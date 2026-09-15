@@ -51,6 +51,11 @@ pub fn build() -> Command {
         cmd = cmd.subcommand(subcommand_for(op));
     }
 
+    #[cfg(feature = "vault")]
+    {
+        cmd = cmd.subcommand(crate::vault::command::command());
+    }
+
     cmd.subcommand(
         Command::new("list")
             .about("List every operation, optionally filtered by category")

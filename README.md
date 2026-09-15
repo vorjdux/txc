@@ -13,6 +13,10 @@ there is nothing to paste into a web form.
 143 operations across 10 categories, each usable as an argument, over a pipe,
 or from an interactive interface.
 
+It also keeps an encrypted vault for passwords, API keys and other secrets,
+just as local, with secrets that leave it only through a clipboard that clears
+itself: see [the vault](#the-vault).
+
 ```
 $ txc url-encode "This string will be URL encoded"
 This%20string%20will%20be%20URL%20encoded
@@ -54,7 +58,7 @@ type.
 │arg   txc caesar 'The quick brown fox jumps over the lazy dog'                            │
 │pipe  echo 'The quick brown fox jumps over the lazy dog' | txc caesar                     │
 ╰──────────────────────────────────────────────────────────────────────────────────────────╯
- tab panel   ^up/^down op   ^y copy   ^s save   ? help   F2 about   ^c quit
+ tab panel   ^up/^down op   ^y copy   ^s save   F3 vault   ? help   F2 about   ^c quit
 ```
 
 | Key | Action |
@@ -75,6 +79,7 @@ type.
 | `page up` / `page down` | Scroll the output |
 | `?` or `F1` | Key reference |
 | `F2` | About: version, author, licence |
+| `F3` | [The vault](#the-vault), and back again |
 | `ctrl+c` | Quit |
 
 Each panel earns its place. An operation that generates rather than transforms,
@@ -202,6 +207,163 @@ means your home directory:
 ┃enter to save, esc to cancel, ~ is your home directory        ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
+
+## The vault
+
+`txc vault` keeps passwords, API keys, logins and private notes in encrypted
+files on your own machine. Nothing is sent anywhere. A secret leaves the vault
+only by being copied to the clipboard, which is cleared again, or by being
+piped into another program.
+
+```sh
+txc vault init                     # create your identity and the personal vault
+txc vault add github --username octocat --url https://github.com --generate
+txc vault add work/openai --kind api-key --secret-from-stdin < key.txt
+txc vault list personal
+txc vault show github              # secrets are shown masked
+txc vault copy github              # the password, cleared from the clipboard after 20s
+txc vault copy github --field username
+export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
+```
+
+In the interactive interface, `F3` opens the same vaults. Secrets are typed
+into fields that show only dots, sealed values are drawn as a fixed mask that
+says nothing about their length, `c` copies and `u` copies the username, and
+the vault locks itself after five minutes without a key and whenever the
+interface closes.
+
+### Entries
+
+An entry is named `vault/entry`, or just `entry` for one in the `personal`
+vault. Its kind decides which field holds its main secret, which is what
+`copy` takes unless given `--field`:
+
+| Kind | Main secret | For |
+| --- | --- | --- |
+| `login` | `password` | A username and password for a site or service |
+| `api-key` | `key` | A key or token for an API |
+| `secret` | `value` | Any single secret value |
+| `note` | `text` | Free text that should stay private |
+
+`--username`, `--url` and `--field NAME=VALUE` add fields stored inside the
+vault's encryption and shown by `show`. `--secret-field NAME` adds another
+field sealed like the main secret and asked for at the terminal.
+
+### Getting secrets in and out
+
+No option takes a secret as its value, because arguments end up in shell
+history and in the process list. A secret is typed at the terminal without
+echo, twice; generated with `--generate` (24 characters, or `--length N`, with
+`--no-symbols` for letters and digits only); or piped in with
+`--secret-from-stdin`.
+
+`copy` puts the secret on the clipboard, marked so clipboard managers leave it
+out of their history: the KDE password manager hint on Linux, the concealed
+type on macOS, and the formats that keep it out of clipboard history and the
+cloud clipboard on Windows. It then waits and clears the clipboard after
+`--clear-after` seconds (20 by default, at most 300), or at once if you press a
+key, but only if the secret is still there. Unlike `ctrl+y` for ordinary
+output, it never falls back to the terminal's OSC 52 sequence, which would
+send the secret through the terminal and anything recording it; over ssh, use
+`--print` into a pipe instead. `--print` refuses to write to a terminal, where
+the secret would stay in the scrollback.
+
+For scripts, `--passphrase-file PATH` reads the passphrase from a file that
+only you can read, and `--home DIR` or `TXC_VAULT_HOME` chooses a vault
+directory other than the default.
+
+### How it is protected
+
+Everything is built from [age](https://age-encryption.org), a small, openly
+specified and widely reviewed format. The design is public, so its safety
+rests on keys alone.
+
+- **Your identity** is an age X25519 private key in `identity.age`, encrypted
+  with your passphrase through scrypt at N = 2^18, which makes every guess at
+  the passphrase cost about a second and 256 MiB. Opening a vault takes both
+  the file and the passphrase. Passphrases shorter than 12 characters are
+  refused.
+- **A vault** is one age file (X25519 and ChaCha20-Poly1305), encrypted to one
+  or more public keys. Entry names, usernames and addresses are inside it, so
+  the file shows nothing but its size. Any change to the file makes it fail to
+  open rather than decrypt to something else.
+- **Each secret** is sealed again as an age file of its own inside the vault.
+  Opening a vault to browse it decrypts none of them; copying opens exactly
+  one.
+- **Trust.** Encryption does not say who wrote a file: anyone who knows your
+  public key can build a vault for it and list their own key beside yours, so
+  that a secret you save into it goes to them as well. Each vault therefore
+  carries a random key only its recipients can read, and each device keeps a
+  record of that key's tag, the vault's recipients and its generation,
+  authenticated with a key derived from your identity. A vault that is new to
+  the device, rebuilt with another key, encrypted to different recipients, or
+  older than the version last opened is refused until `txc vault trust <name>`
+  shows you what differs and you accept it.
+- **On disk** every file is written to a temporary file and renamed into
+  place, readable by you alone, and refused when it is a link, belongs to
+  another user, or could have been changed by one. The previous version of a
+  vault is kept beside it, still encrypted.
+- **In memory** keys and secrets are wiped when they are dropped, buffers for
+  them are sized once so no stray copy is left by a reallocation, and on Unix
+  the process cannot write a core dump. On Linux it is also marked not
+  dumpable, which stops other programs running as you from attaching to it or
+  reading its memory.
+
+The files live in `~/.local/share/txc/vault` (or `$XDG_DATA_HOME/txc/vault`)
+on Linux, `~/Library/Application Support/txc/vault` on macOS and
+`%APPDATA%\txc\vault` on Windows:
+
+```
+vault/
+├── identity.age              your private key, encrypted with your passphrase
+├── trust.json                what this device trusts, authenticated by your key
+└── vaults/
+    ├── personal.vault.age    one age file per vault
+    └── personal.vault.age.bak  the version before the last change
+```
+
+### Several devices, and sharing
+
+To use the same vaults on another device, copy `identity.age` and the `vaults/`
+directory across, then run `txc vault trust <name>` there once for each vault.
+Only `vaults/` needs synchronising afterwards; `trust.json` belongs to each
+device.
+
+A vault can also be encrypted to other keys: a second device with its own
+identity, a backup key kept offline, or a colleague. `txc vault identity`
+prints your public key, and the owner of a vault adds it with
+`txc vault create team --recipient age1...` or
+`txc vault recipients personal --add age1...`. Every secret is sealed again for
+the new set of keys. Removing a key does the same, but it cannot reach copies
+of the vault made before, so change any secret that key could read.
+
+### Opening a vault without txc
+
+Nothing is locked inside txc. A vault is an age file, and `identity.age` is an
+ordinary passphrase protected age identity, so another age implementation
+opens it:
+
+```sh
+rage -d -i identity.age vaults/personal.vault.age      # the vault, as JSON
+echo '<sealed value>' | base64 -d | rage -d -i identity.age
+```
+
+### What it does not protect against
+
+- Malware already running as you while the vault is unlocked, a keylogger
+  catching the passphrase, or anyone with administrator rights on the machine.
+- Programs reading the clipboard during the seconds a secret is on it, and
+  clipboard managers that ignore the request to leave it out of their history.
+- A forgotten passphrase, or a lost `identity.age`: neither can be recovered,
+  and without them the vaults cannot be opened. Keep a copy of `identity.age`
+  somewhere safe; it is encrypted.
+- What an observer can see without the key: the size of each vault file, when
+  it last changed, and how many keys it is encrypted to.
+- On Windows the files rely on the access rules of your user profile, and the
+  process protections above are not available.
+
+To build txc without the vault, and without its dependencies, use
+`cargo install txc --no-default-features`.
 
 ## Installing
 
@@ -659,6 +821,9 @@ let op = find("slugify").expect("slugify is registered");
 let text = op.apply("Hello, World!", &Params::for_op(op), None)?;
 assert_eq!(text, "hello-world");
 ```
+
+The vault is there too, as `txc::vault`, with the same checks as the command
+line.
 
 ## Development
 

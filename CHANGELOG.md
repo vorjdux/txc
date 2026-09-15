@@ -6,6 +6,42 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `txc vault`, an encrypted vault for passwords, API keys, logins and private
+  notes, kept in local files and built entirely on the age format: `init`,
+  `identity`, `passwd`, `create`, `list`, `add`, `show`, `copy`, `edit`, `rm`,
+  `recipients` and `trust`.
+- The identity is an age X25519 key encrypted with a passphrase through scrypt
+  at N = 2^18. Each vault is one age file, encrypted to one or more public
+  keys, and each secret inside it is sealed again on its own, so browsing a
+  vault decrypts no secret and copying opens exactly one.
+- Trust records per device, authenticated with a key derived from the
+  identity. A vault that is new to the device, rebuilt with another key,
+  encrypted to different recipients, or older than the version last opened is
+  refused until `txc vault trust` shows what differs and it is accepted.
+- Secrets are never taken as arguments: they are typed without echo,
+  generated with `--generate`, or piped in with `--secret-from-stdin`. `copy`
+  keeps them out of clipboard history where the system allows, clears the
+  clipboard again after 20 seconds if the secret is still there, and never
+  falls back to OSC 52. `--print` writes to a pipe and refuses a terminal.
+- Vault files are written atomically, readable by their owner alone, and
+  refused when they are links or open to other users. Keys and secrets are
+  wiped from memory when dropped, core dumps are disabled while the vault is
+  in use, and on Linux the process is marked not dumpable.
+- A vault screen in the interactive interface, on `F3`, for unlocking,
+  browsing, adding, editing, removing and copying. Secrets are drawn only as
+  dots or a fixed mask, and the vault locks after five minutes without a key
+  and when the interface closes.
+- A `vault` cargo feature, on by default. `--no-default-features` builds txc
+  without the vault and without its dependencies.
+
+### Changed
+
+- Unsafe code is denied across the crate, except in the one module that makes
+  system calls to harden the process.
+- The release binary is about 1.3 MiB larger with the vault built in.
+
 ## [0.4.1]
 
 ### Added

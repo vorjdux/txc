@@ -6,6 +6,10 @@ pub mod command;
 pub mod options;
 pub mod textarea;
 mod ui;
+#[cfg(feature = "vault")]
+pub mod vault;
+#[cfg(feature = "vault")]
+mod vault_ui;
 
 use std::io::IsTerminal;
 use std::time::Duration;
@@ -48,9 +52,20 @@ pub fn run() -> Result<()> {
 
 fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     let mut app = App::new();
+    let result = run_app(terminal, &mut app);
+    // However the loop ended, the vault is locked and any secret it copied
+    // is taken off the clipboard before the interface goes.
+    #[cfg(feature = "vault")]
+    app.vault.lock();
+    result
+}
 
+fn run_app(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()> {
     while app.running {
-        terminal.draw(|frame| ui::draw(frame, &mut app))?;
+        #[cfg(feature = "vault")]
+        app.vault.tick(std::time::Instant::now());
+
+        terminal.draw(|frame| ui::draw(frame, app))?;
 
         // Waking up regularly keeps the interface responsive to resizes even
         // when no key is pressed.
@@ -60,7 +75,7 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
         if let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
-            handle_key(&mut app, key);
+            handle_key(app, key);
         }
 
         if let Some(text) = app.pending_clipboard.take() {
@@ -68,6 +83,16 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
                 Ok(route) => clipboard::report(&route),
                 Err(error) => format!("could not copy: {error}"),
             };
+        }
+
+        // A secret goes through the vault's own clipboard, which never falls
+        // back to the terminal and clears itself again.
+        #[cfg(feature = "vault")]
+        if let Some((secret, label)) = app.vault.pending_copy.take() {
+            app.vault.release_clipboard();
+            let result = crate::vault::clipboard::copy(&secret);
+            drop(secret);
+            app.vault.copied(result, &label);
         }
     }
     Ok(())
@@ -95,6 +120,22 @@ fn handle_key(app: &mut App, key: KeyEvent) {
             app.running = false;
         }
         return;
+    }
+
+    #[cfg(feature = "vault")]
+    {
+        if key.code == KeyCode::F(3) {
+            app.toggle_vault();
+            return;
+        }
+        if app.screen == crate::tui::app::Screen::Vault {
+            match (key.code, control) {
+                (KeyCode::Char('c'), true) => app.running = false,
+                (KeyCode::F(2), _) => app.show_about = true,
+                _ => app.vault.handle_key(key),
+            }
+            return;
+        }
     }
 
     // Keys that work the same in every panel.
@@ -617,6 +658,33 @@ mod tests {
         let mut app = App::new();
         press_ctrl(&mut app, KeyCode::Char('s'));
         assert!(app.prompt.is_some());
+        press_ctrl(&mut app, KeyCode::Char('c'));
+        assert!(!app.running);
+    }
+
+    #[cfg(feature = "vault")]
+    #[test]
+    fn f3_switches_to_the_vault_and_back() {
+        use crate::tui::app::Screen;
+
+        let mut app = App::new();
+        press(&mut app, KeyCode::F(3));
+        assert_eq!(app.screen, Screen::Vault);
+        // Keys now go to the vault, not to the operations.
+        let before = app.input.text();
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Char('x'));
+        assert_eq!(app.input.text(), before);
+
+        press(&mut app, KeyCode::F(3));
+        assert_eq!(app.screen, Screen::Operations);
+    }
+
+    #[cfg(feature = "vault")]
+    #[test]
+    fn control_c_quits_from_the_vault_too() {
+        let mut app = App::new();
+        press(&mut app, KeyCode::F(3));
         press_ctrl(&mut app, KeyCode::Char('c'));
         assert!(!app.running);
     }

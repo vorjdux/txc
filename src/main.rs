@@ -70,6 +70,8 @@ fn run() -> Result<()> {
             Ok(())
         }
         "tui" => txc::tui::run(),
+        #[cfg(feature = "vault")]
+        "vault" => txc::vault::command::run(sub_matches),
         _ => {
             let op = registry::find(name)
                 .ok_or_else(|| anyhow::anyhow!("unknown operation {name:?}"))?;

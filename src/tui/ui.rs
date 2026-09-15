@@ -14,20 +14,29 @@ use crate::registry::Feed;
 use crate::tui::app::{App, Focus};
 use crate::tui::command;
 
-const ACCENT: Color = Color::Cyan;
+pub(super) const ACCENT: Color = Color::Cyan;
 /// Secondary text: panel titles, option names, hints and the key reference.
 /// Grey rather than dark grey, which is close to unreadable on the dark
 /// backgrounds most terminals use.
-const MUTED: Color = Color::Gray;
+pub(super) const MUTED: Color = Color::Gray;
 /// Frames of panels that are not focused. These may be quiet, because the
 /// shape carries the meaning and no words are lost when they recede.
 const BORDER: Color = Color::DarkGray;
-const ERROR: Color = Color::Red;
+pub(super) const ERROR: Color = Color::Red;
 /// Sample text, dimmed so it reads as a starting point rather than input the
 /// reader typed.
 const SAMPLE: Color = Color::Gray;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    #[cfg(feature = "vault")]
+    if app.screen == crate::tui::app::Screen::Vault {
+        super::vault_ui::draw(frame, &app.vault);
+        if app.show_about {
+            draw_about(frame, frame.area());
+        }
+        return;
+    }
+
     // The command lines are the first thing to go when the terminal is short:
     // they explain the interface, while the key reference is how to leave it.
     let hints = if frame.area().height >= HINTS_NEED_ROWS {
@@ -136,7 +145,7 @@ fn draw_right_column(frame: &mut Frame, area: Rect, app: &App) {
     draw_output(frame, *next.next().expect("output area"), app);
 }
 
-fn panel(title: &str, focused: bool) -> Block<'_> {
+pub(super) fn panel(title: &str, focused: bool) -> Block<'_> {
     // The title has to be read, so it stays legible even when the frame around
     // it recedes.
     let (border, title_style) = if focused {
@@ -395,7 +404,7 @@ fn draw_output(frame: &mut Frame, area: Rect, app: &App) {
 
 /// How tall the terminal must be before the command panel is drawn as well as
 /// the key reference. Below this the rows are better spent on the panels above.
-const HINTS_NEED_ROWS: u16 = 20;
+pub(super) const HINTS_NEED_ROWS: u16 = 20;
 
 /// How many rows the bottom of the screen takes: the key reference, plus the
 /// command panel and the frame around it when there is one.
@@ -455,13 +464,24 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static st
         if app.varies() {
             keys.push(("^n", "new"));
         }
-        keys.extend([
-            ("^y", "copy"),
-            ("^s", "save"),
-            ("?", "help"),
-            ("F2", "about"),
-            ("^c", "quit"),
-        ]);
+        keys.extend([("^y", "copy"), ("^s", "save")]);
+        #[cfg(feature = "vault")]
+        keys.push(("F3", "vault"));
+        keys.extend([("?", "help"), ("F2", "about"), ("^c", "quit")]);
+
+        // Leaving has to stay on screen, so when the line is wider than the
+        // terminal the keys the help overlay also lists give way first.
+        let width = |keys: &[(&str, &str)]| {
+            keys.iter()
+                .map(|(key, label)| key.len() + label.len() + 4)
+                .sum::<usize>()
+        };
+        for optional in ["F3", "F2"] {
+            if width(&keys) <= usize::from(area.width) {
+                break;
+            }
+            keys.retain(|(key, _)| *key != optional);
+        }
         keys
     } else {
         vec![]
@@ -494,7 +514,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static st
 }
 
 /// A window in the middle of the screen, sized to its contents.
-fn window(area: Rect, columns: u16, rows: u16) -> Rect {
+pub(super) fn window(area: Rect, columns: u16, rows: u16) -> Rect {
     let width = columns.min(area.width.saturating_sub(4));
     let height = rows.min(area.height);
     Rect {
@@ -571,9 +591,11 @@ fn draw_about(frame: &mut Frame, area: Rect) {
 }
 
 fn draw_help(frame: &mut Frame, area: Rect) {
-    let popup = window(area, 64, 25);
+    let popup = window(area, 64, 26);
 
-    let text = vec![
+    // Only the vault adds a line to it.
+    #[cfg_attr(not(feature = "vault"), allow(unused_mut))]
+    let mut text = vec![
         Line::raw(""),
         Line::raw("  tab / shift+tab      move between panels"),
         Line::raw("  up / down            move inside a list or between options"),
@@ -598,6 +620,11 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         Line::raw("  F2  about txc, its author and licence"),
         Line::raw("  ?   close this help             ctrl+c  quit"),
     ];
+    #[cfg(feature = "vault")]
+    text.insert(
+        text.len() - 1,
+        Line::raw("  F3  the vault, for passwords, keys and secrets"),
+    );
 
     frame.render_widget(Clear, popup);
     frame.render_widget(
@@ -874,6 +901,23 @@ mod tests {
             !screen.contains(" pipe "),
             "nothing to pipe into it:\n{screen}"
         );
+    }
+
+    #[test]
+    fn quit_stays_on_screen_when_the_key_line_is_too_wide() {
+        let mut app = App::new();
+        app.search = "uuid".into();
+        app.refresh_operations();
+        app.load_operation();
+
+        // uuid varies, so its key line is the longest there is.
+        let narrow = render(&mut app, 92, 30);
+        assert!(narrow.contains("^c quit"), "{narrow}");
+
+        let wide = render(&mut app, 120, 30);
+        assert!(wide.contains("^c quit"), "{wide}");
+        #[cfg(feature = "vault")]
+        assert!(wide.contains("F3 vault"), "{wide}");
     }
 
     #[test]
