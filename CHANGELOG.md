@@ -24,6 +24,13 @@ All notable changes to txc are recorded here. The format follows
   terminal, it now drops the About key before the vault key, so the vault key
   stays on screen for longer.
 
+### Fixed
+
+- Each entry in the vault list is now shown over two lines, the name on its own
+  and the kind and vault below it, so a name is no longer cropped to share the
+  row with them. The list is a narrow column, leaving the wider pane beside it
+  for reading the selected entry.
+
 ## [0.5.0] - 2026-09-16
 
 The vault release: txc now keeps secrets as well as text, in encrypted files
