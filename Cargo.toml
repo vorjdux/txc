@@ -2,7 +2,7 @@
 name = "txc"
 description = "Offline text utilities for the terminal, and an encrypted local vault for passwords, keys and other secrets: nothing is sent anywhere"
 authors = ["Matheus Santos <vorj.dux@gmail.com>"]
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 rust-version = "1.88"
 readme = "README.md"

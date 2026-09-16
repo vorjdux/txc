@@ -55,7 +55,7 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.5.1 Shift letters by a fixed amount
+ txc  0.5.2 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
@@ -108,7 +108,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.5.1 Generate UUIDs
+ txc  0.5.2 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -258,7 +258,7 @@ export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 and each vault. The list is in the middle and the selected entry on the right.
 
 ```
- txc  0.5.1 Vault unlocked · 3 entries in 1 vault
+ txc  0.5.2 Vault unlocked · 3 entries in 1 vault
 ╭ Browse ────────────────╮╭ Search ──────────────────────────────╮╭ GitHub ──────────────────────────────────╮
 │★ Favourites          1 ││/ to search                           ││ Login · personal  ★ favourite            │
 │◷ Recently used       0 │╰──────────────────────────────────────╯│                                          │
