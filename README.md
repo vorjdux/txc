@@ -6,16 +6,33 @@
 [![MSRV](https://img.shields.io/crates/msrv/txc?logo=rust)](https://github.com/vorjdux/txc#from-source)
 [![Licence](https://img.shields.io/crates/l/txc.svg)](#license)
 
-Text utilities for the terminal. Everything the online text tool sites do, done
-locally: your text never leaves the machine, there is no network call, and
-there is nothing to paste into a web form.
+**Offline text utilities and an encrypted secrets vault for the terminal.**
 
-143 operations across 10 categories, each usable as an argument, over a pipe,
-or from an interactive interface.
+143 operations across 10 categories: encode, decode, hash, convert, inspect and
+generate. Use them as an argument, over a pipe, or from a full-screen interface.
+Plus a local, age-encrypted vault for passwords, payment cards, API keys and
+notes. Nothing ever leaves your machine: no network call, nothing to paste into
+a web form.
 
-It also keeps an encrypted vault for passwords, cards, API keys, notes and other
-secrets, just as local, which shows a secret only when you ask and copies it to
-a clipboard that clears itself: see [the vault](#the-vault).
+## Install
+
+Linux and macOS:
+
+```sh
+curl -sSf https://raw.githubusercontent.com/vorjdux/txc/main/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/vorjdux/txc/main/install.ps1 | iex
+```
+
+Or `cargo install txc`, or download a binary or `.deb`/`.rpm` from the
+[releases page](https://github.com/vorjdux/txc/releases). More ways, and the
+checksums, under [Installing](#installing).
+
+## A quick look
 
 ```
 $ txc url-encode "This string will be URL encoded"
@@ -28,6 +45,9 @@ $ txc snake "userFirstName" | txc upper
 USER_FIRST_NAME
 ```
 
+The vault, in one line: `txc vault add github --username octocat --generate`,
+then `txc vault copy github`. See [the vault](#the-vault).
+
 ## The interactive interface
 
 Run `txc` with no arguments and it opens a full screen interface. Pick an
@@ -35,7 +55,7 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.5.0 Shift letters by a fixed amount
+ txc  0.5.1 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
@@ -88,7 +108,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.5.0 Generate UUIDs
+ txc  0.5.1 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -107,7 +127,7 @@ back.
 ╭ Command line ────────────────────────────────────────────────────────────────────────────╮
 │arg   txc uuid --name example.com                                                         │
 ╰──────────────────────────────────────────────────────────────────────────────────────────╯
- tab panel   ^up/^down op   ^n new   ^y copy   ^s save   ? help   F2 about   ^c quit
+ tab panel   ^up/^down op   ^n new   ^y copy   ^s save   F3 vault   ? help   ^c quit
 ```
 
 ### Sample text
@@ -227,6 +247,7 @@ txc vault list --recent            # what you used last on this device
 txc vault show visa                # secrets are shown masked
 txc vault copy github              # the password, cleared from the clipboard after 20s
 txc vault copy visa --field cvv
+txc vault move github work         # added it to the wrong vault? move it, secrets and all
 export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 ```
 
@@ -237,7 +258,7 @@ export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 and each vault. The list is in the middle and the selected entry on the right.
 
 ```
- txc  0.5.0 Vault unlocked · 3 entries in 1 vault
+ txc  0.5.1 Vault unlocked · 3 entries in 1 vault
 ╭ Browse ────────────────╮╭ Search ──────────────────────────────╮╭ GitHub ──────────────────────────────────╮
 │★ Favourites          1 ││/ to search                           ││ Login · personal  ★ favourite            │
 │◷ Recently used       0 │╰──────────────────────────────────────╯│                                          │
@@ -266,6 +287,7 @@ and each vault. The list is in the middle and the selected entry on the right.
 | `f` | Star or unstar the entry |
 | `a` | Add an entry: choose its kind, then fill in that kind's form |
 | `e`, `d` | Edit or delete the entry |
+| `m` | Move the entry to another vault |
 | `n` | New vault |
 | `t` | Trust a vault that is new to this device or has changed |
 | `l` or `ctrl+l` | Lock |
@@ -446,49 +468,39 @@ To build txc without the vault, and without its dependencies, use
 
 ## Installing
 
-Rust 1.88 or newer is required to build from source; the crate uses the 2024
-edition. The released binaries need nothing installed.
+### Install script
 
-### One line
+The one-line scripts at the top are the quickest way. Each downloads the archive
+for your machine, checks it against the published `SHA256SUMS`, and puts `txc` on
+your PATH. Pass `--dry-run` to see what it would do, `VERSION=x.y.z` to pin a
+version, and `INSTALL_DIR=...` to choose where it lands.
+
+### With cargo
 
 ```sh
-curl -sSf https://raw.githubusercontent.com/vorjdux/txc/main/install.sh | sh
+cargo install txc
 ```
 
-```powershell
-irm https://raw.githubusercontent.com/vorjdux/txc/main/install.ps1 | iex
-```
+Rust 1.88 or newer, 2024 edition. Add `--no-default-features` to build without
+the vault and its dependencies.
 
-Both download the archive for your machine, check it against the published
-`SHA256SUMS`, and put `txc` somewhere on your PATH. Pass `--dry-run` to see
-what would happen, `VERSION=x.y.z` to pin a version, and `INSTALL_DIR=...` to
-choose where it lands.
-
-### Package managers
-
-| Platform | Command |
-| --- | --- |
-| Any, with Rust | `cargo install txc` |
-| macOS, Linux | `brew install vorjdux/tap/txc` |
-| Windows | `winget install vorjdux.txc` |
-| Windows | `scoop install txc` |
-| Arch, Manjaro, EndeavourOS | `yay -S txc-bin` (or `paru -S txc-bin`) |
-| Debian, Ubuntu | `sudo dpkg -i txc_<version>_<arch>.deb` |
-| Fedora, RHEL, Rocky, Alma | `sudo rpm -i txc-<version>.<arch>.rpm` |
-| Alpine | `apk add txc` |
-
-### Direct download
+### Download a binary or package
 
 Every release carries archives for Linux, macOS and Windows on both x86_64 and
-arm64, alongside `.deb` and `.rpm` packages and a `SHA256SUMS` covering all of
-them: [the releases page](https://github.com/vorjdux/txc/releases).
-
-The Linux binaries are linked against musl, so one archive runs on any
-distribution whatever its glibc.
+arm64, `.deb` and `.rpm` packages, and a `SHA256SUMS` covering all of them, on
+[the releases page](https://github.com/vorjdux/txc/releases). The Linux binaries
+are linked against musl, so one archive runs on any distribution.
 
 ```sh
+# a plain binary
 tar xzf txc-<version>-linux-x86_64.tar.gz
 sudo install -m755 txc-<version>-linux-x86_64/txc /usr/local/bin/txc
+
+# Debian, Ubuntu
+sudo dpkg -i txc_<version>_amd64.deb
+
+# Fedora, RHEL, openSUSE
+sudo rpm -i txc-<version>.x86_64.rpm
 ```
 
 ### From source
@@ -497,16 +509,10 @@ sudo install -m755 txc-<version>-linux-x86_64/txc /usr/local/bin/txc
 cargo install --path .
 ```
 
-On Arch the AUR package is `txc-bin`: it installs the released static binary,
-so there is no Rust toolchain to pull in and nothing to compile. Arch users who
-would rather build from source can use `cargo install txc`.
-
-Packaging definitions for every format above live in
+Packaging definitions for Homebrew, Scoop, winget, Arch and Alpine live in
 [`packaging/`](packaging), and `packaging/render.sh` fills them in with the
-version and checksums of a published release. The Alpine `APKBUILD` is the one
-exception that needs a manual step: run `abuild checksum` in the aports
-checkout, because the source tarball it builds from is produced by GitHub when
-the tag is created and its checksum cannot be known beforehand.
+version and checksums of a release, ready to submit to each. They are not all
+published to their registries yet.
 
 ## Shell completion
 

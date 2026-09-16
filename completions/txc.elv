@@ -2283,6 +2283,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand copy 'Copy a secret to the clipboard, and clear it again after a while'
             cand edit 'Change an entry'
             cand rm 'Remove an entry'
+            cand move 'Move an entry into another vault, re-sealing its secrets there'
+            cand mv 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
             cand help 'Print this message or the help of the given subcommand(s)'
@@ -2397,6 +2399,18 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'txc;vault;move'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;mv'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'txc;vault;recipients'= {
             cand --add 'Encrypt to this public key too'
             cand --remove 'Stop encrypting to this public key'
@@ -2424,6 +2438,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand copy 'Copy a secret to the clipboard, and clear it again after a while'
             cand edit 'Change an entry'
             cand rm 'Remove an entry'
+            cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
             cand help 'Print this message or the help of the given subcommand(s)'
@@ -2449,6 +2464,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;edit'= {
         }
         &'txc;vault;help;rm'= {
+        }
+        &'txc;vault;help;move'= {
         }
         &'txc;vault;help;recipients'= {
         }
@@ -2924,6 +2941,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand copy 'Copy a secret to the clipboard, and clear it again after a while'
             cand edit 'Change an entry'
             cand rm 'Remove an entry'
+            cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
         }
@@ -2948,6 +2966,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;edit'= {
         }
         &'txc;help;vault;rm'= {
+        }
+        &'txc;help;vault;move'= {
         }
         &'txc;help;vault;recipients'= {
         }

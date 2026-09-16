@@ -368,7 +368,7 @@ mod tests {
         let sealed = vault
             .seal_secret(&"hunter2-very-secret".to_string().into())
             .unwrap();
-        let mut with_entry = vault.clone();
+        let mut with_entry = vault;
         with_entry.entries.push(Entry {
             name: "site".to_string(),
             kind: crate::vault::model::Kind::Login,

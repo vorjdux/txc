@@ -200,6 +200,17 @@ pub enum Dialog {
         /// Its name.
         entry: String,
     },
+    /// Choosing which vault to move an entry into.
+    MoveTo {
+        /// The position of the entry's current vault.
+        source: usize,
+        /// The entry's name.
+        entry: String,
+        /// The vaults it can move to: each one's position and name.
+        targets: Vec<(usize, String)>,
+        /// Which target is highlighted.
+        index: usize,
+    },
     /// Showing how a vault differs from what was trusted, and asking.
     Trust(Box<(usize, Inspection)>),
 }
@@ -818,6 +829,7 @@ impl VaultScreen {
             KeyCode::Char('f') => self.toggle_favourite(),
             KeyCode::Char('e') => self.begin_edit(),
             KeyCode::Char('d') => self.begin_delete(),
+            KeyCode::Char('m') => self.begin_move(),
             KeyCode::Right | KeyCode::Char('o') => {
                 if self.selected().is_some() {
                     self.pane = Pane::Details;
@@ -866,6 +878,7 @@ impl VaultScreen {
             KeyCode::Char('f') => self.toggle_favourite(),
             KeyCode::Char('e') => self.begin_edit(),
             KeyCode::Char('d') => self.begin_delete(),
+            KeyCode::Char('m') => self.begin_move(),
             KeyCode::Left | KeyCode::Esc => self.pane = Pane::Items,
             _ => {}
         }
@@ -1119,6 +1132,63 @@ impl VaultScreen {
                 entry: entry.name.clone(),
             });
         }
+    }
+
+    fn begin_move(&mut self) {
+        let Some((source, entry)) = self
+            .selected()
+            .map(|(vault, entry)| (vault, entry.name.clone()))
+        else {
+            return;
+        };
+        let targets: Vec<(usize, String)> = self
+            .vaults
+            .iter()
+            .enumerate()
+            .filter(|(index, vault)| *index != source && vault.opened.is_some())
+            .map(|(index, vault)| (index, vault.name.clone()))
+            .collect();
+        if targets.is_empty() {
+            self.status = "there is no other open vault to move it to; make one with n".to_string();
+            return;
+        }
+        self.dialog = Some(Dialog::MoveTo {
+            source,
+            entry,
+            targets,
+            index: 0,
+        });
+    }
+
+    /// Moves an entry into another vault and resyncs both with disk. The
+    /// library writes the destination before touching the source, so a
+    /// failure leaves the entry safe; either way both vaults are read back.
+    fn do_move(&mut self, source: usize, entry: &str, dest: usize) -> Result<String, String> {
+        let dest_name = self
+            .vaults
+            .get(dest)
+            .map(|vault| vault.name.clone())
+            .ok_or("that vault is gone")?;
+        let result = {
+            let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
+            let source = self
+                .vaults
+                .get_mut(source)
+                .and_then(|vault| vault.opened.as_mut())
+                .ok_or("the vault is not open")?;
+            keyring
+                .move_entry(source, &dest_name, entry)
+                .map_err(|error| format!("{error:#}"))
+        };
+        // Both files may have changed on disk; read them back so what is shown
+        // matches what was saved, whether the move finished or failed halfway.
+        self.reload(source);
+        self.reload(dest);
+        if let Some(keyring) = self.keyring.as_ref() {
+            let _ = keyring.forget_use(&self.vaults[source].name, entry);
+            self.recent = keyring.recent();
+        }
+        result.map(|()| dest_name)
     }
 
     fn begin_unlock(&mut self) {
@@ -1475,6 +1545,48 @@ impl VaultScreen {
                 self.status = message;
                 None
             }
+
+            Dialog::MoveTo {
+                source,
+                entry,
+                targets,
+                index,
+            } => match key.code {
+                KeyCode::Esc => {
+                    self.status = "nothing was moved".to_string();
+                    None
+                }
+                KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => Some(Dialog::MoveTo {
+                    source,
+                    entry,
+                    index: index.saturating_sub(1),
+                    targets,
+                }),
+                KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => Some(Dialog::MoveTo {
+                    index: (index + 1).min(targets.len() - 1),
+                    source,
+                    entry,
+                    targets,
+                }),
+                KeyCode::Enter => {
+                    let dest = targets[index].0;
+                    self.status = match self.do_move(source, &entry, dest) {
+                        Ok(dest_name) => {
+                            self.set_section(Section::Vault(dest));
+                            self.reselect(dest, &entry);
+                            format!("moved {entry} to {dest_name}")
+                        }
+                        Err(message) => message,
+                    };
+                    None
+                }
+                _ => Some(Dialog::MoveTo {
+                    source,
+                    entry,
+                    targets,
+                    index,
+                }),
+            },
 
             Dialog::Trust(boxed) => {
                 if key.code == KeyCode::Char('y') {
@@ -1974,6 +2086,60 @@ pub(crate) mod tests {
         press(&mut screen, KeyCode::Char('d'));
         press(&mut screen, KeyCode::Char('y'));
         assert_eq!(screen.count(Section::All), 0, "{}", screen.status);
+    }
+
+    #[test]
+    fn an_entry_can_be_moved_to_another_vault_from_the_list() {
+        let (scratch, mut screen) = unlocked("tui-move");
+        // Add to personal while it is the only vault, so the form has no
+        // vault picker and add_login's keystrokes line up.
+        add_login(&mut screen, "GitHub", "octocat", "hunter2");
+
+        // Now a second vault to move into.
+        press(&mut screen, KeyCode::Char('n'));
+        type_text(&mut screen, "work");
+        press(&mut screen, KeyCode::Enter);
+
+        // Back to GitHub in All items.
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        assert_eq!(screen.selected().unwrap().1.name, "GitHub");
+
+        press(&mut screen, KeyCode::Char('m'));
+        assert!(matches!(screen.dialog, Some(Dialog::MoveTo { .. })));
+        press(&mut screen, KeyCode::Enter); // the only target is work
+
+        assert!(screen.dialog.is_none(), "{}", screen.status);
+        assert!(
+            screen.status.contains("moved GitHub to work"),
+            "{}",
+            screen.status
+        );
+
+        // Gone from personal, present in work, and still openable there —
+        // read back from disk with a fresh keyring, not the screen's state.
+        let keyring = fresh_keyring(&scratch);
+        assert!(keyring.open("personal").unwrap().entry("GitHub").is_err());
+        let work = keyring.open("work").unwrap();
+        assert_eq!(
+            work.reveal(&keyring, "GitHub", "password")
+                .unwrap()
+                .expose_secret(),
+            "hunter2"
+        );
+    }
+
+    #[test]
+    fn moving_needs_another_vault() {
+        let (_scratch, mut screen) = unlocked("tui-move-alone");
+        add_login(&mut screen, "site", "u", "p");
+        press(&mut screen, KeyCode::Char('m'));
+        assert!(screen.dialog.is_none());
+        assert!(
+            screen.status.contains("no other open vault"),
+            "{}",
+            screen.status
+        );
     }
 
     #[test]

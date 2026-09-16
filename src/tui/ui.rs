@@ -27,7 +27,7 @@ pub(super) const ERROR: Color = Color::Red;
 /// reader typed.
 const SAMPLE: Color = Color::Gray;
 
-pub fn draw(frame: &mut Frame, app: &mut App) {
+pub fn draw(frame: &mut Frame, app: &App) {
     #[cfg(feature = "vault")]
     if app.screen == crate::tui::app::Screen::Vault {
         super::vault::draw::draw(frame, &app.vault);
@@ -470,13 +470,14 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static st
         keys.extend([("?", "help"), ("F2", "about"), ("^c", "quit")]);
 
         // Leaving has to stay on screen, so when the line is wider than the
-        // terminal the keys the help overlay also lists give way first.
+        // terminal the keys the help overlay also lists give way first: About
+        // before the vault, since the vault is where the work is.
         let width = |keys: &[(&str, &str)]| {
             keys.iter()
                 .map(|(key, label)| key.len() + label.len() + 4)
                 .sum::<usize>()
         };
-        for optional in ["F3", "F2"] {
+        for optional in ["F2", "F3"] {
             if width(&keys) <= usize::from(area.width) {
                 break;
             }
@@ -643,13 +644,13 @@ mod tests {
     use super::*;
     use crate::registry;
 
-    fn render(app: &mut App, width: u16, height: u16) -> String {
+    fn render(app: &App, width: u16, height: u16) -> String {
         render_with_cursor(app, width, height).0
     }
 
     /// Renders and also reports where the cursor was left, which is the part
     /// of a panel's layout that a screenshot cannot show.
-    fn render_with_cursor(app: &mut App, width: u16, height: u16) -> (String, (u16, u16)) {
+    fn render_with_cursor(app: &App, width: u16, height: u16) -> (String, (u16, u16)) {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
         terminal.draw(|frame| draw(frame, app)).expect("draw");
         let cursor = terminal.get_cursor_position().expect("cursor position");
@@ -669,7 +670,7 @@ mod tests {
     }
 
     /// Renders and hands back the buffer, so the colours can be inspected.
-    fn render_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+    fn render_buffer(app: &App, width: u16, height: u16) -> ratatui::buffer::Buffer {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
         terminal.draw(|frame| draw(frame, app)).expect("draw");
         terminal.backend().buffer().clone()
@@ -708,7 +709,7 @@ mod tests {
             .and_then(|v| v.parse().ok())
             .unwrap_or(24);
         let mut terminal = Terminal::new(TestBackend::new(width, rows)).expect("terminal");
-        terminal.draw(|frame| draw(frame, &mut app)).expect("draw");
+        terminal.draw(|frame| draw(frame, &app)).expect("draw");
         let screen = terminal
             .backend()
             .buffer()
@@ -735,7 +736,7 @@ mod tests {
         app.input = crate::tui::textarea::TextArea::from_text("hello");
         app.recompute();
 
-        let screen = render(&mut app, 100, 30);
+        let screen = render(&app, 100, 30);
         assert!(screen.contains("txc"), "{screen}");
         assert!(screen.contains("Categories"), "{screen}");
         assert!(screen.contains("Operations"), "{screen}");
@@ -753,7 +754,7 @@ mod tests {
         app.search = "upper".to_string();
         app.refresh_operations();
         app.load_operation();
-        let screen = render(&mut app, 100, 30);
+        let screen = render(&app, 100, 30);
         assert!(screen.contains("Input"), "{screen}");
         assert!(!screen.contains("Options"), "{screen}");
     }
@@ -764,7 +765,7 @@ mod tests {
         app.search = "password".to_string();
         app.refresh_operations();
         app.load_operation();
-        let screen = render(&mut app, 100, 30);
+        let screen = render(&app, 100, 30);
         assert!(!screen.contains("Input"), "{screen}");
         assert!(screen.contains("Options"), "{screen}");
         assert!(screen.contains("length"), "{screen}");
@@ -774,7 +775,7 @@ mod tests {
     fn the_about_view_names_the_author_and_the_terms() {
         let mut app = App::new();
         app.show_about = true;
-        let screen = render(&mut app, 100, 30);
+        let screen = render(&app, 100, 30);
         assert!(screen.contains("About"), "{screen}");
         assert!(screen.contains("Matheus Santos"), "{screen}");
         assert!(screen.contains("vorj.dux@gmail.com"), "{screen}");
@@ -788,8 +789,8 @@ mod tests {
     fn the_about_view_fits_a_small_terminal() {
         let mut app = App::new();
         app.show_about = true;
-        render(&mut app, 40, 12);
-        render(&mut app, 20, 6);
+        render(&app, 40, 12);
+        render(&app, 20, 6);
     }
 
     #[test]
@@ -802,7 +803,7 @@ mod tests {
         app.focus = Focus::Input;
         app.recompute();
 
-        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        let (screen, cursor) = render_with_cursor(&app, 100, 30);
         let (column, row) = find(&screen, "abc");
         // Three characters typed, so the cursor stands just past them.
         assert_eq!(cursor, (column + 3, row));
@@ -814,7 +815,7 @@ mod tests {
         app.focus = Focus::Search;
         app.search = "up".to_string();
         app.refresh_operations();
-        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        let (screen, cursor) = render_with_cursor(&app, 100, 30);
         let (column, row) = find(&screen, "up");
         assert_eq!(cursor, (column + 2, row));
     }
@@ -827,7 +828,7 @@ mod tests {
         app.load_operation();
         app.focus = Focus::Options;
 
-        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        let (screen, cursor) = render_with_cursor(&app, 100, 30);
         let (column, row) = find(&screen, "shift  3");
         assert_eq!(cursor, (column + "shift  3".len() as u16, row));
     }
@@ -839,7 +840,7 @@ mod tests {
         app.refresh_operations();
         app.load_operation();
         app.begin_save();
-        let (screen, cursor) = render_with_cursor(&mut app, 100, 30);
+        let (screen, cursor) = render_with_cursor(&app, 100, 30);
         let (column, row) = find(&screen, "uuid.txt");
         assert_eq!(cursor, (column + "uuid.txt".len() as u16, row));
     }
@@ -850,7 +851,7 @@ mod tests {
         app.search = "hex-encode".into();
         app.refresh_operations();
         app.load_operation();
-        let (screen, _) = render_with_cursor(&mut app, 100, 30);
+        let (screen, _) = render_with_cursor(&app, 100, 30);
 
         assert!(
             screen.contains("Command line"),
@@ -871,7 +872,7 @@ mod tests {
         app.refresh_operations();
         app.load_operation();
 
-        let plain = render_with_cursor(&mut app, 100, 30).0;
+        let plain = render_with_cursor(&app, 100, 30).0;
         assert!(!plain.contains("--upper"), "{plain}");
 
         // Turning the switch on in the panel puts it into the command.
@@ -880,7 +881,7 @@ mod tests {
         }
         app.options.toggle();
 
-        let changed = render_with_cursor(&mut app, 100, 30).0;
+        let changed = render_with_cursor(&app, 100, 30).0;
         assert!(changed.contains("--upper"), "{changed}");
         assert!(
             changed.contains(" -u"),
@@ -894,7 +895,7 @@ mod tests {
         app.search = "uuid".into();
         app.refresh_operations();
         app.load_operation();
-        let (screen, _) = render_with_cursor(&mut app, 100, 30);
+        let (screen, _) = render_with_cursor(&app, 100, 30);
 
         assert!(screen.contains("arg   txc uuid"), "{screen}");
         assert!(
@@ -911,10 +912,10 @@ mod tests {
         app.load_operation();
 
         // uuid varies, so its key line is the longest there is.
-        let narrow = render(&mut app, 92, 30);
+        let narrow = render(&app, 92, 30);
         assert!(narrow.contains("^c quit"), "{narrow}");
 
-        let wide = render(&mut app, 120, 30);
+        let wide = render(&app, 120, 30);
         assert!(wide.contains("^c quit"), "{wide}");
         #[cfg(feature = "vault")]
         assert!(wide.contains("F3 vault"), "{wide}");
@@ -922,8 +923,8 @@ mod tests {
 
     #[test]
     fn a_short_terminal_keeps_the_keys_and_drops_the_command_lines() {
-        let mut app = App::new();
-        let (screen, _) = render_with_cursor(&mut app, 100, HINTS_NEED_ROWS - 1);
+        let app = App::new();
+        let (screen, _) = render_with_cursor(&app, 100, HINTS_NEED_ROWS - 1);
 
         assert!(!screen.contains("Command line"), "{screen}");
         assert!(!screen.contains("arg   "), "{screen}");
@@ -935,9 +936,9 @@ mod tests {
 
     #[test]
     fn the_key_reference_along_the_bottom_is_legible() {
-        let mut app = App::new();
-        let (screen, _) = render_with_cursor(&mut app, 100, 30);
-        let buffer = render_buffer(&mut app, 100, 30);
+        let app = App::new();
+        let (screen, _) = render_with_cursor(&app, 100, 30);
+        let buffer = render_buffer(&app, 100, 30);
 
         let (key_column, row) = find(&screen, "tab");
         let key = buffer.cell((key_column, row)).expect("a cell");
@@ -967,8 +968,8 @@ mod tests {
     fn an_unfocused_panel_keeps_a_readable_title() {
         let mut app = App::new();
         app.focus = Focus::Operations;
-        let (screen, _) = render_with_cursor(&mut app, 100, 30);
-        let buffer = render_buffer(&mut app, 100, 30);
+        let (screen, _) = render_with_cursor(&app, 100, 30);
+        let buffer = render_buffer(&app, 100, 30);
 
         // Categories is not focused here, so its frame recedes, but the word
         // itself must still be read.
@@ -984,17 +985,17 @@ mod tests {
     fn draws_the_help_overlay() {
         let mut app = App::new();
         app.show_help = true;
-        let screen = render(&mut app, 100, 30);
+        let screen = render(&app, 100, 30);
         assert!(screen.contains("Keys"), "{screen}");
         assert!(screen.contains("quit"), "{screen}");
     }
 
     #[test]
     fn survives_a_very_small_terminal() {
-        let mut app = App::new();
+        let app = App::new();
         // Narrow enough that several panels have no room at all.
-        render(&mut app, 20, 8);
-        render(&mut app, 10, 4);
+        render(&app, 20, 8);
+        render(&app, 10, 4);
     }
 
     #[test]
@@ -1003,10 +1004,10 @@ mod tests {
         for index in 0..registry::all().len() {
             app.operation_index = index;
             app.load_operation();
-            render(&mut app, 90, 26);
+            render(&app, 90, 26);
             // The options panel is only focusable when it is on screen.
             app.focus = crate::tui::app::Focus::Options;
-            render(&mut app, 90, 26);
+            render(&app, 90, 26);
             app.focus = crate::tui::app::Focus::Operations;
         }
     }
@@ -1018,7 +1019,7 @@ mod tests {
         app.refresh_operations();
         app.load_operation();
         app.begin_save();
-        let screen = render(&mut app, 100, 30);
+        let screen = render(&app, 100, 30);
         assert!(screen.contains("Save the output as"), "{screen}");
         assert!(screen.contains("uuid.txt"), "{screen}");
         assert!(screen.contains("esc to cancel"), "{screen}");
@@ -1030,12 +1031,12 @@ mod tests {
         app.search = "password".to_string();
         app.refresh_operations();
         app.load_operation();
-        assert!(render(&mut app, 100, 30).contains("^n for another"));
+        assert!(render(&app, 100, 30).contains("^n for another"));
 
         app.search = "upper".to_string();
         app.refresh_operations();
         app.load_operation();
-        assert!(!render(&mut app, 100, 30).contains("^n for another"));
+        assert!(!render(&app, 100, 30).contains("^n for another"));
     }
 
     #[test]
@@ -1045,7 +1046,7 @@ mod tests {
         app.refresh_operations();
         app.input = crate::tui::textarea::TextArea::from_text("%FF");
         app.recompute();
-        let screen = render(&mut app, 100, 30);
+        let screen = render(&app, 100, 30);
         assert!(screen.contains("error"), "{screen}");
     }
 }

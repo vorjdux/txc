@@ -273,7 +273,7 @@ mod tests {
             );
         }
         assert!(decrypt(&identity, &ciphertext[..ciphertext.len() - 1], 1000).is_err());
-        let mut extended = ciphertext.clone();
+        let mut extended = ciphertext;
         extended.push(0);
         assert!(decrypt(&identity, &extended, 1000).is_err());
     }

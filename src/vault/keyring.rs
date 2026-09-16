@@ -300,6 +300,73 @@ impl Keyring {
         })
     }
 
+    /// Moves an entry from an open vault into another vault, re-sealing its
+    /// secrets to the destination's recipients.
+    ///
+    /// The destination is opened here and must be trusted on this device. It
+    /// is written first, and the entry is removed from the source only once
+    /// that has succeeded, so a failure partway leaves the entry in both
+    /// vaults rather than losing it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the destination is the source, does not exist or
+    /// is not trusted, already holds an entry of that name, or when a secret
+    /// cannot be re-sealed or a vault cannot be written.
+    pub fn move_entry(&self, source: &mut Opened, dest_vault: &str, name: &str) -> Result<()> {
+        let entry = source.entry(name)?.clone();
+        ensure!(
+            source.vault.name() != dest_vault,
+            "{:?} is already in the vault {dest_vault}",
+            entry.name
+        );
+
+        let mut dest = self.open(dest_vault)?;
+        ensure!(
+            !dest.vault.name_taken(&entry.name, None),
+            "the vault {dest_vault} already has an entry named {:?}",
+            entry.name
+        );
+        ensure!(
+            dest.vault.entries.len() < MAX_ENTRIES,
+            "the vault {dest_vault} already holds {MAX_ENTRIES} entries"
+        );
+
+        // Every sealed field is opened and sealed again to the destination's
+        // recipients, which may differ from the source's; plain fields carry
+        // over unchanged. Timestamps, tags and the star come with it.
+        let mut moved = entry.clone();
+        for field in &mut moved.fields {
+            if let Value::Sealed(sealed) = &field.value {
+                let secret = self.open_sealed(sealed)?;
+                field.value = Value::Sealed(dest.vault.seal_secret(&secret)?);
+            }
+        }
+        moved.validate()?;
+        dest.vault.entries.push(moved);
+        dest.vault.sort();
+
+        // The destination is written first: if this fails, the source still
+        // holds the entry and nothing is lost.
+        dest.save(self)?;
+
+        // Only now is it taken out of the source. Should this fail, the entry
+        // is in both vaults, which is safe, and the message says how to
+        // finish by hand.
+        source.remove(name)?;
+        source.save(self).with_context(|| {
+            format!(
+                "{:?} was copied to {dest_vault} but could not be removed from {}; \
+                 remove it there with: txc vault rm {}/{}",
+                entry.name,
+                source.vault.name(),
+                source.vault.name(),
+                entry.name
+            )
+        })?;
+        Ok(())
+    }
+
     fn open_sealed(&self, sealed: &str) -> Result<SecretString> {
         let ciphertext = BASE64
             .decode(sealed.as_bytes())
@@ -827,6 +894,83 @@ pub(crate) mod tests {
         let uses = keyring.recent();
         assert_eq!(uses.len(), 1);
         assert_eq!(uses[0].entry, "uno");
+    }
+
+    #[test]
+    fn an_entry_moves_between_vaults_and_its_secret_is_resealed() {
+        // The destination is encrypted to a second identity as well, so the
+        // move must re-seal the secret to that key, not just copy the bytes.
+        let (_scratch, keyring) = keyring("move");
+        let (_other_scratch, other) = self::keyring("move-other");
+        keyring.create_vault("personal", &[]).unwrap();
+        keyring.create_vault("work", &[other.public_key()]).unwrap();
+
+        let mut personal = keyring.open("personal").unwrap();
+        personal.add(login("GitHub", "hunter2")).unwrap();
+        personal.save(&keyring).unwrap();
+
+        let mut personal = keyring.open("personal").unwrap();
+        keyring.move_entry(&mut personal, "work", "GitHub").unwrap();
+
+        // Gone from the source, present in the destination, still openable.
+        assert!(keyring.open("personal").unwrap().entry("GitHub").is_err());
+        let work = keyring.open("work").unwrap();
+        assert_eq!(
+            work.entry("GitHub").unwrap().plain("username"),
+            Some("octocat")
+        );
+        assert_eq!(
+            work.reveal(&keyring, "GitHub", "password")
+                .unwrap()
+                .expose_secret(),
+            "hunter2"
+        );
+
+        // And the second identity, a recipient of work only, can read it too:
+        // the secret really was re-sealed to that key.
+        std::fs::create_dir_all(other.home().vaults_dir()).unwrap();
+        std::fs::copy(
+            keyring.home().vault_path("work").unwrap(),
+            other.home().vault_path("work").unwrap(),
+        )
+        .unwrap();
+        let their_work = other.trust_vault(other.inspect("work").unwrap()).unwrap();
+        assert_eq!(
+            their_work
+                .reveal(&other, "GitHub", "password")
+                .unwrap()
+                .expose_secret(),
+            "hunter2"
+        );
+    }
+
+    #[test]
+    fn a_move_is_refused_when_the_name_is_taken_or_the_vault_is_the_same() {
+        let (_scratch, keyring) = keyring("move-refuse");
+        keyring.create_vault("personal", &[]).unwrap();
+        keyring.create_vault("work", &[]).unwrap();
+        let mut personal = keyring.open("personal").unwrap();
+        personal.add(login("site", "p")).unwrap();
+        personal.save(&keyring).unwrap();
+
+        let mut personal = keyring.open("personal").unwrap();
+        assert!(
+            keyring
+                .move_entry(&mut personal, "personal", "site")
+                .is_err()
+        );
+
+        let mut work = keyring.open("work").unwrap();
+        work.add(login("site", "other")).unwrap();
+        work.save(&keyring).unwrap();
+        let mut personal = keyring.open("personal").unwrap();
+        let error = keyring
+            .move_entry(&mut personal, "work", "site")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("already has an entry"), "{error}");
+        // The source still has it: a refused move takes nothing away.
+        assert!(keyring.open("personal").unwrap().entry("site").is_ok());
     }
 
     #[test]
