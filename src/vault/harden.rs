@@ -20,6 +20,8 @@
 /// ```
 /// txc::vault::harden::process();
 /// ```
+// On Windows there is nothing to call, which would let this be const there.
+#[cfg_attr(windows, allow(clippy::missing_const_for_fn))]
 pub fn process() {
     #[cfg(unix)]
     unix::no_core_dumps();

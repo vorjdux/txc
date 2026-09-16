@@ -3677,7 +3677,7 @@ _txc_commands() {
 'now:Print the current date and time' \
 'timestamp:Print the current Unix timestamp' \
 'to-timestamp:Turn a date into a Unix timestamp' \
-'vault:Keep passwords, API keys and other secrets in an encrypted local vault' \
+'vault:Keep passwords, cards, keys and notes in an encrypted local vault' \
 'list:List every operation, optionally filtered by category' \
 'completions:Print a shell completion script' \
 'about:Show the version, author and licence' \
@@ -4042,7 +4042,7 @@ _txc__subcmd__help_commands() {
 'now:Print the current date and time' \
 'timestamp:Print the current Unix timestamp' \
 'to-timestamp:Turn a date into a Unix timestamp' \
-'vault:Keep passwords, API keys and other secrets in an encrypted local vault' \
+'vault:Keep passwords, cards, keys and notes in an encrypted local vault' \
 'list:List every operation, optionally filtered by category' \
 'completions:Print a shell completion script' \
 'about:Show the version, author and licence' \

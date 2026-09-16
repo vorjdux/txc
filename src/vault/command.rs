@@ -115,13 +115,14 @@ pub fn command() -> Command {
     };
 
     Command::new("vault")
-        .about("Keep passwords, API keys and other secrets in an encrypted local vault")
+        .about("Keep passwords, cards, keys and notes in an encrypted local vault")
         .long_about(
-            "Keep passwords, API keys and other secrets in an encrypted local vault.\n\n\
+            "Keep passwords, cards, API keys, notes and other secrets in an encrypted local \
+             vault.\n\n\
              Vaults are age files, encrypted to your identity, which is itself protected by \
-             a passphrase. Secrets are never taken as arguments and never shown: they are \
-             typed without echo, generated or piped in, and copied to the clipboard, which \
-             is cleared again.\n\n\
+             a passphrase. Secrets are never taken as arguments: they are typed without echo, \
+             generated, or piped in. They are shown only when you ask for them, and are copied \
+             to the clipboard, which is cleared again.\n\n\
              Start with: txc vault init",
         )
         .subcommand_required(true)
@@ -477,9 +478,14 @@ fn working<T>(message: &str, work: impl FnOnce() -> Result<T>) -> Result<T> {
     }
     let result = work();
     if shown {
-        // Back to the start of the line, and clear it.
-        eprint!("\r\x1b[2K");
-        let _ = io::stderr().flush();
+        // Back to the start of the line, and clear it. Through crossterm, so
+        // that the Windows console, which acts on escape sequences only once
+        // it has been put in that mode, is cleared as well.
+        let _ = crossterm::execute!(
+            io::stderr(),
+            crossterm::cursor::MoveToColumn(0),
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine),
+        );
     }
     result
 }

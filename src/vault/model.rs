@@ -657,24 +657,39 @@ fn is_slug(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_'))
 }
 
+/// The names Windows keeps for devices, which it answers to whatever
+/// extension follows them: `con.vault.age` opens the console, and `nul`
+/// swallows everything written to it.
+const RESERVED: [&str; 22] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
 /// Checks a vault name, which also becomes a file name.
 ///
 /// # Errors
 ///
 /// Returns an error unless the name is 1 to 32 lowercase letters, digits,
 /// `-` or `_`, starting with a letter or digit. Nothing else can reach the
-/// file system, so no name can climb out of the vault directory.
+/// file system, so no name can climb out of the vault directory. The names
+/// Windows keeps for devices are refused as well, on every platform, so that
+/// a vault made on one machine can be opened on another.
 ///
 /// ```
 /// use txc::vault::model::check_vault_name;
 ///
 /// assert!(check_vault_name("work").is_ok());
 /// assert!(check_vault_name("../etc").is_err());
+/// assert!(check_vault_name("nul").is_err());
 /// ```
 pub fn check_vault_name(name: &str) -> Result<()> {
     ensure!(
         is_slug(name),
         "vault names are 1 to 32 lowercase letters, digits, - or _, starting with a letter or a digit, not {name:?}"
+    );
+    ensure!(
+        !RESERVED.contains(&name),
+        "{name:?} is a device name on Windows, where a file cannot be called that; choose another"
     );
     Ok(())
 }
@@ -922,6 +937,13 @@ mod tests {
         }
         assert!(check_vault_name(&"a".repeat(33)).is_err());
         assert!(check_vault_name(&"a".repeat(32)).is_ok());
+
+        // Windows answers to these as devices whatever follows them, so
+        // con.vault.age is the console rather than a file.
+        for name in ["con", "nul", "aux", "prn", "com1", "lpt9"] {
+            assert!(check_vault_name(name).is_err(), "{name:?} was accepted");
+        }
+        assert!(check_vault_name("console").is_ok());
     }
 
     #[test]

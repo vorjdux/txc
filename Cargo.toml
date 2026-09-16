@@ -1,15 +1,15 @@
 [package]
 name = "txc"
-description = "Offline text utilities for the terminal: encode, hash, convert, inspect and generate text without sending it anywhere"
+description = "Offline text utilities for the terminal, and an encrypted local vault for passwords, keys and other secrets: nothing is sent anywhere"
 authors = ["Matheus Santos <vorj.dux@gmail.com>"]
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.88"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/vorjdux/txc"
 keywords = ["cli", "text", "encoding", "hash", "tui"]
-categories = ["command-line-utilities", "text-processing"]
+categories = ["command-line-utilities", "text-processing", "cryptography"]
 exclude = ["debian/", ".github/", "packaging/", "install.sh", "install.ps1"]
 
 [lib]
@@ -125,7 +125,9 @@ extended-description = """\
 Offline text utilities for the terminal. Over a hundred text operations \
 covering case conversion, encoding, hashing, line editing, inspection, \
 format conversion and generators, usable as arguments, over a pipe, or \
-through an interactive terminal interface.\
+through an interactive terminal interface. It also keeps an encrypted local \
+vault for passwords, payment cards, API keys, notes and other secrets, built \
+on the age format, with secrets copied to a clipboard that clears itself.\
 """
 depends = "$auto"
 section = "utility"

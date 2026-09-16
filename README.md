@@ -35,7 +35,7 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.4.1 Shift letters by a fixed amount
+ txc  0.5.0 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
@@ -88,7 +88,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.4.1 Generate UUIDs
+ txc  0.5.0 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -237,7 +237,7 @@ export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 and each vault. The list is in the middle and the selected entry on the right.
 
 ```
- txc  0.4.1 Vault unlocked · 3 entries in 1 vault
+ txc  0.5.0 Vault unlocked · 3 entries in 1 vault
 ╭ Browse ────────────────╮╭ Search ──────────────────────────────╮╭ GitHub ──────────────────────────────────╮
 │★ Favourites          1 ││/ to search                           ││ Login · personal  ★ favourite            │
 │◷ Recently used       0 │╰──────────────────────────────────────╯│                                          │
@@ -255,8 +255,12 @@ and each vault. The list is in the middle and the selected entry on the right.
 | Key | Action |
 | --- | --- |
 | `1` `2` `3` | Favourites, recently used, all items |
+| `tab` / `shift+tab` | Move between the three panels |
+| `↑` `↓`, or `j` `k` | Move in a list, or between an entry's fields |
+| `→` or `o`, `←` or `esc` | Into the entry's fields, and back to the list |
 | `/` | Search names, usernames, websites, tags and every other plain field |
-| `c` or `enter` | Copy the main secret; on the right, the selected field |
+| `c` | Copy the main secret; in the fields panel, the selected field |
+| `enter` | Copy, or open a note to read |
 | `u` | Copy the username |
 | `r` | Show the secret for 15 seconds, or open a note to read |
 | `f` | Star or unstar the entry |
@@ -272,7 +276,10 @@ its name, password and security. Secret fields show dots as you type, `ctrl+r`
 shows what you typed, and `ctrl+g` generates a password, or a PIN where that is
 what the field wants. Notes are written in a real editor where `enter` starts
 a new line, and pasting a multi line value such as a private key arrives in
-one piece. `esc` asks before throwing away what you typed.
+one piece, in terminals that support bracketed paste. The Windows console does
+not, so there a paste arrives as typing; it still lands correctly in a note or
+another field that takes several lines. `esc` asks before throwing away what
+you typed.
 
 Checking the passphrase takes a moment on purpose, so a spinner says so while
 it runs. The vault locks itself after five minutes without a key and whenever
@@ -302,7 +309,9 @@ vault. Its kind decides its fields, and which of them is the main secret that
 
 The main secret is typed, generated or piped in. Other secret fields are
 given with `--secret-field NAME` and asked for at the terminal, and the rest
-with `--field NAME=VALUE`, or `--username` and `--url`. A secret field given
+with `--field NAME=VALUE`, or `--username` and `--url`. Entries can also carry
+tags: `--tag` when adding or editing, `--untag` to take one off, and
+`txc vault list --tag work` to see them. A secret field given
 with `--field` is refused, so a card's security code cannot end up in your
 shell history by mistake. `txc vault add --help` prints the same list.
 
@@ -330,9 +339,10 @@ send the secret through the terminal and anything recording it; over ssh, use
 `--print` into a pipe instead. `--print` refuses to write to a terminal, where
 the secret would stay in the scrollback.
 
-For scripts, `--passphrase-file PATH` reads the passphrase from a file that
-only you can read, and `--home DIR` or `TXC_VAULT_HOME` chooses a vault
-directory other than the default.
+For scripts, `--passphrase-file PATH` reads the passphrase from a file, which
+on Unix must be readable by you alone. `--home DIR` or `TXC_VAULT_HOME`
+chooses a vault directory other than the default; the environment variable
+must be an absolute path.
 
 ### How it is protected
 
@@ -391,8 +401,8 @@ vault/
 
 To use the same vaults on another device, copy `identity.age` and the `vaults/`
 directory across, then run `txc vault trust <name>` there once for each vault.
-Only `vaults/` needs synchronising afterwards; `trust.json` belongs to each
-device.
+Only `vaults/` needs synchronising afterwards; `trust.json` and `recent.age`
+belong to each device.
 
 A vault can also be encrypted to other keys: a second device with its own
 identity, a backup key kept offline, or a colleague. `txc vault identity`
@@ -426,8 +436,10 @@ echo '<sealed value>' | base64 -d | rage -d -i identity.age
   somewhere safe; it is encrypted.
 - What an observer can see without the key: the size of each vault file, when
   it last changed, and how many keys it is encrypted to.
-- On Windows the files rely on the access rules of your user profile, and the
-  process protections above are not available.
+- On Windows the owner and permission checks do not exist, and neither do the
+  core dump and debugger protections. The default directory inside your user
+  profile is what keeps other users out, so a vault directory set elsewhere
+  with `--home` or `TXC_VAULT_HOME` is not protected at all there.
 
 To build txc without the vault, and without its dependencies, use
 `cargo install txc --no-default-features`.

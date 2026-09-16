@@ -78,6 +78,9 @@ impl Held {
     /// Only Linux can tell without reading the clipboard, because only there
     /// does this process serve it; elsewhere this is always false.
     #[must_use]
+    // On every platform but Linux the answer is a constant, so clippy asks
+    // there for a const fn that Linux, which really looks, cannot provide.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn taken_over(&self) -> bool {
         self.server.done()
     }
@@ -227,6 +230,9 @@ mod platform {
             None
         }
 
+        // Takes the server by value as the Linux one does, which has a thread
+        // to stop; here there is nothing to do.
+        #[allow(clippy::unused_self)]
         pub const fn finish(self) {}
     }
 }

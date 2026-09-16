@@ -1,9 +1,13 @@
 //! Where the vault keeps its files, and reading and writing them safely.
 //!
-//! Files are created readable by their owner alone. They are written to a
-//! temporary file and renamed into place, so a crash never leaves one half
-//! written. And they are refused when they are not regular files, belong to
-//! another user, or could have been changed by another user.
+//! Files are written to a temporary file and renamed into place, so a crash
+//! never leaves one half written, and a link is never followed to reach one.
+//!
+//! On Unix they are created readable by their owner alone, and refused when
+//! they are not regular files, belong to another user, or could have been
+//! changed by another user. Windows has no mode bits, so none of those checks
+//! happen there: the default directory inside the user's profile is what keeps
+//! other users out, and a directory chosen with `--home` is not checked.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -228,8 +232,10 @@ fn check_permissions(path: &Path, metadata: &fs::Metadata, forbidden: u32) -> Re
     Ok(())
 }
 
-/// Windows has no mode bits. The files live under the user's profile, whose
-/// access list already keeps other users out.
+/// Windows has no mode bits, and nothing is checked there. Under the default
+/// directory, inside the user's profile, its access list already keeps other
+/// users out; a directory chosen with `--home` or `TXC_VAULT_HOME` is not
+/// checked at all.
 #[cfg(not(unix))]
 #[allow(clippy::unnecessary_wraps)]
 const fn check_permissions(_: &Path, _: &fs::Metadata, _: u32) -> Result<()> {
@@ -247,6 +253,14 @@ pub(crate) fn read_private(path: &Path, limit: usize, forbidden: u32) -> Result<
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Opens a symbolic link or a junction itself rather than whatever it
+        // points at, so the check below refuses it as not a regular file.
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
     let file = options
         .open(path)
@@ -314,7 +328,7 @@ fn replace(dir: &Path, name: &str, bytes: &[u8]) -> Result<()> {
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
-        fs::rename(&temporary, &target)?;
+        rename_over(&temporary, &target)?;
         sync_dir(dir)
     })();
 
@@ -322,6 +336,23 @@ fn replace(dir: &Path, name: &str, bytes: &[u8]) -> Result<()> {
         let _ = fs::remove_file(&temporary);
     }
     written.with_context(|| format!("cannot write {}", target.display()))
+}
+
+/// Renames the temporary file over the target.
+///
+/// On Windows this fails while another program holds the target open, which a
+/// sync client, a search indexer or a virus scanner does as a matter of
+/// course, and succeeds a moment later. Everywhere else the rename either
+/// works or fails for good, so it is tried once.
+fn rename_over(temporary: &Path, target: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    for wait in [20, 40, 80, 160] {
+        match fs::rename(temporary, target) {
+            Ok(()) => return Ok(()),
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(wait)),
+        }
+    }
+    fs::rename(temporary, target)
 }
 
 /// Creates a new file that only its owner can read, failing if anything is

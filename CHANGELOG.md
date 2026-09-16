@@ -6,6 +6,11 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-16
+
+The vault release: txc now keeps secrets as well as text, in encrypted files
+on your own machine.
+
 ### Added
 
 - `txc vault`, an encrypted vault for passwords, payment cards, API keys,
@@ -19,8 +24,8 @@ All notable changes to txc are recorded here. The format follows
   plain `--field` is refused.
 - Favourites, stored in the vault so they follow it to other devices, and a
   list of what was used recently, kept on the device in its own encrypted
-  file. `txc vault list` takes `--favourites`, `--recent` and `--kind`, across
-  every vault.
+  file. `txc vault list` takes `--favourites`, `--recent`, `--kind` and
+  `--tag`, across every vault.
 - "Unlocking..." on the terminal while the passphrase is checked, which takes
   a moment on purpose.
 - The identity is an age X25519 key encrypted with a passphrase through scrypt
@@ -36,10 +41,11 @@ All notable changes to txc are recorded here. The format follows
   keeps them out of clipboard history where the system allows, clears the
   clipboard again after 20 seconds if the secret is still there, and never
   falls back to OSC 52. `--print` writes to a pipe and refuses a terminal.
-- Vault files are written atomically, readable by their owner alone, and
-  refused when they are links or open to other users. Keys and secrets are
-  wiped from memory when dropped, core dumps are disabled while the vault is
-  in use, and on Linux the process is marked not dumpable.
+- Vault files are written atomically and never through a link, and on Unix are
+  readable by their owner alone and refused when they are open to other users.
+  Keys and secrets are wiped from memory when dropped; on Unix core dumps are
+  disabled while the vault is in use, and on Linux the process is also marked
+  not dumpable.
 - A vault screen in the interactive interface, on `F3`. Favourites, recently
   used, all items, each kind and each vault are down the left; adding an
   entry starts by choosing its kind and opens that kind's form, with
@@ -49,7 +55,9 @@ All notable changes to txc are recorded here. The format follows
   background behind a spinner, and the vault locks after five minutes without
   a key and when the interface closes.
 - Pasting into the interactive interface arrives in one piece, so a multi line
-  value no longer presses Enter part of the way through.
+  value no longer presses Enter part of the way through. This needs bracketed
+  paste, which the Windows console does not have; there a paste still arrives
+  as typing.
 - A `vault` cargo feature, on by default. `--no-default-features` builds txc
   without the vault and without its dependencies.
 
@@ -171,7 +179,8 @@ are all generated.
 
 - Initial draft.
 
-[Unreleased]: https://github.com/vorjdux/txc/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/vorjdux/txc/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/vorjdux/txc/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/vorjdux/txc/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/vorjdux/txc/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vorjdux/txc/releases/tag/v0.3.0

@@ -22,11 +22,13 @@
 //!   record authenticated with a key derived from the identity. A forged
 //!   vault, a changed list of recipients and an old copy put back are all
 //!   refused until trusted again on purpose.
-//! - **At rest** files are written atomically and readable by their owner
-//!   alone, and refused when another user could have changed them.
-//! - **In memory** keys and secrets are wiped when dropped, the process
-//!   cannot dump core, and on Linux other processes of the same user cannot
-//!   attach to it.
+//! - **At rest** files are written atomically, never through a link, and on
+//!   Unix are readable by their owner alone and refused when another user
+//!   could have changed them. Windows has no mode bits: there the default
+//!   directory inside the user's profile is what keeps other users out.
+//! - **In memory** keys and secrets are wiped when dropped. On Unix the
+//!   process cannot write a core dump, and on Linux other processes of the
+//!   same user cannot attach to it; Windows offers neither.
 //! - **On the clipboard** a secret is kept out of clipboard history where the
 //!   system allows, and cleared after a short time if it is still there.
 //!
