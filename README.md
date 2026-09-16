@@ -127,7 +127,7 @@ back.
 ╭ Command line ────────────────────────────────────────────────────────────────────────────╮
 │arg   txc uuid --name example.com                                                         │
 ╰──────────────────────────────────────────────────────────────────────────────────────────╯
- tab panel   ^up/^down op   ^n new   ^y copy   ^s save   ? help   F2 about   ^c quit
+ tab panel   ^up/^down op   ^n new   ^y copy   ^s save   F3 vault   ? help   ^c quit
 ```
 
 ### Sample text
