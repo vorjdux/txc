@@ -6,6 +6,20 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-16
+
+### Added
+
+- `txc vault move <entry> <vault>` (also `mv`, and `m` in the interface) moves
+  an entry to another vault, decrypting each secret and sealing it again to
+  the destination's keys. The destination is written before the entry is taken
+  from the source, so an interrupted move never loses it.
+
+### Changed
+
+- The README leads with the project and a one-line install, and the ways to
+  install are grouped below rather than spread through it.
+
 ## [0.5.0] - 2026-09-16
 
 The vault release: txc now keeps secrets as well as text, in encrypted files
@@ -179,7 +193,8 @@ are all generated.
 
 - Initial draft.
 
-[Unreleased]: https://github.com/vorjdux/txc/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/vorjdux/txc/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/vorjdux/txc/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/vorjdux/txc/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/vorjdux/txc/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/vorjdux/txc/compare/v0.3.0...v0.4.0

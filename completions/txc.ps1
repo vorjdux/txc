@@ -2430,6 +2430,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
+            [CompletionResult]::new('mv', 'mv', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
             [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -2557,6 +2559,20 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
+        'txc;vault;move' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;mv' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;recipients' {
             [CompletionResult]::new('--add', '--add', [CompletionResultType]::ParameterName, 'Encrypt to this public key too')
             [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Stop encrypting to this public key')
@@ -2586,6 +2602,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
             [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -2622,6 +2639,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;rm' {
+            break
+        }
+        'txc;vault;help;move' {
             break
         }
         'txc;vault;help;recipients' {
@@ -3249,6 +3269,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
             [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
             break
@@ -3284,6 +3305,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;rm' {
+            break
+        }
+        'txc;help;vault;move' {
             break
         }
         'txc;help;vault;recipients' {

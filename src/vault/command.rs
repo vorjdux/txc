@@ -338,6 +338,29 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("move")
+                .visible_alias("mv")
+                .about("Move an entry into another vault, re-sealing its secrets there")
+                .long_about(
+                    "Move an entry into another vault.\n\n\
+                     Its secrets are decrypted and sealed again to the destination vault's \
+                     keys, which may differ from the source's. The destination is written \
+                     first, so a failure never loses the entry.",
+                )
+                .arg(reference())
+                .arg(
+                    Arg::new("TO")
+                        .required(true)
+                        .value_name("VAULT")
+                        .help("The vault to move it into"),
+                )
+                .after_help(
+                    "Examples:\n  \
+                     txc vault move github work\n  \
+                     txc vault move personal/openai work",
+                ),
+        )
+        .subcommand(
             Command::new("recipients")
                 .about("Show or change which public keys a vault is encrypted to")
                 .long_about(
@@ -460,6 +483,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "copy" => context.copy(sub),
         "edit" => context.edit(sub),
         "rm" => context.remove(sub),
+        "move" => context.move_entry(sub),
         "recipients" => context.recipients(sub),
         "trust" => context.trust(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
@@ -895,6 +919,22 @@ impl Session {
         vault.save(&keyring)?;
         let _ = keyring.forget_use(&reference.vault, &name);
         eprintln!("Removed {reference}.");
+        Ok(())
+    }
+
+    fn move_entry(&self, sub: &ArgMatches) -> Result<()> {
+        let reference: Reference = required(sub, "ENTRY").parse()?;
+        let dest = required(sub, "TO");
+        check_vault_name(dest)?;
+
+        let keyring = self.unlock()?;
+        let mut source = keyring.open(&reference.vault)?;
+        let name = source.entry(&reference.entry)?.name.clone();
+        keyring.move_entry(&mut source, dest, &name)?;
+        // The entry took its old reference with it; drop it from this device's
+        // recent list, where it now points nowhere.
+        let _ = keyring.forget_use(&reference.vault, &name);
+        eprintln!("Moved {name} to {dest}.");
         Ok(())
     }
 

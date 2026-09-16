@@ -509,6 +509,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                     ("a", "add"),
                     ("e", "edit"),
                     ("d", "delete"),
+                    ("m", "move"),
                     ("/", "search"),
                     ("1 2 3", "jump"),
                     ("l", "lock"),
@@ -518,7 +519,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                     ("c", "copy"),
                     ("r", "reveal or read"),
                     ("e", "edit"),
-                    ("f", "star"),
+                    ("m", "move"),
                     ("←", "back"),
                 ],
             }
@@ -653,6 +654,36 @@ fn draw_dialog(frame: &mut Frame, area: Rect, screen: &VaultScreen, dialog: &Dia
                 Line::styled(" y to remove it, any other key to keep it", muted()),
             ];
             show(frame, area, "Remove", 56, lines);
+        }
+
+        Dialog::MoveTo {
+            entry,
+            targets,
+            index,
+            ..
+        } => {
+            let mut lines = vec![
+                Line::styled(format!(" Move {entry} into:"), muted()),
+                Line::raw(""),
+            ];
+            for (position, (_, name)) in targets.iter().enumerate() {
+                let selected = position == *index;
+                let style = if selected {
+                    key_style()
+                } else {
+                    Style::default()
+                };
+                lines.push(Line::styled(
+                    format!("{} {name}", if selected { ">" } else { " " }),
+                    style,
+                ));
+            }
+            lines.push(Line::raw(""));
+            lines.push(Line::styled(
+                " ↑↓ choose · enter move · esc cancel",
+                muted(),
+            ));
+            show(frame, area, "Move to vault", 60, lines);
         }
 
         Dialog::Trust(boxed) => {

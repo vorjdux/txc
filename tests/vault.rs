@@ -577,3 +577,39 @@ fn the_help_for_add_lists_the_kinds_and_their_fields() {
     }
     assert!(help.contains("cvv*"), "{help}");
 }
+
+#[test]
+fn an_entry_moves_to_another_vault_and_keeps_its_secret() {
+    let sandbox = Sandbox::new("move");
+    sandbox.init();
+    succeeds(&sandbox.vault(&["create", "work"]));
+    succeeds(&sandbox.vault_piped(
+        &["add", "openai", "--kind", "api-key", "--secret-from-stdin"],
+        "sk-secret-key",
+    ));
+
+    // Moves from personal (the default) into work.
+    succeeds(&sandbox.vault(&["move", "openai", "work"]));
+
+    // Gone from personal, present in work, still readable.
+    let error = fails(&sandbox.vault(&["show", "personal/openai"]));
+    assert!(error.contains("no entry"), "{error}");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "work/openai", "--print"])),
+        "sk-secret-key"
+    );
+
+    // The alias works, and moving onto a taken name is refused.
+    succeeds(&sandbox.vault_piped(
+        &["add", "note", "--kind", "note", "--secret-from-stdin"],
+        "n",
+    ));
+    succeeds(&sandbox.vault_piped(
+        &["add", "work/note", "--kind", "note", "--secret-from-stdin"],
+        "n2",
+    ));
+    let clash = fails(&sandbox.vault(&["mv", "note", "work"]));
+    assert!(clash.contains("already has an entry"), "{clash}");
+    // Refused move left the source untouched.
+    succeeds(&sandbox.vault(&["show", "personal/note"]));
+}
