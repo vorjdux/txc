@@ -18,7 +18,11 @@ All notable changes to txc are recorded here. The format follows
 ### Changed
 
 - The README leads with the project and a one-line install, and the ways to
-  install are grouped below rather than spread through it.
+  install are grouped below rather than spread through it. Only the install
+  methods that are published are shown as commands.
+- When the key reference along the bottom of the interface is too wide for the
+  terminal, it now drops the About key before the vault key, so the vault key
+  stays on screen for longer.
 
 ## [0.5.0] - 2026-09-16
 
