@@ -6,6 +6,69 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-16
+
+The vault release: txc now keeps secrets as well as text, in encrypted files
+on your own machine.
+
+### Added
+
+- `txc vault`, an encrypted vault for passwords, payment cards, API keys,
+  notes and other secrets, kept in local files and built entirely on the age
+  format: `init`, `identity`, `passwd`, `create`, `list`, `add`, `show`,
+  `favourite`, `copy`, `edit`, `rm`, `recipients` and `trust`.
+- Thirteen kinds of entry, each with the fields that suit it: login, payment
+  card, secure note, API key, SSH key, database, server, Wi-Fi network, bank
+  account, ID document, software licence, crypto wallet and other secret.
+  Each field is plain or secret by definition, and a secret field given as a
+  plain `--field` is refused.
+- Favourites, stored in the vault so they follow it to other devices, and a
+  list of what was used recently, kept on the device in its own encrypted
+  file. `txc vault list` takes `--favourites`, `--recent`, `--kind` and
+  `--tag`, across every vault.
+- "Unlocking..." on the terminal while the passphrase is checked, which takes
+  a moment on purpose.
+- The identity is an age X25519 key encrypted with a passphrase through scrypt
+  at N = 2^18. Each vault is one age file, encrypted to one or more public
+  keys, and each secret inside it is sealed again on its own, so browsing a
+  vault decrypts no secret and copying opens exactly one.
+- Trust records per device, authenticated with a key derived from the
+  identity. A vault that is new to the device, rebuilt with another key,
+  encrypted to different recipients, or older than the version last opened is
+  refused until `txc vault trust` shows what differs and it is accepted.
+- Secrets are never taken as arguments: they are typed without echo,
+  generated with `--generate`, or piped in with `--secret-from-stdin`. `copy`
+  keeps them out of clipboard history where the system allows, clears the
+  clipboard again after 20 seconds if the secret is still there, and never
+  falls back to OSC 52. `--print` writes to a pipe and refuses a terminal.
+- Vault files are written atomically and never through a link, and on Unix are
+  readable by their owner alone and refused when they are open to other users.
+  Keys and secrets are wiped from memory when dropped; on Unix core dumps are
+  disabled while the vault is in use, and on Linux the process is also marked
+  not dumpable.
+- A vault screen in the interactive interface, on `F3`. Favourites, recently
+  used, all items, each kind and each vault are down the left; adding an
+  entry starts by choosing its kind and opens that kind's form, with
+  generated passwords and PINs and a real editor for notes. A secret can be
+  revealed for 15 seconds and a note opened to read; otherwise secrets are
+  drawn only as dots or a fixed mask. The passphrase is checked in the
+  background behind a spinner, and the vault locks after five minutes without
+  a key and when the interface closes.
+- Pasting into the interactive interface arrives in one piece, so a multi line
+  value no longer presses Enter part of the way through. This needs bracketed
+  paste, which the Windows console does not have; there a paste still arrives
+  as typing.
+- A `vault` cargo feature, on by default. `--no-default-features` builds txc
+  without the vault and without its dependencies.
+
+### Changed
+
+- Unsafe code is denied across the crate, except in the one module that makes
+  system calls to harden the process.
+- The release binary is about 1.3 MiB larger with the vault built in.
+- The cryptography crates are optimised even in development builds, where
+  checking a passphrase otherwise took fifteen seconds rather than half of one.
+
 ## [0.4.1]
 
 ### Added
@@ -116,7 +179,8 @@ are all generated.
 
 - Initial draft.
 
-[Unreleased]: https://github.com/vorjdux/txc/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/vorjdux/txc/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/vorjdux/txc/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/vorjdux/txc/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/vorjdux/txc/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/vorjdux/txc/releases/tag/v0.3.0

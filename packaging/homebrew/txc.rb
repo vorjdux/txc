@@ -6,7 +6,7 @@
 # release. Publish the rendered file to a tap, for example
 # vorjdux/homebrew-tap, as Formula/txc.rb.
 class Txc < Formula
-  desc "Offline text utilities for the terminal"
+  desc "Offline text utilities and an encrypted secrets vault for the terminal"
   homepage "https://github.com/vorjdux/txc"
   version "@VERSION@"
   license any_of: ["MIT", "Apache-2.0"]

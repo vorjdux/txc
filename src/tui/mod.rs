@@ -6,6 +6,8 @@ pub mod command;
 pub mod options;
 pub mod textarea;
 mod ui;
+#[cfg(feature = "vault")]
+pub mod vault;
 
 use std::io::IsTerminal;
 use std::time::Duration;
@@ -41,26 +43,45 @@ pub fn run() -> Result<()> {
 
     let mut terminal = ratatui::try_init()
         .context("the interactive interface needs a terminal; run txc <operation> instead")?;
+    // Pasted text then arrives in one piece rather than as keystrokes, where a
+    // line break would press Enter halfway through a password or a key.
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste);
     let result = event_loop(&mut terminal);
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
     ratatui::restore();
     result
 }
 
 fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     let mut app = App::new();
+    let result = run_app(terminal, &mut app);
+    // However the loop ended, the vault is locked and any secret it copied
+    // is taken off the clipboard before the interface goes.
+    #[cfg(feature = "vault")]
+    app.vault.lock();
+    result
+}
 
+fn run_app(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()> {
     while app.running {
-        terminal.draw(|frame| ui::draw(frame, &mut app))?;
+        #[cfg(feature = "vault")]
+        app.vault.tick(std::time::Instant::now());
+
+        terminal.draw(|frame| ui::draw(frame, app))?;
 
         // Waking up regularly keeps the interface responsive to resizes even
         // when no key is pressed.
         if !event::poll(Duration::from_millis(200))? {
             continue;
         }
-        if let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            handle_key(&mut app, key);
+        match event::read()? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => handle_key(app, key),
+            Event::Paste(mut text) => {
+                handle_paste(app, &text);
+                // What was pasted may have been a secret.
+                wipe(&mut text);
+            }
+            _ => {}
         }
 
         if let Some(text) = app.pending_clipboard.take() {
@@ -69,8 +90,76 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
                 Err(error) => format!("could not copy: {error}"),
             };
         }
+
+        // A secret goes through the vault's own clipboard, which never falls
+        // back to the terminal and clears itself again.
+        #[cfg(feature = "vault")]
+        if let Some((secret, label)) = app.vault.pending_copy.take() {
+            app.vault.release_clipboard();
+            let result = crate::vault::clipboard::copy(&secret);
+            drop(secret);
+            app.vault.copied(result, &label);
+        }
     }
     Ok(())
+}
+
+/// Takes pasted text into whatever has the keys.
+fn handle_paste(app: &mut App, text: &str) {
+    app.status.clear();
+    #[cfg(feature = "vault")]
+    if app.screen == crate::tui::app::Screen::Vault {
+        app.vault.handle_paste(text);
+        return;
+    }
+    if let Some(prompt) = app.prompt.as_mut() {
+        for ch in text.chars().filter(|ch| !ch.is_control()) {
+            prompt.input.insert(ch);
+        }
+        return;
+    }
+    match app.focus {
+        Focus::Input => {
+            // Terminals send a pasted line break as \r, \n or \r\n, depending
+            // on the terminal and on what sits in between, such as tmux.
+            let mut chars = text.chars().peekable();
+            while let Some(ch) = chars.next() {
+                match ch {
+                    '\r' => {
+                        if chars.peek() == Some(&'\n') {
+                            chars.next();
+                        }
+                        app.input.newline();
+                    }
+                    '\n' => app.input.newline(),
+                    ch => app.input.insert(ch),
+                }
+            }
+            app.mark_input_edited();
+            app.recompute();
+        }
+        Focus::Search => {
+            app.search
+                .extend(text.chars().filter(|ch| !ch.is_control()));
+            app.refresh_operations();
+            app.load_operation();
+        }
+        Focus::Options => {
+            for ch in text.chars().filter(|ch| !ch.is_control()) {
+                app.options.insert(ch);
+            }
+            app.recompute();
+        }
+        Focus::Categories | Focus::Operations => {}
+    }
+}
+
+/// Overwrites a string's bytes before letting it go.
+fn wipe(text: &mut String) {
+    let len = text.len();
+    text.clear();
+    text.extend(std::iter::repeat_n('\0', len));
+    text.clear();
 }
 
 fn handle_key(app: &mut App, key: KeyEvent) {
@@ -95,6 +184,22 @@ fn handle_key(app: &mut App, key: KeyEvent) {
             app.running = false;
         }
         return;
+    }
+
+    #[cfg(feature = "vault")]
+    {
+        if key.code == KeyCode::F(3) {
+            app.toggle_vault();
+            return;
+        }
+        if app.screen == crate::tui::app::Screen::Vault {
+            match (key.code, control) {
+                (KeyCode::Char('c'), true) => app.running = false,
+                (KeyCode::F(2), _) => app.show_about = true,
+                _ => app.vault.handle_key(key),
+            }
+            return;
+        }
     }
 
     // Keys that work the same in every panel.
@@ -617,6 +722,46 @@ mod tests {
         let mut app = App::new();
         press_ctrl(&mut app, KeyCode::Char('s'));
         assert!(app.prompt.is_some());
+        press_ctrl(&mut app, KeyCode::Char('c'));
+        assert!(!app.running);
+    }
+
+    #[test]
+    fn pasted_text_lands_in_the_input_in_one_piece() {
+        let mut app = App::new();
+        app.search = "upper".to_string();
+        app.refresh_operations();
+        app.load_operation();
+        app.focus = Focus::Input;
+        press_ctrl(&mut app, KeyCode::Char('l'));
+        handle_paste(&mut app, "one\r\ntwo\rthree\nfour");
+        assert_eq!(app.input.text(), "one\ntwo\nthree\nfour");
+        assert_eq!(app.outcome.text(), "ONE\nTWO\nTHREE\nFOUR");
+    }
+
+    #[cfg(feature = "vault")]
+    #[test]
+    fn f3_switches_to_the_vault_and_back() {
+        use crate::tui::app::Screen;
+
+        let mut app = App::new();
+        press(&mut app, KeyCode::F(3));
+        assert_eq!(app.screen, Screen::Vault);
+        // Keys now go to the vault, not to the operations.
+        let before = app.input.text();
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Char('x'));
+        assert_eq!(app.input.text(), before);
+
+        press(&mut app, KeyCode::F(3));
+        assert_eq!(app.screen, Screen::Operations);
+    }
+
+    #[cfg(feature = "vault")]
+    #[test]
+    fn control_c_quits_from_the_vault_too() {
+        let mut app = App::new();
+        press(&mut app, KeyCode::F(3));
         press_ctrl(&mut app, KeyCode::Char('c'));
         assert!(!app.running);
     }

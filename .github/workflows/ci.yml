@@ -48,6 +48,13 @@ jobs:
       - name: Run clippy
         run: cargo clippy --locked --all-targets -- -D warnings
 
+      # The vault is a default feature. Building without it must keep working,
+      # and nothing else may come to depend on it by accident.
+      - name: Run clippy without the vault
+        run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
+      - name: Test without the vault
+        run: cargo test --locked --no-default-features
+
       # Broken links and malformed doc comments do not fail an ordinary build,
       # so they would only show up as a mangled page on docs.rs.
       - name: Build the documentation

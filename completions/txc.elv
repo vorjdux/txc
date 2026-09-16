@@ -165,6 +165,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand now 'Print the current date and time'
             cand timestamp 'Print the current Unix timestamp'
             cand to-timestamp 'Turn a date into a Unix timestamp'
+            cand vault 'Keep passwords, cards, keys and notes in an encrypted local vault'
             cand list 'List every operation, optionally filtered by category'
             cand completions 'Print a shell completion script'
             cand about 'Show the version, author and licence'
@@ -2265,6 +2266,196 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'txc;vault'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+            cand init 'Create your identity and the personal vault'
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand passwd 'Change the passphrase protecting your identity'
+            cand create 'Create a new, empty vault'
+            cand list 'List the vaults, or entries: of one vault, favourites, or recently used'
+            cand add 'Add an entry; its secret is typed, generated or piped in'
+            cand show 'Show an entry, with its secrets masked'
+            cand favourite 'Star an entry, so it is easy to find, or unstar it with --remove'
+            cand favorite 'Star an entry, so it is easy to find, or unstar it with --remove'
+            cand copy 'Copy a secret to the clipboard, and clear it again after a while'
+            cand edit 'Change an entry'
+            cand rm 'Remove an entry'
+            cand recipients 'Show or change which public keys a vault is encrypted to'
+            cand trust 'Trust a vault that is new to this device, or that changed'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'txc;vault;init'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;identity'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;passwd'= {
+            cand --new-passphrase-file 'Read the new passphrase from a file rather than asking'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;create'= {
+            cand --recipient 'Also encrypt to this public key, such as another device''s'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;list'= {
+            cand --kind 'Only entries of this kind'
+            cand --tag 'Only entries with this tag'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --favourites 'Only starred entries'
+            cand --favorites 'Only starred entries'
+            cand --recent 'The entries used most recently on this device, newest first'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;add'= {
+            cand --kind 'What the entry is; the kinds and their fields are listed below'
+            cand --length 'Characters in a generated password'
+            cand --username 'The username, stored in the clear inside the vault'
+            cand --url 'The address, stored in the clear inside the vault'
+            cand --field 'Set a field that is not secret; secret fields are refused here, since arguments are visible to other programs'
+            cand --secret-field 'Add another secret field, asked for at the terminal'
+            cand --tag 'Add a tag'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --generate 'Generate the main secret: a password, or a PIN where that is what it is'
+            cand --no-symbols 'Generate from letters and digits only'
+            cand --secret-from-stdin 'Read the main secret from standard input, which may run over several lines'
+            cand --favourite 'Star it straight away'
+            cand --favorite 'Star it straight away'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;show'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;favourite'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --remove 'Unstar it instead'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;favorite'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --remove 'Unstar it instead'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;copy'= {
+            cand --field 'The field to copy, rather than the entry''s main secret'
+            cand --clear-after 'How long the secret stays on the clipboard'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --print 'Write the secret to standard output instead, which must be a pipe'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;edit'= {
+            cand --rename 'Give the entry a new name'
+            cand --length 'Characters in a generated password'
+            cand --username 'The username, stored in the clear inside the vault'
+            cand --url 'The address, stored in the clear inside the vault'
+            cand --field 'Set a field that is not secret; secret fields are refused here, since arguments are visible to other programs'
+            cand --secret-field 'Add or replace a secret field, asked for at the terminal'
+            cand --remove-field 'Remove a field'
+            cand --tag 'Add a tag'
+            cand --untag 'Remove a tag'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --set-secret 'Replace the main secret, asked for at the terminal'
+            cand --generate 'Generate the main secret: a password, or a PIN where that is what it is'
+            cand --no-symbols 'Generate from letters and digits only'
+            cand --secret-from-stdin 'Read the main secret from standard input, which may run over several lines'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;rm'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --yes 'Do not ask for confirmation'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;recipients'= {
+            cand --add 'Encrypt to this public key too'
+            cand --remove 'Stop encrypting to this public key'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;trust'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --yes 'Do not ask for confirmation'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;help'= {
+            cand init 'Create your identity and the personal vault'
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand passwd 'Change the passphrase protecting your identity'
+            cand create 'Create a new, empty vault'
+            cand list 'List the vaults, or entries: of one vault, favourites, or recently used'
+            cand add 'Add an entry; its secret is typed, generated or piped in'
+            cand show 'Show an entry, with its secrets masked'
+            cand favourite 'Star an entry, so it is easy to find, or unstar it with --remove'
+            cand copy 'Copy a secret to the clipboard, and clear it again after a while'
+            cand edit 'Change an entry'
+            cand rm 'Remove an entry'
+            cand recipients 'Show or change which public keys a vault is encrypted to'
+            cand trust 'Trust a vault that is new to this device, or that changed'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'txc;vault;help;init'= {
+        }
+        &'txc;vault;help;identity'= {
+        }
+        &'txc;vault;help;passwd'= {
+        }
+        &'txc;vault;help;create'= {
+        }
+        &'txc;vault;help;list'= {
+        }
+        &'txc;vault;help;add'= {
+        }
+        &'txc;vault;help;show'= {
+        }
+        &'txc;vault;help;favourite'= {
+        }
+        &'txc;vault;help;copy'= {
+        }
+        &'txc;vault;help;edit'= {
+        }
+        &'txc;vault;help;rm'= {
+        }
+        &'txc;vault;help;recipients'= {
+        }
+        &'txc;vault;help;trust'= {
+        }
+        &'txc;vault;help;help'= {
+        }
         &'txc;list'= {
             cand -c 'Show only one category'
             cand --category 'Show only one category'
@@ -2428,6 +2619,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand now 'Print the current date and time'
             cand timestamp 'Print the current Unix timestamp'
             cand to-timestamp 'Turn a date into a Unix timestamp'
+            cand vault 'Keep passwords, cards, keys and notes in an encrypted local vault'
             cand list 'List every operation, optionally filtered by category'
             cand completions 'Print a shell completion script'
             cand about 'Show the version, author and licence'
@@ -2719,6 +2911,47 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;timestamp'= {
         }
         &'txc;help;to-timestamp'= {
+        }
+        &'txc;help;vault'= {
+            cand init 'Create your identity and the personal vault'
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand passwd 'Change the passphrase protecting your identity'
+            cand create 'Create a new, empty vault'
+            cand list 'List the vaults, or entries: of one vault, favourites, or recently used'
+            cand add 'Add an entry; its secret is typed, generated or piped in'
+            cand show 'Show an entry, with its secrets masked'
+            cand favourite 'Star an entry, so it is easy to find, or unstar it with --remove'
+            cand copy 'Copy a secret to the clipboard, and clear it again after a while'
+            cand edit 'Change an entry'
+            cand rm 'Remove an entry'
+            cand recipients 'Show or change which public keys a vault is encrypted to'
+            cand trust 'Trust a vault that is new to this device, or that changed'
+        }
+        &'txc;help;vault;init'= {
+        }
+        &'txc;help;vault;identity'= {
+        }
+        &'txc;help;vault;passwd'= {
+        }
+        &'txc;help;vault;create'= {
+        }
+        &'txc;help;vault;list'= {
+        }
+        &'txc;help;vault;add'= {
+        }
+        &'txc;help;vault;show'= {
+        }
+        &'txc;help;vault;favourite'= {
+        }
+        &'txc;help;vault;copy'= {
+        }
+        &'txc;help;vault;edit'= {
+        }
+        &'txc;help;vault;rm'= {
+        }
+        &'txc;help;vault;recipients'= {
+        }
+        &'txc;help;vault;trust'= {
         }
         &'txc;help;list'= {
         }

@@ -1,15 +1,15 @@
 [package]
 name = "txc"
-description = "Offline text utilities for the terminal: encode, hash, convert, inspect and generate text without sending it anywhere"
+description = "Offline text utilities for the terminal, and an encrypted local vault for passwords, keys and other secrets: nothing is sent anywhere"
 authors = ["Matheus Santos <vorj.dux@gmail.com>"]
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.88"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/vorjdux/txc"
 keywords = ["cli", "text", "encoding", "hash", "tui"]
-categories = ["command-line-utilities", "text-processing"]
+categories = ["command-line-utilities", "text-processing", "cryptography"]
 exclude = ["debian/", ".github/", "packaging/", "install.sh", "install.ps1"]
 
 [lib]
@@ -20,8 +20,18 @@ path = "src/lib.rs"
 name = "txc"
 path = "src/main.rs"
 
+[features]
+default = ["vault"]
+# The encrypted vault for passwords, API keys and other secrets. Building
+# without it leaves a binary with no key handling and no clipboard library.
+vault = ["dep:age", "dep:arboard", "dep:libc", "dep:rpassword", "dep:zeroize"]
+
 [dependencies]
+age = { version = "0.12", optional = true }
 anyhow = "1.0"
+# Only text is ever put on the clipboard, so the image support is left out.
+# On Linux, Wayland is spoken directly rather than only through XWayland.
+arboard = { version = "3.6", optional = true, default-features = false, features = ["wayland-data-control"] }
 blake3 = "1.8"
 bs58 = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -38,6 +48,7 @@ md-5 = "0.11"
 ratatui = "0.30"
 rand = "0.10"
 regex = "1.13"
+rpassword = { version = "7.5", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml_ng = "0.10"
@@ -50,9 +61,51 @@ unicode-normalization = "0.1"
 unicode-segmentation = "1.13"
 urlencoding = "2.1"
 uuid = { version = "1.26", features = ["v1", "v3", "v4", "v5", "v7"] }
+zeroize = { version = "1.9", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+# Core dump and ptrace protection, and refusing to follow links, for the vault.
+libc = { version = "0.2", optional = true }
 
 [profile.dev]
 debug = true
+
+# The passphrase is stretched with scrypt on purpose, which takes about half a
+# second optimised and fifteen unoptimised. Optimising the cryptography even
+# in development builds keeps `cargo run` and the tests from feeling broken,
+# without slowing the compile of everything else.
+[profile.dev.package.age]
+opt-level = 3
+[profile.dev.package.age-core]
+opt-level = 3
+[profile.dev.package.scrypt]
+opt-level = 3
+[profile.dev.package.pbkdf2]
+opt-level = 3
+[profile.dev.package.salsa20]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.hmac]
+opt-level = 3
+[profile.dev.package.digest]
+opt-level = 3
+[profile.dev.package.block-buffer]
+opt-level = 3
+[profile.dev.package.cipher]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.universal-hash]
+opt-level = 3
+[profile.dev.package.x25519-dalek]
+opt-level = 3
+[profile.dev.package.curve25519-dalek]
+opt-level = 3
 
 [profile.release]
 lto = true
@@ -72,7 +125,9 @@ extended-description = """\
 Offline text utilities for the terminal. Over a hundred text operations \
 covering case conversion, encoding, hashing, line editing, inspection, \
 format conversion and generators, usable as arguments, over a pipe, or \
-through an interactive terminal interface.\
+through an interactive terminal interface. It also keeps an encrypted local \
+vault for passwords, payment cards, API keys, notes and other secrets, built \
+on the age format, with secrets copied to a clipboard that clears itself.\
 """
 depends = "$auto"
 section = "utility"

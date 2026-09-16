@@ -31,6 +31,16 @@ impl Focus {
     ];
 }
 
+/// Which screen the interface shows.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Screen {
+    /// The text operations.
+    Operations,
+    /// The vault, for passwords, keys and other secrets.
+    #[cfg(feature = "vault")]
+    Vault,
+}
+
 /// The result of running the selected operation over the current input.
 #[derive(Clone, Debug)]
 pub enum Outcome {
@@ -87,6 +97,11 @@ pub struct Prompt {
 /// The state is deliberately plain data, so a test can drive the interface
 /// without a terminal attached.
 pub struct App {
+    /// Which screen is shown.
+    pub screen: Screen,
+    /// The vault screen, locked until it is opened and unlocked.
+    #[cfg(feature = "vault")]
+    pub vault: crate::tui::vault::VaultScreen,
     /// The categories down the left. `None` stands for the entry that shows
     /// every category at once.
     pub categories: Vec<Option<Category>>,
@@ -142,6 +157,11 @@ impl App {
         categories.extend(Category::ALL.iter().copied().map(Some));
 
         let mut app = Self {
+            screen: Screen::Operations,
+            // Only finds where the vaults would be; nothing is read until the
+            // screen is opened.
+            #[cfg(feature = "vault")]
+            vault: crate::tui::vault::VaultScreen::new(crate::vault::Home::locate(None)),
             categories,
             category_index: 0,
             operations: Vec::new(),
@@ -164,6 +184,18 @@ impl App {
         app.refresh_operations();
         app.load_operation();
         app
+    }
+
+    /// Switches between the operations and the vault.
+    #[cfg(feature = "vault")]
+    pub fn toggle_vault(&mut self) {
+        self.screen = match self.screen {
+            Screen::Operations => {
+                self.vault.enter();
+                Screen::Vault
+            }
+            Screen::Vault => Screen::Operations,
+        };
     }
 
     /// Panels the current operation actually shows, in tab order.

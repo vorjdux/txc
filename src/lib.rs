@@ -83,6 +83,9 @@
 
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
+// Unsafe code is refused everywhere except the one vault module that makes
+// system calls to harden the process, which opts out explicitly.
+#![deny(unsafe_code)]
 // Two lints worth having from the nursery group. They are named individually
 // rather than enabling the group, which changes between Rust releases and
 // would fail the build on a toolchain bump rather than on a real problem.
@@ -107,6 +110,8 @@ pub mod ops;
 pub mod params;
 pub mod registry;
 pub mod tui;
+#[cfg(feature = "vault")]
+pub mod vault;
 
 pub use params::Params;
 pub use registry::{Category, Feed, Op, OpFn, OpResult, Param, ParamKind, all, find, in_category};

@@ -3,7 +3,7 @@
 pkgname=txc
 pkgver=@VERSION@
 pkgrel=0
-pkgdesc="Offline text utilities for the terminal"
+pkgdesc="Offline text utilities and an encrypted secrets vault for the terminal"
 url="https://github.com/vorjdux/txc"
 arch="all"
 license="MIT OR Apache-2.0"
