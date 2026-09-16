@@ -152,9 +152,11 @@ fn draw_locked(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
 }
 
 fn draw_unlocked(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
+    // The list is narrower than the details pane on its right, which is where an
+    // entry is read: two lines per item mean names fit without a wide column.
     let [left, middle, right] = Layout::horizontal([
         Constraint::Length(26),
-        Constraint::Length(40),
+        Constraint::Length(34),
         Constraint::Min(24),
     ])
     .areas(area);
@@ -276,6 +278,9 @@ fn draw_items(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
         return;
     }
 
+    // Two lines per item: the name on its own, so it keeps the whole width and
+    // is rarely cropped, and the kind and vault (or when it was last used) below
+    // it. This keeps the panel its fixed width without squeezing the name.
     let width = usize::from(area.width.saturating_sub(2));
     let several = screen.vaults().len() > 1;
     let rows: Vec<ListItem> = items
@@ -286,26 +291,24 @@ fn draw_items(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
             };
             let star = if entry.favourite { "★ " } else { "  " };
             let detail = match &item.used {
-                Some(at) => ago(at),
+                Some(at) => format!("{} · used {}", entry.kind.label(), ago(at)),
                 None if several => format!(
                     "{} · {}",
-                    screen.vaults()[item.vault].name,
-                    entry.kind.label()
+                    entry.kind.label(),
+                    screen.vaults()[item.vault].name
                 ),
                 None => entry.kind.label().to_string(),
             };
-            let detail = truncate(&detail, width / 2);
-            let name = truncate(
-                &entry.name,
-                width.saturating_sub(detail.chars().count() + 4),
-            );
-            let pad = width.saturating_sub(2 + name.chars().count() + detail.chars().count());
-            ListItem::new(Line::from(vec![
-                Span::styled(star, accent()),
-                Span::raw(name),
-                Span::raw(" ".repeat(pad)),
-                Span::styled(detail, muted()),
-            ]))
+            ListItem::new(vec![
+                Line::from(vec![
+                    Span::styled(star, accent()),
+                    Span::raw(truncate(&entry.name, width.saturating_sub(2))),
+                ]),
+                Line::styled(
+                    format!("    {}", truncate(&detail, width.saturating_sub(4))),
+                    muted(),
+                ),
+            ])
         })
         .collect();
 
@@ -1035,6 +1038,28 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn an_item_shows_its_name_in_full_with_the_kind_and_vault_below() {
+        let (_scratch, mut screen) = unlocked("ui-two-line");
+        // A name that fills much of the fixed-width panel but fits its own line.
+        let name = "Default Habit Password";
+        add_login(&mut screen, name, "octocat", "p");
+        add_login(&mut screen, "zzz other entry", "u", "p");
+
+        // Select the second entry, so the name below is only in the list, not in
+        // the details-panel title, and a match proves the list row shows it.
+        press(&mut screen, KeyCode::Down);
+        assert_ne!(screen.selected().unwrap().1.name, name);
+
+        let shown = render(&screen, 100, 24);
+        assert!(
+            shown.contains(name),
+            "the name was cropped in the list:\n{shown}"
+        );
+        // The kind and vault are on the second line, so both survive.
+        assert!(shown.contains("Login · personal"), "{shown}");
     }
 
     #[test]
