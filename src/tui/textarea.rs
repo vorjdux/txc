@@ -4,6 +4,11 @@
 ///
 /// Positions are counted in characters rather than bytes so that accented
 /// letters and other multi byte characters behave like single keystrokes.
+///
+/// Invariant: `row` is always a valid index into `lines` (which is never
+/// empty), and `column` is always at most the character count of that line.
+/// Every method below that indexes `lines` by `row`, or nudges `row` or
+/// `column` by one, relies on this invariant and is annotated accordingly.
 #[derive(Debug, Clone)]
 pub struct TextArea {
     lines: Vec<String>,
@@ -34,6 +39,9 @@ impl TextArea {
     /// assert_eq!(area.lines(), ["one", "two"]);
     /// assert_eq!(area.cursor(), (1, 3));
     /// ```
+    // `area.lines` is guaranteed non-empty just above, so the subtraction
+    // cannot underflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn from_text(text: &str) -> Self {
         let mut area = Self {
             lines: text.split('\n').map(str::to_string).collect(),
@@ -90,6 +98,9 @@ impl TextArea {
     /// assert!(TextArea::default().is_empty());
     /// assert!(!TextArea::from_text("x").is_empty());
     /// ```
+    // `self.lines` always holds at least one line (`Default` and
+    // `from_text` both guarantee it), so index 0 is always valid.
+    #[allow(clippy::indexing_slicing)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.lines.len() == 1 && self.lines[0].is_empty()
@@ -140,6 +151,9 @@ impl TextArea {
     /// area.insert('c');
     /// assert_eq!(area.text(), "abc");
     /// ```
+    // `self.row` is a valid line index (see the struct invariant), and
+    // `self.column` tracks characters typed by hand, far below `usize::MAX`.
+    #[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
     pub fn insert(&mut self, ch: char) {
         let index = self.byte_index(self.row, self.column);
         self.lines[self.row].insert(index, ch);
@@ -176,6 +190,9 @@ impl TextArea {
     /// area.newline();
     /// assert_eq!(area.lines(), ["", "ab"]);
     /// ```
+    // `self.row` is a valid line index, and the number of lines in the
+    // document, and how many times it grows, is far below `usize::MAX`.
+    #[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
     pub fn newline(&mut self) {
         let index = self.byte_index(self.row, self.column);
         let tail = self.lines[self.row].split_off(index);
@@ -197,6 +214,12 @@ impl TextArea {
     /// area.backspace();
     /// assert_eq!(area.text(), "onetwo");
     /// ```
+    // `self.row` is a valid line index, and `self.column > 0` /
+    // `self.row > 0` are checked before each subtraction.
+    #[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+    // `row` is always a valid index into `lines`, and `column - 1`/`row - 1`
+    // only run once the corresponding `> 0` check just above has passed.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     pub fn backspace(&mut self) {
         if self.column > 0 {
             let start = self.byte_index(self.row, self.column - 1);
@@ -224,6 +247,9 @@ impl TextArea {
     /// area.delete();
     /// assert_eq!(area.text(), "bc");
     /// ```
+    // `column + 1` only runs once `column < line_length(row)` has passed, and
+    // `row + 1` is checked against `lines.len()` before indexing with it.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     pub fn delete(&mut self) {
         if self.column < self.line_length(self.row) {
             let start = self.byte_index(self.row, self.column);
@@ -236,6 +262,9 @@ impl TextArea {
     }
 
     /// Moves the cursor one character left, wrapping to the line above.
+    // `column`/`row` are only decremented once the corresponding `> 0` check
+    // just above has passed.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn move_left(&mut self) {
         if self.column > 0 {
             self.column -= 1;
@@ -247,6 +276,9 @@ impl TextArea {
     }
 
     /// Moves the cursor one character right, wrapping to the line below.
+    // `column`/`row` are only incremented once the corresponding bound check
+    // just above has passed, so they cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn move_right(&mut self) {
         if self.column < self.line_length(self.row) {
             self.column += 1;
@@ -272,6 +304,8 @@ impl TextArea {
     /// area.move_up();
     /// assert_eq!(area.cursor(), (0, 11)); // and back out to the goal column
     /// ```
+    // `row` is only decremented once the `> 0` check just above has passed.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn move_up(&mut self) {
         if self.row > 0 {
             self.row -= 1;
@@ -280,6 +314,8 @@ impl TextArea {
     }
 
     /// Moves the cursor to the line below, keeping the column it is aiming for.
+    // `row + 1` is checked against `lines.len()` before it is stored.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn move_down(&mut self) {
         if self.row + 1 < self.lines.len() {
             self.row += 1;
@@ -328,6 +364,9 @@ impl TextArea {
         }
     }
 
+    // `row` is always a valid index into `lines` (struct invariant), and
+    // `column - 1` only runs once the `== 0` check just above has failed.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     fn char_before(&self) -> Option<char> {
         if self.column == 0 {
             return None;
@@ -335,11 +374,15 @@ impl TextArea {
         self.lines[self.row].chars().nth(self.column - 1)
     }
 
+    // Callers only ever pass a `row` that is a valid index into `lines`.
+    #[allow(clippy::indexing_slicing)]
     fn line_length(&self, row: usize) -> usize {
         self.lines[row].chars().count()
     }
 
     /// Converts a character column into a byte offset for string editing.
+    // Callers only ever pass a `row` that is a valid index into `lines`.
+    #[allow(clippy::indexing_slicing)]
     fn byte_index(&self, row: usize, column: usize) -> usize {
         self.lines[row]
             .char_indices()

@@ -689,7 +689,7 @@ fn index() -> &'static HashMap<&'static str, usize> {
 /// ```
 #[must_use]
 pub fn find(name: &str) -> Option<&'static Op> {
-    index().get(name).map(|i| &all()[*i])
+    index().get(name).and_then(|i| all().get(*i))
 }
 
 /// All operations in a category, in registry order.

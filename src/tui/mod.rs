@@ -45,9 +45,9 @@ pub fn run() -> Result<()> {
         .context("the interactive interface needs a terminal; run txc <operation> instead")?;
     // Pasted text then arrives in one piece rather than as keystrokes, where a
     // line break would press Enter halfway through a password or a key.
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste);
+    crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste).ok();
     let result = event_loop(&mut terminal);
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
+    crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste).ok();
     ratatui::restore();
     result
 }

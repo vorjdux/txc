@@ -169,6 +169,9 @@ fn draw_unlocked(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     draw_details(frame, right, screen);
 }
 
+// `Section::Vault(index)` is only ever built from `screen.vaults()`'s own
+// indices, so `index` is always in bounds.
+#[allow(clippy::indexing_slicing)]
 fn section_label(screen: &VaultScreen, section: Section) -> String {
     match section {
         Section::Favourites => "★ Favourites".to_string(),
@@ -183,6 +186,8 @@ fn section_label(screen: &VaultScreen, section: Section) -> String {
     }
 }
 
+// Label/count lengths are short UI strings, nowhere near `usize::MAX`.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_sidebar(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     let rows = screen.sidebar();
     let width = usize::from(area.width.saturating_sub(2));
@@ -215,6 +220,8 @@ fn draw_sidebar(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     );
 }
 
+// Screen coordinates stay far below `u16::MAX` for any real terminal.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_search(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     let text = if screen.search.is_empty() && !screen.searching {
         Span::styled("/ to search", muted())
@@ -260,6 +267,9 @@ fn truncate(text: &str, max: usize) -> String {
     }
 }
 
+// `item.vault` is only ever built from `screen.vaults()`'s own indices, and
+// label widths are short UI strings nowhere near `usize::MAX`.
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 fn draw_items(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     let items = screen.items();
     let focused = screen.pane == Pane::Items && !screen.searching;
@@ -328,6 +338,9 @@ fn draw_items(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     );
 }
 
+// `vault` (from `screen.selected()`) is only ever a valid index into
+// `screen.vaults()`, and label widths stay small.
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     let focused = screen.pane == Pane::Details;
 
@@ -553,6 +566,9 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
     frame.render_widget(Paragraph::new(line), keys_area);
 }
 
+// `columns` above is always a fixed literal well above 4, list lengths are
+// small UI counts, and screen coordinates stay far below `u16::MAX`.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_dialog(frame: &mut Frame, area: Rect, screen: &VaultScreen, dialog: &Dialog) {
     match dialog {
         Dialog::Unlock { passphrase, error } => {
@@ -764,6 +780,10 @@ fn value_or_hint(value: &str, hint: &str) -> Span<'static> {
     }
 }
 
+// `Row::Field(index)` is only ever built from `form.fields`'s own indices,
+// offsets are clamped with `saturating_sub` before use, and screen
+// coordinates/small UI counts stay far below their integer limits.
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 fn draw_form(frame: &mut Frame, area: Rect, form: &EntryForm) {
     const LABEL: usize = 16;
     const NOTE_ROWS: usize = 6;
@@ -957,6 +977,9 @@ fn draw_note(frame: &mut Frame, area: Rect, view: &NoteView) {
     );
 }
 
+// The `% SPINNER.len()` above keeps the spinner index in bounds, and
+// `COLUMNS` is a fixed literal well above 4.
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 fn draw_busy(frame: &mut Frame, area: Rect, busy: &Busy) {
     const COLUMNS: u16 = 66;
     let elapsed = busy.started.elapsed();
@@ -999,6 +1022,8 @@ fn note(error: Option<&str>, hint: &str) -> Line<'static> {
 
 /// Draws a window sized to its lines, and returns where it went. Lines are
 /// not wrapped, so a cursor placed by line number stays on its line.
+// `lines` is a short, fixed list of dialog lines, nowhere near `u16::MAX`.
+#[allow(clippy::arithmetic_side_effects)]
 fn show(frame: &mut Frame, area: Rect, title: &str, columns: u16, lines: Vec<Line>) -> Rect {
     let popup = window(area, columns, lines.len() as u16 + 3);
     frame.render_widget(Clear, popup);
@@ -1006,6 +1031,8 @@ fn show(frame: &mut Frame, area: Rect, title: &str, columns: u16, lines: Vec<Lin
     popup
 }
 
+// Screen coordinates stay far below `u16::MAX` for any real terminal.
+#[allow(clippy::arithmetic_side_effects)]
 fn place_cursor(frame: &mut Frame, popup: Rect, row: usize, input: &SecretInput) {
     frame.set_cursor_position(Position::new(
         popup.x + 1 + 14 + input.chars().min(40) as u16,

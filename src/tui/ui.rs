@@ -86,6 +86,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 /// Draws the small window that asks where to save the output.
+// `width` is at most `area.width` (clamped via `.min`) and the screen
+// coordinates involved stay far below `u16::MAX` for any real terminal.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_prompt(frame: &mut Frame, area: Rect, app: &App) {
     let Some(prompt) = app.prompt.as_ref() else {
         return;
@@ -119,6 +122,9 @@ fn draw_prompt(frame: &mut Frame, area: Rect, app: &App) {
 /// Lays out the right hand column, leaving out the panels the selected
 /// operation has no use for: a generator gets no input panel, and an operation
 /// without parameters gets no options panel. The output takes the space back.
+// `app.options.len()` is the parameter count of one operation, which never
+// comes close to `u16::MAX`.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_right_column(frame: &mut Frame, area: Rect, app: &App) {
     let shows_input = app.shows_input();
     let shows_options = app.shows_options();
@@ -133,16 +139,26 @@ fn draw_right_column(frame: &mut Frame, area: Rect, app: &App) {
     }
     constraints.push(Constraint::Min(3));
 
+    // `Layout::split` always returns exactly one area per constraint, so
+    // there is one `next()` below for every constraint pushed above.
     let areas = Layout::vertical(constraints).split(area);
-    let mut next = areas.iter();
+    let mut next = areas.iter().copied();
 
     if shows_input {
-        draw_input(frame, *next.next().expect("input area"), app);
+        let Some(input_area) = next.next() else {
+            return;
+        };
+        draw_input(frame, input_area, app);
     }
     if shows_options {
-        draw_options(frame, *next.next().expect("options area"), app);
+        let Some(options_area) = next.next() else {
+            return;
+        };
+        draw_options(frame, options_area, app);
     }
-    draw_output(frame, *next.next().expect("output area"), app);
+    if let Some(output_area) = next.next() {
+        draw_output(frame, output_area, app);
+    }
 }
 
 pub(super) fn panel(title: &str, focused: bool) -> Block<'_> {
@@ -208,6 +224,8 @@ fn draw_categories(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
+// Screen coordinates stay far below `u16::MAX` for any real terminal.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_search(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Search;
     let text = if app.search.is_empty() && !focused {
@@ -260,6 +278,9 @@ fn draw_operations(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
+// `offset` is derived from `row` with `saturating_sub`, so `row - offset`
+// cannot underflow, and screen coordinates stay far below `u16::MAX`.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_input(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Input;
     let sample = app.input_is_sample;
@@ -309,6 +330,9 @@ fn draw_input(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Draws one line per parameter, with its current value, so the panel shows
 /// what the operation is about to do instead of an empty box.
+// Field name lengths, cursor positions and row counts are all small and
+// screen coordinates stay far below `u16::MAX` for any real terminal.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_options(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focus == Focus::Options;
     let fields = app.options.fields();
@@ -408,6 +432,9 @@ pub(super) const HINTS_NEED_ROWS: u16 = 20;
 
 /// How many rows the bottom of the screen takes: the key reference, plus the
 /// command panel and the frame around it when there is one.
+// `hints` is at most 2 (see `command_hints`), so this never comes close to
+// overflowing `u16`.
+#[allow(clippy::arithmetic_side_effects)]
 const fn footer_rows(hints: usize) -> u16 {
     if hints == 0 { 1 } else { hints as u16 + 3 }
 }
@@ -431,6 +458,9 @@ fn command_hints(app: &App) -> Vec<(&'static str, String)> {
 }
 
 /// Draws the command lines and the key reference along the bottom.
+// `footer_rows` always returns at least 1, so subtracting 1 cannot underflow,
+// and key/label lengths are short static hint text nowhere near `usize::MAX`.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static str, String)>) {
     // A panel of its own, so the command lines read as something to copy rather
     // than as more of the key reference below them.
@@ -515,6 +545,10 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App, hints: Vec<(&'static st
 }
 
 /// A window in the middle of the screen, sized to its contents.
+// `width`/`height` are clamped to at most `area.width`/`area.height` via
+// `.min`, so the `saturating_sub` above never saturates and the additions
+// stay within screen coordinates, far below `u16::MAX`.
+#[allow(clippy::arithmetic_side_effects)]
 pub(super) fn window(area: Rect, columns: u16, rows: u16) -> Rect {
     let width = columns.min(area.width.saturating_sub(4));
     let height = rows.min(area.height);
@@ -527,6 +561,9 @@ pub(super) fn window(area: Rect, columns: u16, rows: u16) -> Rect {
 }
 
 /// Draws the About view: what this is, who wrote it, and under what terms.
+// `text.len()` is a small, fixed number of About lines, nowhere near
+// overflowing `u16`.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_about(frame: &mut Frame, area: Rect) {
     const COLUMNS: u16 = 72;
     let rows = about::rows();
@@ -591,6 +628,9 @@ fn draw_about(frame: &mut Frame, area: Rect) {
     );
 }
 
+// `text` is built above with a fixed, non-empty list of help lines, so
+// `text.len() - 1` cannot underflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn draw_help(frame: &mut Frame, area: Rect) {
     let popup = window(area, 64, 26);
 

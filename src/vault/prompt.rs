@@ -5,6 +5,10 @@
 //! terminal without echo, or read from a file only its owner can read. Secrets
 //! are typed the same way, or piped in on standard input.
 
+// A read that fails is reported in the caller's own words rather than by
+// forwarding the underlying io error, so map_err discards it on purpose here.
+#![allow(clippy::map_err_ignore)]
+
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -139,19 +143,61 @@ pub fn secret_from_stdin() -> Result<SecretString> {
 
 /// Asks a yes or no question at the terminal. Anything but yes is no.
 ///
+/// `hint` is appended to the error when there is no terminal, so each caller
+/// can name its own way out.
+///
 /// # Errors
 ///
 /// Returns an error when there is no terminal to ask at.
-pub fn confirm(question: &str) -> Result<bool> {
+pub fn confirm(question: &str, hint: &str) -> Result<bool> {
     ensure!(
         io::stdin().is_terminal(),
-        "there is no terminal to confirm at; pass --yes"
+        "there is no terminal to confirm at; {hint}"
     );
     eprint!("{question} [y/N] ");
     io::stderr().flush()?;
     let mut answer = String::new();
     io::stdin().read_line(&mut answer)?;
     Ok(matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+/// Asks the operator to type an exact value shown on screen, so a decision
+/// cannot be made by a reflex keypress. Case, hyphens and spaces are ignored,
+/// so the value can be read off a second device.
+///
+/// This is not a secret comparison: the value is public (a fingerprint), so a
+/// plain compare is correct.
+///
+/// # Errors
+///
+/// Returns an error when there is no terminal to ask at.
+pub fn confirm_value(question: &str, expected: &str, hint: &str) -> Result<bool> {
+    ensure!(
+        io::stdin().is_terminal(),
+        "there is no terminal to confirm at; {hint}"
+    );
+    eprint!("{question} ");
+    io::stderr().flush()?;
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    Ok(normalise(&answer) == normalise(expected))
+}
+
+/// Whether two fingerprints are the same, ignoring case, hyphens and spaces.
+///
+/// Not a secret comparison: fingerprints are public.
+#[must_use]
+pub fn fingerprints_match(a: &str, b: &str) -> bool {
+    normalise(a) == normalise(b)
+}
+
+/// Lowercases and keeps only letters and digits, so a value can be typed with
+/// any grouping or case.
+fn normalise(text: &str) -> String {
+    text.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
 }
 
 /// Reads without echo. rpassword asks the controlling terminal directly, so
@@ -187,21 +233,24 @@ fn from_file(path: &Path) -> Result<SecretString> {
 /// Reads at most `limit` bytes into a buffer that is sized once, so it is
 /// never reallocated with an old copy left behind, and wiped when dropped.
 fn read_bounded(reader: impl Read, limit: usize) -> Result<Zeroizing<Vec<u8>>> {
-    let mut bytes = Zeroizing::new(Vec::with_capacity(limit + 1));
-    reader.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    let mut bytes = Zeroizing::new(Vec::with_capacity(limit.saturating_add(1)));
+    reader
+        .take((limit as u64).saturating_add(1))
+        .read_to_end(&mut bytes)?;
     ensure!(bytes.len() <= limit, "more than {limit} bytes arrived");
     Ok(bytes)
 }
 
 fn secret_from_bytes(bytes: &[u8], limit: usize, what: &str) -> Result<SecretString> {
-    let mut end = bytes.len();
-    if bytes[..end].ends_with(b"\n") {
-        end -= 1;
-        if bytes[..end].ends_with(b"\r") {
-            end -= 1;
-        }
-    }
-    let text = std::str::from_utf8(&bytes[..end]).map_err(|_| anyhow!("{what} is not UTF-8"))?;
+    // Strip one trailing newline, and the carriage return only when it precedes
+    // that newline, so a value ending in a lone "\r" is left as it is.
+    let trimmed = match bytes.strip_suffix(b"\n") {
+        Some(without_newline) => without_newline
+            .strip_suffix(b"\r")
+            .unwrap_or(without_newline),
+        None => bytes,
+    };
+    let text = std::str::from_utf8(trimmed).map_err(|_| anyhow!("{what} is not UTF-8"))?;
     ensure!(!text.is_empty(), "{what} is empty");
     ensure!(text.len() <= limit, "{what} is larger than {limit} bytes");
     // Built from a slice, so the string is allocated at its final size once.
@@ -267,5 +316,13 @@ mod tests {
         assert!(Passphrase::File(path.clone()).ask_new("").is_err());
         assert!(Passphrase::File(path.clone()).ask("").is_ok());
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_typed_value_ignores_case_hyphens_and_spaces() {
+        assert_eq!(normalise("K7FQ-2mxv 8D3n"), "k7fq2mxv8d3n");
+        assert_eq!(normalise("k7fq2mxv8d3n"), "k7fq2mxv8d3n");
+        assert_ne!(normalise("k7fq"), normalise("k7fx"));
+        assert_eq!(normalise("  "), "");
     }
 }

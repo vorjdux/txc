@@ -72,7 +72,8 @@ impl Source {
             return Ok(self.tidy(decode(bytes, Some(path))?));
         }
 
-        let piped = self.args.is_empty() || (self.args.len() == 1 && self.args[0] == "-");
+        let piped = self.args.is_empty()
+            || (self.args.len() == 1 && self.args.first().is_some_and(|arg| arg == "-"));
         if !piped {
             return Ok(self.args.join(" "));
         }

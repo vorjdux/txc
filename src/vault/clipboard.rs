@@ -16,6 +16,10 @@
 //! carry a copy of all of this process's memory, unlocked identity included,
 //! for as long as the clipboard kept the secret.
 
+// The only arithmetic here adds a few seconds to `Instant::now()` for a
+// deadline, which cannot overflow on any real clock.
+#![allow(clippy::arithmetic_side_effects)]
+
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -172,14 +176,16 @@ mod platform {
                 return;
             };
             if !handle.is_finished() {
-                let _ = arboard::Clipboard::new().and_then(|mut clipboard| clipboard.clear());
+                arboard::Clipboard::new()
+                    .and_then(|mut clipboard| clipboard.clear())
+                    .ok();
             }
             let deadline = Instant::now() + Duration::from_secs(2);
             while !handle.is_finished() && Instant::now() < deadline {
                 thread::sleep(Duration::from_millis(20));
             }
             if handle.is_finished() {
-                let _ = handle.join();
+                handle.join().ok();
             }
         }
     }

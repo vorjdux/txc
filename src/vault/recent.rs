@@ -6,6 +6,10 @@
 //! to your own key. Nothing in it is trusted: an item is shown only while a
 //! vault this device trusts still holds an entry by that name.
 
+// A damaged list is reported as damaged without forwarding the parser's own
+// error, so map_err discards the source on purpose here.
+#![allow(clippy::map_err_ignore)]
+
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow, ensure};
@@ -109,6 +113,9 @@ fn ago_from(at: &str, now: chrono::DateTime<chrono::Utc>) -> String {
     let Ok(then) = chrono::DateTime::parse_from_rfc3339(at) else {
         return String::new();
     };
+    // Both sides are real RFC 3339 timestamps, so the difference is far from
+    // the range where chrono's subtraction would overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     let seconds = (now - then.with_timezone(&chrono::Utc))
         .num_seconds()
         .max(0);

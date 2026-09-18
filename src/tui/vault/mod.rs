@@ -398,6 +398,11 @@ impl VaultScreen {
         self.items_in(self.section, &self.search)
     }
 
+    // `vault` above comes from `self.vaults.iter().position(..)`, and
+    // `item.vault` is always built from such a position or from a
+    // `Section::Vault` index already checked against `self.vaults`, so both
+    // are always in bounds.
+    #[allow(clippy::indexing_slicing)]
     fn items_in(&self, section: Section, search: &str) -> Vec<Item> {
         let mut items: Vec<Item> = if section == Section::Recent {
             self.recent
@@ -497,6 +502,8 @@ impl VaultScreen {
 
     /// Seconds until the revealed secret is hidden again.
     #[must_use]
+    // Rounding a few seconds up by 1 cannot overflow `u64`.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn reveal_left(&self, now: Instant) -> Option<u64> {
         self.revealed
             .as_ref()
@@ -505,6 +512,8 @@ impl VaultScreen {
 
     /// Seconds until the clipboard is cleared, while a secret is on it.
     #[must_use]
+    // Rounding a few seconds up by 1 cannot overflow `u64`.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn clears_in(&self, now: Instant) -> Option<u64> {
         self.held
             .as_ref()
@@ -526,6 +535,10 @@ impl VaultScreen {
 
     /// The command that does what the screen is showing.
     #[must_use]
+    // `vault`/`index` above always come from `self.selected()` or from a
+    // `Section::Vault` already checked against `self.vaults`, so they are
+    // always in bounds.
+    #[allow(clippy::indexing_slicing)]
     pub fn command_hint(&self) -> Option<String> {
         if self.home.is_err() {
             return None;
@@ -633,11 +646,14 @@ impl VaultScreen {
     /// there. The event loop calls this before copying another.
     pub fn release_clipboard(&mut self) {
         if let Some((held, _)) = self.held.take() {
-            let _ = held.clear();
+            held.clear().ok();
         }
     }
 
     /// Hears back from the event loop about a copy.
+    // `CLEAR_AFTER` is a short, fixed duration, nowhere near overflowing an
+    // `Instant`.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn copied(&mut self, result: anyhow::Result<Held>, label: &str) {
         match result {
             Ok(held) => {
@@ -765,6 +781,10 @@ impl VaultScreen {
         self.revealed = None;
     }
 
+    // `sidebar()` always yields at least one `SidebarRow::Section`, so
+    // `sections` is never empty, `sections.len() - 1` cannot underflow, and
+    // `next` stays a valid index into `sections`.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     fn move_section(&mut self, forward: bool) {
         let sections: Vec<Section> = self
             .sidebar()
@@ -815,6 +835,10 @@ impl VaultScreen {
         }
     }
 
+    // `item_index` is clamped by `move_item` on every call, and the list it
+    // indexes is far smaller than `usize::MAX`, so `+ 1`/`+ 10` cannot
+    // realistically overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn items_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => self.move_item(self.item_index.saturating_sub(1)),
@@ -844,6 +868,8 @@ impl VaultScreen {
         }
     }
 
+    // `count` is a small field count, so `field_index + 1` cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn details_key(&mut self, key: KeyEvent) {
         let count = self.selected().map_or(0, |(_, entry)| entry.fields.len());
         match key.code {
@@ -962,6 +988,9 @@ impl VaultScreen {
     }
 
     /// Shows a secret for a few seconds, or hides it again; opens a note.
+    // `REVEAL_FOR` is a short, fixed duration, nowhere near overflowing an
+    // `Instant`.
+    #[allow(clippy::arithmetic_side_effects)]
     fn reveal(&mut self, field: Option<String>) {
         let (vault, entry, field, sensitivity, label) = match self.target(field) {
             Ok(target) => target,
@@ -1095,6 +1124,9 @@ impl VaultScreen {
         Dialog::Entry(Box::new(EntryForm::adding(kind, choices, position)))
     }
 
+    // `vault` above always comes from `self.selected()`, which only ever
+    // returns a valid index into `self.vaults`.
+    #[allow(clippy::indexing_slicing)]
     fn edit_form(&self) -> Result<EntryForm, String> {
         let (vault, entry) = self.selected().ok_or("select an entry first")?;
         let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
@@ -1163,6 +1195,9 @@ impl VaultScreen {
     /// Moves an entry into another vault and resyncs both with disk. The
     /// library writes the destination before touching the source, so a
     /// failure leaves the entry safe; either way both vaults are read back.
+    // `source` was already used as a valid index into `self.vaults` above
+    // (via `get_mut`, which returns before this point on failure).
+    #[allow(clippy::indexing_slicing)]
     fn do_move(&mut self, source: usize, entry: &str, dest: usize) -> Result<String, String> {
         let dest_name = self
             .vaults
@@ -1185,7 +1220,7 @@ impl VaultScreen {
         self.reload(source);
         self.reload(dest);
         if let Some(keyring) = self.keyring.as_ref() {
-            let _ = keyring.forget_use(&self.vaults[source].name, entry);
+            keyring.forget_use(&self.vaults[source].name, entry).ok();
             self.recent = keyring.recent();
         }
         result.map(|()| dest_name)
@@ -1240,7 +1275,9 @@ impl VaultScreen {
                     Job::Create => create_identity(&home, &passphrase),
                 };
                 drop(passphrase);
-                let _ = sender.send(result.map_err(|error| format!("{error:#}")));
+                sender
+                    .send(result.map_err(|error| format!("{error:#}")))
+                    .ok();
             });
         match spawned {
             Ok(_) => {
@@ -1339,6 +1376,8 @@ impl VaultScreen {
         self.vaults = vaults;
     }
 
+    // `vault` was just confirmed to be in bounds via `self.vaults.get(vault)`.
+    #[allow(clippy::indexing_slicing)]
     fn reload(&mut self, vault: usize) {
         if let Some(name) = self.vaults.get(vault).map(|loaded| loaded.name.clone()) {
             let loaded = self.load_vault(name);
@@ -1346,6 +1385,11 @@ impl VaultScreen {
         }
     }
 
+    // `Kind::ALL` is a small, fixed, non-empty array; every index into it
+    // here is wrapped with `%` or clamped with `.min`/`saturating_sub`
+    // against `Kind::ALL.len()`, so all the arithmetic and indexing below
+    // stay in bounds.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     fn dialog_key(&mut self, key: KeyEvent, control: bool) {
         let Some(dialog) = self.dialog.take() else {
             return;
@@ -1669,7 +1713,7 @@ impl VaultScreen {
                 && let (Some(keyring), Some(loaded)) =
                     (self.keyring.as_ref(), self.vaults.get(vault))
             {
-                let _ = keyring.rename_use(&loaded.name, &existing.name, &name);
+                keyring.rename_use(&loaded.name, &existing.name, &name).ok();
                 self.recent = keyring.recent();
             }
         } else {

@@ -1,5 +1,12 @@
 //! Unlocking the identity, and opening, changing and saving vaults with it.
 
+// A damaged sealed value is reported as damaged without forwarding the decoder's
+// own error, so map_err discards the source on purpose here.
+#![allow(clippy::map_err_ignore)]
+// Every `entries[index]` below indexes with a value returned by `index()` or
+// `entry_index()`, which is a live position into the same list.
+#![allow(clippy::indexing_slicing)]
+
 use std::fmt;
 use std::path::PathBuf;
 
@@ -158,10 +165,11 @@ impl Keyring {
         ensure!(!home::exists(&path), "a vault named {name} already exists");
 
         let vault = Vault::new(name, self.recipient_list(others)?);
-        home::write_atomic(&path, &vault.seal()?, None)?;
+        let ciphertext = vault.seal()?;
+        home::write_atomic(&path, &ciphertext, None)?;
 
         let mut trust = self.trust()?;
-        trust.pin(&vault);
+        trust.pin(&vault, &crypto::sha256(&[&ciphertext]));
         trust.save(&self.home)
     }
 
@@ -189,12 +197,13 @@ impl Keyring {
             vault.name()
         );
 
-        let standing = self.trust()?.standing(&vault);
+        let digest = crypto::sha256(&[&ciphertext]);
+        let standing = self.trust()?.standing(&vault, &digest);
         Ok(Inspection {
             opened: Opened {
-                digest: crypto::sha256(&[&ciphertext]),
                 vault,
                 path,
+                digest,
             },
             standing,
         })
@@ -218,7 +227,7 @@ impl Keyring {
         }
 
         let mut trust = self.trust()?;
-        if trust.advance(&inspection.opened.vault) {
+        if trust.advance(&inspection.opened.vault, &inspection.opened.digest) {
             trust.save(&self.home)?;
         }
         Ok(inspection.opened)
@@ -231,9 +240,19 @@ impl Keyring {
     /// Returns an error when the trust records cannot be written.
     pub fn trust_vault(&self, inspection: Inspection) -> Result<Opened> {
         let mut trust = self.trust()?;
-        trust.pin(&inspection.opened.vault);
+        trust.pin(&inspection.opened.vault, &inspection.opened.digest);
         trust.save(&self.home)?;
         Ok(inspection.opened)
+    }
+
+    /// The trust decisions this device recorded for a vault of this name,
+    /// oldest first.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the trust records cannot be read.
+    pub fn trust_history(&self, name: &str) -> Result<Vec<String>> {
+        Ok(self.trust()?.history(name))
     }
 
     /// Deletes a vault and forgets it. A backup of its last version is kept
@@ -752,7 +771,7 @@ impl Opened {
         self.digest = crypto::sha256(&[&ciphertext]);
 
         let mut trust = keyring.trust()?;
-        trust.pin(&self.vault);
+        trust.pin(&self.vault, &self.digest);
         trust.save(keyring.home())
     }
 }

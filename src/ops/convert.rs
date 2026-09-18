@@ -335,10 +335,14 @@ grace,45,false",
 
                 let width = rows.iter().map(Vec::len).max().unwrap_or(0);
                 let mut table = Vec::new();
-                table.push(format!("| {} |", pad_row(&rows[0], width).join(" | ")));
-                table.push(format!("| {} |", vec!["---"; width].join(" | ")));
-                for row in &rows[1..] {
-                    table.push(format!("| {} |", pad_row(row, width).join(" | ")));
+                // rows is checked non-empty above, so index 0 and the 1.. slice are in bounds.
+                #[allow(clippy::indexing_slicing)]
+                {
+                    table.push(format!("| {} |", pad_row(&rows[0], width).join(" | ")));
+                    table.push(format!("| {} |", vec!["---"; width].join(" | ")));
+                    for row in &rows[1..] {
+                        table.push(format!("| {} |", pad_row(row, width).join(" | ")));
+                    }
                 }
                 Ok(table.join("\n"))
             },

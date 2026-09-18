@@ -5,6 +5,14 @@
 //! their own. The only additions are HMAC-SHA256 tags, for proving that a
 //! record was written by someone holding a key.
 
+// The age errors are deliberately not shown: a secrets tool reports "wrong
+// passphrase, or damaged" rather than leaking which, so map_err discards them
+// on purpose here.
+#![allow(clippy::map_err_ignore)]
+// Every arithmetic here sizes a buffer from a length already bounded by a read
+// limit, so none of it can overflow.
+#![allow(clippy::arithmetic_side_effects)]
+
 use std::io::{Read, Write};
 use std::iter;
 
@@ -183,6 +191,8 @@ pub(crate) fn derive(identity: &Identity, label: &str) -> Key {
 }
 
 fn tagger(key: &[u8], parts: &[&[u8]]) -> Hmac<Sha256> {
+    // HMAC accepts a key of any length, so this construction never fails.
+    #[allow(clippy::expect_used)]
     let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC takes a key of any length");
     // Each part is prefixed with its length, so no two different lists of
     // parts can run together into the same input.

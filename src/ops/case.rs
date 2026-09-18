@@ -56,6 +56,9 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(s.split_inclusive(char::is_whitespace)
                     .map(|chunk| {
                         let trimmed = chunk.trim_end();
+                        // trim_end() only removes trailing whitespace, so trimmed.len()
+                        // is always a char boundary within chunk.
+                        #[allow(clippy::string_slice)]
                         let spacing = &chunk[trimmed.len()..];
                         capitalize_only(trimmed) + spacing
                     })
@@ -103,6 +106,9 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(s.split_inclusive(char::is_whitespace)
                     .map(|chunk| {
                         let trimmed = chunk.trim_end();
+                        // trim_end() only removes trailing whitespace, so trimmed.len()
+                        // is always a char boundary within chunk.
+                        #[allow(clippy::string_slice)]
                         let spacing = &chunk[trimmed.len()..];
                         capitalize_first(trimmed) + spacing
                     })

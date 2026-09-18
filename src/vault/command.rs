@@ -86,7 +86,7 @@ fn kinds_help() -> String {
                 }
             })
             .collect();
-        let _ = writeln!(text, "  {:width$}  {}", kind.id(), names.join(", "));
+        writeln!(text, "  {:width$}  {}", kind.id(), names.join(", ")).ok();
     }
     text
 }
@@ -383,17 +383,47 @@ pub fn command() -> Command {
                 .long_about(
                     "Trust a vault that is new to this device, or that changed.\n\n\
                      A vault is refused when this device has not seen it before, when its \
-                     key or recipients differ from the ones trusted, or when it is older than \
-                     the version last opened. This shows what differs and asks before \
-                     trusting it as it is now.",
+                     key or recipients differ from the ones trusted, when it is older than \
+                     the version last opened, or when two devices changed it at once. This \
+                     shows what differs before trusting it as it is now.\n\n\
+                     --yes covers only a vault this device has never seen. A vault that \
+                     changed is accepted at a terminal by typing its fingerprint, or without \
+                     one by passing --expect the fingerprint read from another device. A \
+                     vault that went backwards, changed recipients or diverged cannot be \
+                     accepted without a terminal, because its fingerprint settles none of \
+                     those; re-provision trust.json from the device that made the change.",
                 )
                 .arg(Arg::new("VAULT").required(true))
                 .arg(
                     Arg::new("yes")
                         .long("yes")
                         .action(ArgAction::SetTrue)
-                        .help("Do not ask for confirmation"),
+                        .conflicts_with("expect")
+                        .help("Trust without asking, for a vault new to this device only"),
+                )
+                .arg(
+                    Arg::new("expect")
+                        .long("expect")
+                        .value_name("FINGERPRINT")
+                        .help("Trust without a terminal, only if the fingerprint matches this"),
                 ),
+        )
+        .subcommand(
+            Command::new("fingerprint")
+                .about("Print a vault's fingerprint, to verify it from another device")
+                .long_about(
+                    "Print a vault's fingerprint.\n\n\
+                     The fingerprint is a short public name for the vault's identity, safe \
+                     to read out. Compare it on two devices to confirm they hold the same \
+                     vault, and pass it to `trust --expect`. It is the same across changes \
+                     to the vault, and changes only if the vault is renamed.",
+                )
+                .arg(Arg::new("VAULT").required(true)),
+        )
+        .subcommand(
+            Command::new("history")
+                .about("Show this device's trust decisions for a vault")
+                .arg(Arg::new("VAULT").required(true)),
         )
 }
 
@@ -486,6 +516,8 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "move" => context.move_entry(sub),
         "recipients" => context.recipients(sub),
         "trust" => context.trust(sub),
+        "fingerprint" => context.fingerprint(sub),
+        "history" => context.history(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
 }
@@ -498,18 +530,19 @@ fn working<T>(message: &str, work: impl FnOnce() -> Result<T>) -> Result<T> {
     let shown = io::stderr().is_terminal();
     if shown {
         eprint!("{message}");
-        let _ = io::stderr().flush();
+        io::stderr().flush().ok();
     }
     let result = work();
     if shown {
         // Back to the start of the line, and clear it. Through crossterm, so
         // that the Windows console, which acts on escape sequences only once
         // it has been put in that mode, is cleared as well.
-        let _ = crossterm::execute!(
+        crossterm::execute!(
             io::stderr(),
             crossterm::cursor::MoveToColumn(0),
             crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine),
-        );
+        )
+        .ok();
     }
     result
 }
@@ -597,7 +630,8 @@ impl Session {
         let tag = sub.get_one::<String>("tag");
         let kind = sub
             .get_one::<String>("kind")
-            .map(|id| Kind::from_id(id).expect("clap checked the kind"));
+            .map(|id| Kind::from_id(id).context("clap checked the kind"))
+            .transpose()?;
         let favourites = sub.get_flag("favourites");
         let recent = sub.get_flag("recent");
 
@@ -695,7 +729,7 @@ impl Session {
 
     fn add(&self, sub: &ArgMatches) -> Result<()> {
         let reference: Reference = required(sub, "ENTRY").parse()?;
-        let kind = Kind::from_id(required(sub, "kind")).expect("clap checked the kind");
+        let kind = Kind::from_id(required(sub, "kind")).context("clap checked the kind")?;
         let plain = plain_fields(sub)?;
         let tags = checked_tags(sub, "tag")?;
         let secret_fields = checked_field_names(sub, "secret-field")?;
@@ -836,7 +870,7 @@ impl Session {
 
         let seconds = *sub
             .get_one::<u64>("clear-after")
-            .expect("clear-after has a default");
+            .context("clear-after has a default")?;
         let held = clipboard::copy(&secret)
             .map_err(|error| anyhow!("{error}; use --print to send it to a pipe instead"))?;
         drop(secret);
@@ -897,7 +931,9 @@ impl Session {
         vault.change(&name, change)?;
         vault.save(&keyring)?;
         if let Some(new_name) = renamed {
-            let _ = keyring.rename_use(&reference.vault, &name, &new_name);
+            // The recent list is a convenience cache; failing to update it does
+            // not undo the change that was already saved.
+            keyring.rename_use(&reference.vault, &name, &new_name).ok();
         }
         eprintln!("Changed {reference}.");
         Ok(())
@@ -911,13 +947,14 @@ impl Session {
 
         if !sub.get_flag("yes") {
             ensure!(
-                prompt::confirm(&format!("Remove {reference}?"))?,
+                prompt::confirm(&format!("Remove {reference}?"), "pass --yes")?,
                 "nothing was removed"
             );
         }
         vault.remove(&name)?;
         vault.save(&keyring)?;
-        let _ = keyring.forget_use(&reference.vault, &name);
+        // The recent list is a convenience cache; the entry is already removed.
+        keyring.forget_use(&reference.vault, &name).ok();
         eprintln!("Removed {reference}.");
         Ok(())
     }
@@ -932,8 +969,8 @@ impl Session {
         let name = source.entry(&reference.entry)?.name.clone();
         keyring.move_entry(&mut source, dest, &name)?;
         // The entry took its old reference with it; drop it from this device's
-        // recent list, where it now points nowhere.
-        let _ = keyring.forget_use(&reference.vault, &name);
+        // recent list, where it now points nowhere. Best effort: the move is done.
+        keyring.forget_use(&reference.vault, &name).ok();
         eprintln!("Moved {name} to {dest}.");
         Ok(())
     }
@@ -992,41 +1029,120 @@ impl Session {
     }
 
     fn trust(&self, sub: &ArgMatches) -> Result<()> {
+        const TERMINAL_HINT: &str =
+            "trust this vault at a terminal, or pass --expect <fingerprint>";
+
         let name = required(sub, "VAULT");
         check_vault_name(name)?;
         let keyring = self.unlock()?;
         let inspection = keyring.inspect(name)?;
+        // `Standing` is cloned up front because trusting consumes the inspection.
+        let standing = inspection.standing().clone();
 
-        if *inspection.standing() == Standing::Trusted {
+        if standing == Standing::Trusted {
             eprintln!("The vault {name} is already trusted on this device.");
             return Ok(());
         }
 
+        let fingerprint = inspection.vault().fingerprint();
         let own = keyring.public_key();
-        eprintln!("{}.", capitalise(&inspection.standing().describe(name)));
-        eprintln!("  generation  {}", inspection.vault().generation());
-        eprintln!("  entries     {}", inspection.vault().entries().len());
-        eprintln!("  updated     {}", inspection.vault().updated());
+        eprintln!("{}.", capitalise(&standing.describe(name)));
+        eprintln!("  fingerprint  {fingerprint}");
+        eprintln!("  generation   {}", inspection.vault().generation());
+        eprintln!("  entries      {}", inspection.vault().entries().len());
+        eprintln!("  updated      {}", inspection.vault().updated());
+        if matches!(standing, Standing::Diverged { .. }) {
+            let mut backup = keyring.home().vault_path(name)?.into_os_string();
+            backup.push(".bak");
+            eprintln!(
+                "  the version this device wrote is kept at {}",
+                Path::new(&backup).display()
+            );
+        }
         eprintln!("  encrypted to:");
         for key in inspection.vault().recipients() {
             let marker = if *key == own { "  (you)" } else { "" };
             eprintln!("    {key}{marker}");
         }
 
-        if !sub.get_flag("yes") {
+        // A fingerprint answers "is this my vault", nothing more, so it may
+        // settle a vault whose identity was in question, but never a rollback,
+        // a recipient change or a divergence.
+        if let Some(expected) = sub.get_one::<String>("expect") {
             ensure!(
-                prompt::confirm("Trust this vault on this device, as it is now?")?,
-                "the vault was not trusted"
+                matches!(
+                    standing,
+                    Standing::Unknown | Standing::Replaced | Standing::KeyChanged
+                ),
+                "a fingerprint cannot settle this ({}); trust it at a terminal, or \
+                 re-provision trust.json from the device that made the change",
+                standing.describe(name)
+            );
+            ensure!(
+                prompt::fingerprints_match(expected, &fingerprint),
+                "the vault's fingerprint is {fingerprint}, not what was expected; \
+                 nothing was trusted"
+            );
+            keyring.trust_vault(inspection)?;
+            eprintln!("Trusted the vault {name}.");
+            return Ok(());
+        }
+
+        // No --expect: --yes bootstraps a never-seen vault; anything else is
+        // accepted at a terminal, a new vault with y/N and a changed one by
+        // typing its fingerprint.
+        if standing == Standing::Unknown {
+            if !sub.get_flag("yes") {
+                ensure!(
+                    prompt::confirm(
+                        "Trust this vault on this device, as it is now?",
+                        TERMINAL_HINT
+                    )?,
+                    "the vault was not trusted"
+                );
+            }
+        } else {
+            ensure!(
+                prompt::confirm_value(
+                    "Type the fingerprint above to trust it:",
+                    &fingerprint,
+                    TERMINAL_HINT
+                )?,
+                "the fingerprint did not match; nothing was trusted"
             );
         }
         keyring.trust_vault(inspection)?;
         eprintln!("Trusted the vault {name}.");
         Ok(())
     }
+
+    fn fingerprint(&self, sub: &ArgMatches) -> Result<()> {
+        let name = required(sub, "VAULT");
+        check_vault_name(name)?;
+        let keyring = self.unlock()?;
+        // inspect, not open, so it works on a vault whose standing is bad,
+        // which is exactly when the fingerprint is needed.
+        let inspection = keyring.inspect(name)?;
+        output(&format!("{name}  {}", inspection.vault().fingerprint()))
+    }
+
+    fn history(&self, sub: &ArgMatches) -> Result<()> {
+        let name = required(sub, "VAULT");
+        check_vault_name(name)?;
+        let keyring = self.unlock()?;
+        let decisions = keyring.trust_history(name)?;
+        if decisions.is_empty() {
+            eprintln!("No trust decisions recorded for {name} on this device.");
+            return Ok(());
+        }
+        output(&decisions.join("\n"))
+    }
 }
 
 /// The definition of a kind's main secret field.
 fn main_spec(kind: Kind) -> &'static FieldSpec {
+    // Every kind's primary field is one of its own defined fields.
+    #[allow(clippy::expect_used)]
     kind.spec(kind.primary())
         .expect("every kind defines its main field")
 }
@@ -1068,8 +1184,10 @@ fn main_secret(sub: &ArgMatches, spec: &FieldSpec) -> Result<(SecretString, bool
         let secret = if spec.generator == Some(Generator::Pin) {
             generate_pin(PIN_LENGTH)
         } else {
-            let length = *sub.get_one::<u64>("length").expect("length has a default");
-            let length = usize::try_from(length).expect("the length is at most 128");
+            let length = *sub
+                .get_one::<u64>("length")
+                .context("length has a default")?;
+            let length = usize::try_from(length).context("the length is at most 128")?;
             generate(length, !sub.get_flag("no-symbols"))
         };
         Ok((secret, true))
@@ -1092,6 +1210,8 @@ fn main_secret(sub: &ArgMatches, spec: &FieldSpec) -> Result<(SecretString, bool
 ///
 /// It is built in a string allocated once at its final size, so no partial
 /// copy is left behind, and a draw missing a class is wiped before the next.
+// `random_range(0..alphabet.len())` yields a valid index into `alphabet`.
+#[allow(clippy::indexing_slicing)]
 #[must_use]
 pub fn generate(length: usize, symbols: bool) -> SecretString {
     const CLASSES: [&str; 4] = [
@@ -1129,6 +1249,8 @@ pub fn generate(length: usize, symbols: bool) -> SecretString {
 /// assert_eq!(pin.expose_secret().len(), 4);
 /// assert!(pin.expose_secret().bytes().all(|b| b.is_ascii_digit()));
 /// ```
+// `b'0' + 0..10` stays within a byte, so the addition cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 #[must_use]
 pub fn generate_pin(length: usize) -> SecretString {
     let mut rng = rand::rng();
@@ -1142,6 +1264,8 @@ pub fn generate_pin(length: usize) -> SecretString {
 /// Waits for the time to run out, a key, or the clipboard to be taken over,
 /// then clears the secret if it is still there.
 fn wait_then_clear(held: Held, seconds: u64, what: &str) -> Result<()> {
+    // A few seconds added to the current instant cannot overflow a real clock.
+    #[allow(clippy::arithmetic_side_effects)]
     let deadline = Instant::now() + Duration::from_secs(seconds);
     let interactive = io::stdin().is_terminal() && io::stderr().is_terminal();
 
@@ -1174,7 +1298,7 @@ fn wait_for_key(deadline: Instant, held: &Held) -> Result<()> {
     struct Raw;
     impl Drop for Raw {
         fn drop(&mut self) {
-            let _ = terminal::disable_raw_mode();
+            terminal::disable_raw_mode().ok();
         }
     }
 
@@ -1192,6 +1316,8 @@ fn wait_for_key(deadline: Instant, held: &Held) -> Result<()> {
 }
 
 fn required<'a>(sub: &'a ArgMatches, name: &str) -> &'a str {
+    // Only ever called for arguments clap marks required, which are always set.
+    #[allow(clippy::expect_used)]
     sub.get_one::<String>(name)
         .map(String::as_str)
         .expect("clap enforces required arguments")
@@ -1242,6 +1368,9 @@ fn plain_fields(sub: &ArgMatches) -> Result<Vec<(String, String)>> {
 }
 
 /// Lines up rows in columns, two spaces apart, with the last column ragged.
+// `index` runs over a row of exactly N cells, so `index + 1` cannot overflow and
+// `widths[index]` is always in range.
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 fn table<const N: usize>(rows: &[[String; N]]) -> String {
     let mut widths = [0; N];
     for row in rows {
@@ -1256,7 +1385,7 @@ fn table<const N: usize>(rows: &[[String; N]]) -> String {
                 if index + 1 == N {
                     line.push_str(cell);
                 } else {
-                    let _ = write!(line, "{cell:<width$}  ", width = widths[index]);
+                    write!(line, "{cell:<width$}  ", width = widths[index]).ok();
                 }
             }
             line.trim_end().to_string()
@@ -1387,6 +1516,7 @@ mod tests {
             "add",
             "remove",
             "length",
+            "expect",
         ];
         walk(&command(), &valued);
     }

@@ -296,7 +296,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 if let Some(words) = p.supplied("words") {
                     let count: usize = words
                         .parse()
-                        .map_err(|_| anyhow::anyhow!("--words must be a whole number"))?;
+                        .map_err(|e| anyhow::anyhow!("--words must be a whole number: {e}"))?;
                     return Ok(lorem_words(count));
                 }
                 let paragraphs: usize = p.parse("paragraphs")?;
@@ -328,8 +328,15 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 let end: i64 = p.parse("end")?;
                 let step: i64 = p.parse("step")?;
                 anyhow::ensure!(step != 0, "--step cannot be zero");
+                // Avoid `end - start`, which can overflow for extreme start/end values;
+                // compare instead to get the same direction check.
+                let towards_end = match end.cmp(&start) {
+                    std::cmp::Ordering::Equal => true,
+                    std::cmp::Ordering::Greater => step > 0,
+                    std::cmp::Ordering::Less => step < 0,
+                };
                 anyhow::ensure!(
-                    (end - start).signum() != -step.signum(),
+                    towards_end,
                     "--step points away from --end, so the sequence would never finish"
                 );
 
@@ -338,7 +345,11 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 let mut value = start;
                 while (step > 0 && value <= end) || (step < 0 && value >= end) {
                     lines.push(template.replace("{}", &value.to_string()));
-                    value += step;
+                    // Stop instead of overflowing if stepping would leave i64's range.
+                    match value.checked_add(step) {
+                        Some(next) => value = next,
+                        None => break,
+                    }
                 }
                 Ok(lines.join("\n"))
             },
@@ -373,8 +384,8 @@ fn make_uuid(version: &str, p: &Params) -> Result<Uuid> {
                 "url" => Uuid::NAMESPACE_URL,
                 "oid" => Uuid::NAMESPACE_OID,
                 "x500" => Uuid::NAMESPACE_X500,
-                custom => Uuid::parse_str(custom).map_err(|_| {
-                    anyhow::anyhow!("{custom:?} is not dns, url, oid, x500 or a UUID")
+                custom => Uuid::parse_str(custom).map_err(|e| {
+                    anyhow::anyhow!("{custom:?} is not dns, url, oid, x500 or a UUID: {e}")
                 })?,
             };
             Ok(if version == "3" {
@@ -388,6 +399,9 @@ fn make_uuid(version: &str, p: &Params) -> Result<Uuid> {
     }
 }
 
+// Both callers check the alphabet is non-empty before calling, so `choose`
+// always returns Some.
+#[allow(clippy::expect_used)]
 fn random_strings(alphabet: &str, length: usize, count: usize) -> String {
     let pool: Vec<char> = alphabet.chars().collect();
     let mut rng = rand::rng();
@@ -467,6 +481,9 @@ const LOREM: &[&str] = &[
     "laborum",
 ];
 
+// LOREM has 64 entries, so indices 0 and 1 are always in bounds, and being a
+// non-empty const slice, `choose` always returns Some.
+#[allow(clippy::indexing_slicing, clippy::expect_used)]
 fn lorem_words(count: usize) -> String {
     let mut rng = rand::rng();
     let words: Vec<&str> = (0..count)
@@ -482,6 +499,8 @@ fn lorem_words(count: usize) -> String {
     crate::ops::capitalize_first(&words.join(" "))
 }
 
+// LOREM is a non-empty const slice, so `choose` always returns Some.
+#[allow(clippy::expect_used)]
 fn lorem_paragraph(sentences: usize) -> String {
     let mut rng = rand::rng();
     (0..sentences)

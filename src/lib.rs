@@ -102,6 +102,31 @@
 #![allow(clippy::cast_precision_loss)]
 // The interface state really does hold that many independent switches.
 #![allow(clippy::struct_excessive_bools)]
+// A hand-picked set of restriction lints that catch real ways to panic or lose
+// an error, rather than the whole (contradictory) restriction group. Production
+// code must satisfy them; test code, which unwraps and indexes freely by
+// design, is exempt below.
+#![warn(clippy::arithmetic_side_effects)]
+#![warn(clippy::indexing_slicing)]
+#![warn(clippy::string_slice)]
+#![warn(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
+#![warn(clippy::unwrap_in_result)]
+#![warn(clippy::map_err_ignore)]
+#![warn(clippy::let_underscore_must_use)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        clippy::string_slice,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::unwrap_in_result,
+        clippy::map_err_ignore,
+        clippy::let_underscore_must_use
+    )
+)]
 
 pub mod about;
 pub mod cli;

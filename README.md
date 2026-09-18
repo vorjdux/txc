@@ -55,7 +55,7 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.5.2 Shift letters by a fixed amount
+ txc  0.6.0 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
@@ -108,7 +108,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.5.2 Generate UUIDs
+ txc  0.6.0 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -258,7 +258,7 @@ export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 and each vault. The list is in the middle and the selected entry on the right.
 
 ```
- txc  0.5.2 Vault unlocked · 3 entries in 1 vault
+ txc  0.6.0 Vault unlocked · 3 entries in 1 vault
 ╭ Browse ────────────────╮╭ Search ──────────────────────────────╮╭ GitHub ──────────────────────────────────╮
 │★ Favourites          1 ││/ to search                           ││ Login · personal  ★ favourite            │
 │◷ Recently used       0 │╰──────────────────────────────────────╯│                                          │
@@ -390,11 +390,20 @@ rests on keys alone.
   public key can build a vault for it and list their own key beside yours, so
   that a secret you save into it goes to them as well. Each vault therefore
   carries a random key only its recipients can read, and each device keeps a
-  record of that key's tag, the vault's recipients and its generation,
-  authenticated with a key derived from your identity. A vault that is new to
-  the device, rebuilt with another key, encrypted to different recipients, or
-  older than the version last opened is refused until `txc vault trust <name>`
-  shows you what differs and you accept it.
+  record of that key's tag, the vault's recipients, its generation and a digest
+  of the exact bytes it last opened, authenticated with a key derived from your
+  identity. A vault that is new to the device, rebuilt with another key,
+  encrypted to different recipients, older than the version last opened, or
+  changed by two devices at the same generation is refused until
+  `txc vault trust <name>` shows you what differs and you accept it. Trusting
+  prints the vault's fingerprint, a short string derived from its key that
+  `txc vault fingerprint <name>` also shows, so two devices can confirm out of
+  band that they mean the same vault. `--yes` accepts only a vault that is new
+  to the device, never one that changed under a name you already trust; to
+  accept a change without a person present, verify the fingerprint elsewhere and
+  pass `txc vault trust <name> --expect <fingerprint>`. `txc vault history
+  <name>` lists what this device has trusted for that name and what each
+  decision replaced.
 - **On disk** every file is written to a temporary file and renamed into
   place, readable by you alone, and refused when it is a link, belongs to
   another user, or could have been changed by one. The previous version of a
@@ -423,8 +432,12 @@ vault/
 
 To use the same vaults on another device, copy `identity.age` and the `vaults/`
 directory across, then run `txc vault trust <name>` there once for each vault.
-Only `vaults/` needs synchronising afterwards; `trust.json` and `recent.age`
-belong to each device.
+Because `trust.json` is authenticated by your identity, not by the machine, you
+can copy it across too, and the new device then already trusts everything the
+first one did; only `vaults/` needs synchronising afterwards. This is the way to
+provision an unattended device, which has no person to confirm a vault at a
+prompt: give it `identity.age` and a `trust.json` that already covers the
+vaults it will open. `recent.age` belongs to each device.
 
 A vault can also be encrypted to other keys: a second device with its own
 identity, a backup key kept offline, or a colleague. `txc vault identity`
@@ -453,6 +466,11 @@ echo '<sealed value>' | base64 -d | rage -d -i identity.age
   clipboard managers that ignore the request to leave it out of their history.
 - Anyone who can see your screen, or record it, while you reveal a secret or
   read a note.
+- Someone who can write into a synced `vaults/` directory is held to what the
+  trust record allows: a vault they forge, rebuild or change under a name you
+  trust is refused until you accept it, so a secret you save is never quietly
+  sent to their key. It does not stop them deleting or corrupting a vault file,
+  which is what backups and the `.bak` copy kept beside each vault are for.
 - A forgotten passphrase, or a lost `identity.age`: neither can be recovered,
   and without them the vaults cannot be opened. Keep a copy of `identity.age`
   somewhere safe; it is encrypted.
