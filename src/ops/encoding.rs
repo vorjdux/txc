@@ -366,6 +366,10 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             Ok(s.chars()
                 .map(|c| {
                     if ('!'..='~').contains(&c) {
+                        // c is checked to be within '!'..='~' (0x21..=0x7e), so
+                        // `c as u8 - b'!'` is 0..=93 and the following +47, %94, +b'!'
+                        // stay well within u8 range.
+                        #[allow(clippy::arithmetic_side_effects)]
                         let shifted = (c as u8 - b'!' + 47) % 94 + b'!';
                         shifted as char
                     } else {
@@ -397,13 +401,18 @@ pub(crate) fn register(out: &mut Vec<Op>) {
         Feed::Lines,
         "Apply the Atbash mirror cipher",
         |s, _| {
-            Ok(s.chars()
+            // Each match arm bounds `c` to a 26-letter range, so `c as u8 - b'a'`
+            // (or `- b'A'`) is always 0..=25 and never exceeds b'z' or b'Z'.
+            #[allow(clippy::arithmetic_side_effects)]
+            let result = s
+                .chars()
                 .map(|c| match c {
                     'a'..='z' => (b'z' - (c as u8 - b'a')) as char,
                     'A'..='Z' => (b'Z' - (c as u8 - b'A')) as char,
                     other => other,
                 })
-                .collect())
+                .collect();
+            Ok(result)
         },
     ));
 
@@ -470,7 +479,12 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 Ok(if p.flag("quotes") {
                     quoted
                 } else {
-                    quoted[1..quoted.len() - 1].to_string()
+                    // serde_json always wraps a string in a leading and trailing
+                    // ASCII `"`, so quoted.len() >= 2 and both slice ends fall on
+                    // char boundaries.
+                    #[allow(clippy::string_slice, clippy::arithmetic_side_effects)]
+                    let unquoted = quoted[1..quoted.len() - 1].to_string();
+                    unquoted
                 })
             },
         )
@@ -517,6 +531,8 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     }
                     let mut buffer = [0u16; 2];
                     for unit in ch.encode_utf16(&mut buffer) {
+                        // Writing into a String cannot fail.
+                        #[allow(clippy::let_underscore_must_use)]
                         let _ = write!(out, "\\u{unit:04x}");
                     }
                 }
@@ -573,7 +589,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                         .trim_start_matches("u+")
                         .trim_start_matches("0x");
                     let value = u32::from_str_radix(digits, 16)
-                        .map_err(|_| anyhow::anyhow!("{token:?} is not a code point"))?;
+                        .map_err(|e| anyhow::anyhow!("{token:?} is not a code point: {e}"))?;
                     out.push(
                         char::from_u32(value)
                             .with_context(|| format!("{token} is not a valid character"))?,
@@ -676,14 +692,19 @@ fn radix_decode(input: &str, radix: u32, width: usize) -> Result<String> {
     let mut bytes = Vec::with_capacity(tokens.len());
     for token in tokens {
         let value = u32::from_str_radix(&token, radix)
-            .map_err(|_| anyhow::anyhow!("{token:?} is not a base {radix} number"))?;
+            .map_err(|e| anyhow::anyhow!("{token:?} is not a base {radix} number: {e}"))?;
         bytes.push(
-            u8::try_from(value).map_err(|_| anyhow::anyhow!("{token} does not fit in a byte"))?,
+            u8::try_from(value)
+                .map_err(|e| anyhow::anyhow!("{token} does not fit in a byte: {e}"))?,
         );
     }
     bytes_to_string(bytes)
 }
 
+// Callers only ever pass a shift already reduced to 0..26 (the constant 13
+// for rot13, or `shift.rem_euclid(26)` for caesar), and each match arm bounds
+// `c as u8 - <base>` to 0..=25, so the running sum never exceeds u8::MAX.
+#[allow(clippy::arithmetic_side_effects)]
 fn caesar_shift(input: &str, shift: u8) -> String {
     input
         .chars()
@@ -711,7 +732,7 @@ fn unicode_unescape(input: &str) -> Result<String> {
             Some('u') => {
                 let digits: String = (0..4).filter_map(|_| chars.next()).collect();
                 let unit = u16::from_str_radix(&digits, 16)
-                    .map_err(|_| anyhow::anyhow!("\\u{digits} is not a valid escape"))?;
+                    .map_err(|e| anyhow::anyhow!("\\u{digits} is not a valid escape: {e}"))?;
                 match pending_high.take() {
                     Some(high) if (0xdc00..=0xdfff).contains(&unit) => {
                         let combined =
@@ -732,7 +753,7 @@ fn unicode_unescape(input: &str) -> Result<String> {
                 flush_pending(&mut pending_high, &mut out);
                 let digits: String = (0..2).filter_map(|_| chars.next()).collect();
                 let value = u8::from_str_radix(&digits, 16)
-                    .map_err(|_| anyhow::anyhow!("\\x{digits} is not a valid escape"))?;
+                    .map_err(|e| anyhow::anyhow!("\\x{digits} is not a valid escape: {e}"))?;
                 out.push(value as char);
             }
             Some(other) => {
@@ -839,6 +860,10 @@ fn nato_word(ch: char) -> String {
         "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Niner",
     ];
     let upper = ch.to_ascii_uppercase();
+    // Each match arm bounds `upper` to a range whose offset from the arm's
+    // base character exactly spans the corresponding table (26 letters, 10
+    // digits), so the index is always in bounds.
+    #[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
     match upper {
         'A'..='Z' => WORDS[(upper as u8 - b'A') as usize].to_string(),
         '0'..='9' => DIGITS[(upper as u8 - b'0') as usize].to_string(),

@@ -172,7 +172,11 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     return Ok(s.to_string());
                 }
                 let keep = length.saturating_sub(suffix.graphemes(true).count());
-                Ok(format!("{}{suffix}", graphemes[..keep].concat()))
+                // graphemes.len() > length (checked above) and keep <= length,
+                // so keep is always within bounds.
+                #[allow(clippy::indexing_slicing)]
+                let kept = graphemes[..keep].concat();
+                Ok(format!("{kept}{suffix}"))
             },
         )
         .aliases(&["shorten"])
@@ -407,6 +411,9 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             |s, _| {
                 let mut out = String::with_capacity(s.len());
                 let mut depth = 0usize;
+                // Bounded by the number of '<' in the input, itself bounded by
+                // the input length, so this cannot realistically overflow.
+                #[allow(clippy::arithmetic_side_effects)]
                 for ch in s.chars() {
                     match ch {
                         '<' => depth += 1,
@@ -495,13 +502,20 @@ alpha	1",
                 // Reduced without leaving the unsigned domain, so a rotation
                 // larger than the text cannot wrap the cast instead.
                 let len = graphemes.len();
-                let magnitude = count.unsigned_abs() % len;
-                let split = if count < 0 {
-                    (len - magnitude) % len
-                } else {
-                    magnitude
+                // len is nonzero (checked above), magnitude is a remainder so
+                // magnitude < len, and split (either magnitude or len - magnitude)
+                // is always in 0..=len, so both slices below are in bounds.
+                #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+                let rotated = {
+                    let magnitude = count.unsigned_abs() % len;
+                    let split = if count < 0 {
+                        (len - magnitude) % len
+                    } else {
+                        magnitude
+                    };
+                    [&graphemes[split..], &graphemes[..split]].concat().concat()
                 };
-                Ok([&graphemes[split..], &graphemes[..split]].concat().concat())
+                Ok(rotated)
             },
         )
         .params(P_ROTATE)
@@ -659,6 +673,10 @@ fn fancy(input: &str, style: &str) -> Result<String> {
 ///
 /// Several alphabets have holes where the character already existed elsewhere
 /// in Unicode; `exceptions` fills those in.
+// Each match arm bounds `ch as u32 - <base>` to 0..=25 (or 0..=9 for digits),
+// and every caller passes small Unicode code point bases, so the sums stay
+// well within u32's range.
+#[allow(clippy::arithmetic_side_effects)]
 fn map_alphabet(
     input: &str,
     upper_base: u32,
@@ -685,6 +703,9 @@ fn map_alphabet(
 
 /// Circled digits are not contiguous: 1 to 9 start at U+2460 and zero sits on
 /// its own at U+24EA.
+// digit ranges over 1..=9, so '0' as u32 + digit is always 49..=57, a valid
+// ASCII scalar value, and 0x2460 + digit - 1 stays well within u32's range.
+#[allow(clippy::expect_used, clippy::arithmetic_side_effects)]
 fn circled_digits() -> Vec<(char, u32)> {
     let mut table = vec![('0', 0x24EA)];
     for digit in 1..=9u32 {
@@ -694,6 +715,9 @@ fn circled_digits() -> Vec<(char, u32)> {
     table
 }
 
+// c is bound to 'a'..='z' by the match arm, so c as u8 - b'a' is always
+// 0..=25, matching CAPS's 26 entries.
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 const fn small_cap(ch: char) -> char {
     const CAPS: [char; 26] = [
         '\u{1D00}', '\u{0299}', '\u{1D04}', '\u{1D05}', '\u{1D07}', '\u{A730}', '\u{0262}',

@@ -2287,6 +2287,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand mv 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
+            cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
+            cand history 'Show this device''s trust decisions for a vault'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;init'= {
@@ -2420,11 +2422,24 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --help 'Print help (see more with ''--help'')'
         }
         &'txc;vault;trust'= {
+            cand --expect 'Trust without a terminal, only if the fingerprint matches this'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
-            cand --yes 'Do not ask for confirmation'
+            cand --yes 'Trust without asking, for a vault new to this device only'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;fingerprint'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;history'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand -h 'Print help'
+            cand --help 'Print help'
         }
         &'txc;vault;help'= {
             cand init 'Create your identity and the personal vault'
@@ -2441,6 +2456,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
+            cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
+            cand history 'Show this device''s trust decisions for a vault'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;help;init'= {
@@ -2470,6 +2487,10 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;recipients'= {
         }
         &'txc;vault;help;trust'= {
+        }
+        &'txc;vault;help;fingerprint'= {
+        }
+        &'txc;vault;help;history'= {
         }
         &'txc;vault;help;help'= {
         }
@@ -2944,6 +2965,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
+            cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
+            cand history 'Show this device''s trust decisions for a vault'
         }
         &'txc;help;vault;init'= {
         }
@@ -2972,6 +2995,10 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;recipients'= {
         }
         &'txc;help;vault;trust'= {
+        }
+        &'txc;help;vault;fingerprint'= {
+        }
+        &'txc;help;vault;history'= {
         }
         &'txc;help;list'= {
         }

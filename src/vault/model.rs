@@ -650,8 +650,9 @@ impl fmt::Display for Reference {
 /// with a letter or a digit.
 fn is_slug(name: &str) -> bool {
     let bytes = name.as_bytes();
+    let first = bytes.first().copied().unwrap_or(0);
     (1..=32).contains(&bytes.len())
-        && bytes[0].is_ascii_lowercase() | bytes[0].is_ascii_digit()
+        && first.is_ascii_lowercase() | first.is_ascii_digit()
         && bytes
             .iter()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_'))

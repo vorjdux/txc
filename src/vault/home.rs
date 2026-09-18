@@ -281,8 +281,8 @@ pub(crate) fn read_private(path: &Path, limit: usize, forbidden: u32) -> Result<
     );
 
     // Sized up front, so the buffer is never reallocated and copied.
-    let mut bytes = Vec::with_capacity(limit.min(metadata.len() as usize) + 1);
-    file.take(limit as u64 + 1)
+    let mut bytes = Vec::with_capacity(limit.min(metadata.len() as usize).saturating_add(1));
+    file.take((limit as u64).saturating_add(1))
         .read_to_end(&mut bytes)
         .with_context(|| format!("cannot read {}", path.display()))?;
     ensure!(
@@ -333,7 +333,9 @@ fn replace(dir: &Path, name: &str, bytes: &[u8]) -> Result<()> {
     })();
 
     if written.is_err() {
-        let _ = fs::remove_file(&temporary);
+        // Best effort: the write already failed, so a failed cleanup of the
+        // temporary file changes nothing we can report.
+        fs::remove_file(&temporary).ok();
     }
     written.with_context(|| format!("cannot write {}", target.display()))
 }

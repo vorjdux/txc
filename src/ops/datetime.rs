@@ -129,7 +129,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 }
                 let value: i64 = trimmed
                     .parse()
-                    .map_err(|_| anyhow::anyhow!("{trimmed:?} is not a Unix timestamp"))?;
+                    .map_err(|e| anyhow::anyhow!("{trimmed:?} is not a Unix timestamp: {e}"))?;
 
                 let moment = if p.flag("millis") {
                     DateTime::from_timestamp_millis(value)
@@ -167,6 +167,8 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 let format = p.get("format");
 
                 // Accept a full date and time, a bare date, or RFC 3339.
+                // and_hms_opt(0, 0, 0) is always Some: midnight is always a valid time.
+                #[allow(clippy::expect_used)]
                 let naive = NaiveDateTime::parse_from_str(trimmed, format)
                     .or_else(|_| {
                         NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")

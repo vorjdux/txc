@@ -51,9 +51,14 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             |s, _| {
                 // This is the operation most likely to be pointed at a large
                 // file, so the words and the lines are each walked once.
+                //
+                // These counters and the reading_seconds calculation below are
+                // bounded by the input length, which is itself bounded by
+                // available memory, so they cannot realistically overflow.
                 let mut words = 0usize;
                 let mut word_characters = 0usize;
                 let mut unique = std::collections::HashSet::new();
+                #[allow(clippy::arithmetic_side_effects)]
                 for word in s.unicode_words() {
                     words += 1;
                     word_characters += word.chars().count();
@@ -88,6 +93,8 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 // Rounded to the nearest second in whole numbers. Doing it in
                 // f64 read 205 words as 61 seconds rather than 62, because
                 // 61.5 is not representable and the value landed just under.
+                // words is bounded by the input length, so this cannot overflow u64.
+                #[allow(clippy::arithmetic_side_effects)]
                 let reading_seconds = (words as u64 * 60 + 100) / 200;
 
                 Ok(format!(
@@ -184,6 +191,8 @@ And a new paragraph.",
 
                 let total = items.len();
                 let mut counts: HashMap<String, usize> = HashMap::new();
+                // Bounded by items.len(), which is bounded by the input length.
+                #[allow(clippy::arithmetic_side_effects)]
                 for item in items {
                     *counts.entry(item).or_default() += 1;
                 }

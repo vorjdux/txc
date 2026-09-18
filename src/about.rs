@@ -116,9 +116,9 @@ pub fn report() -> String {
     let mut out = format!("{NAME} — {DESCRIPTION}\n\n");
     for (label, value) in rows() {
         if label.is_empty() {
-            let _ = writeln!(out, "{:width$}  {value}", "");
+            writeln!(out, "{:width$}  {value}", "").ok();
         } else {
-            let _ = writeln!(out, "{label:width$}  {value}");
+            writeln!(out, "{label:width$}  {value}").ok();
         }
     }
     out.push_str(

@@ -243,6 +243,10 @@ impl App {
 
     /// Moves focus to the next panel, skipping any the operation does not
     /// show, and wrapping round at the end.
+    // `order` always holds at least `Focus::Operations` (see `focus_order`),
+    // so the modulo divisor is never zero and the resulting index is always
+    // in bounds.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     pub fn focus_next(&mut self) {
         let order = self.focus_order();
         let index = order.iter().position(|f| *f == self.focus).unwrap_or(0);
@@ -251,6 +255,8 @@ impl App {
 
     /// Moves focus to the previous panel, skipping any the operation does not
     /// show, and wrapping round at the start.
+    // Same reasoning as `focus_next`: `order` is never empty.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     pub fn focus_previous(&mut self) {
         let order = self.focus_order();
         let index = order.iter().position(|f| *f == self.focus).unwrap_or(0);
@@ -527,6 +533,8 @@ impl App {
             Err(error) => {
                 let mut message = error.to_string();
                 for cause in error.chain().skip(1) {
+                    // Writing into a `String` never fails.
+                    #[allow(clippy::let_underscore_must_use)]
                     let _ = write!(message, "\n  caused by: {cause}");
                 }
                 Outcome::Failed(message)
@@ -536,6 +544,9 @@ impl App {
 
     /// Moves to the next operation, wrapping round, and loads its sample and
     /// options.
+    // Guarded by the emptiness check just above, so the modulo divisor is
+    // never zero.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn select_next_operation(&mut self) {
         if self.operations.is_empty() {
             return;
@@ -546,6 +557,9 @@ impl App {
 
     /// Moves to the previous operation, wrapping round, and loads its sample
     /// and options.
+    // Guarded by the emptiness check just above, so the modulo divisor is
+    // never zero.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn select_previous_operation(&mut self) {
         if self.operations.is_empty() {
             return;
@@ -557,6 +571,9 @@ impl App {
 
     /// Moves to the next category, wrapping round, and refilters the operation
     /// list.
+    // `self.categories` always starts with `[None, ...]` and is never
+    // emptied, so the modulo divisor is never zero.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn select_next_category(&mut self) {
         self.category_index = (self.category_index + 1) % self.categories.len();
         self.operation_index = 0;
@@ -566,6 +583,9 @@ impl App {
 
     /// Moves to the previous category, wrapping round, and refilters the
     /// operation list.
+    // Same reasoning as `select_next_category`: `self.categories` is never
+    // empty.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn select_previous_category(&mut self) {
         self.category_index =
             (self.category_index + self.categories.len() - 1) % self.categories.len();

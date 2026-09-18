@@ -1,12 +1,16 @@
 //! What a vault file decrypts to: who can open it, its own key, and its
 //! entries.
 
+// A damaged vault is reported as damaged without leaking the parser's own
+// error, so map_err discards the source on purpose here.
+#![allow(clippy::map_err_ignore)]
+
 use std::collections::HashSet;
 use std::fmt;
 
 use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::{Result, anyhow, ensure};
-use data_encoding::BASE64;
+use data_encoding::{BASE32_NOPAD, BASE64};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -224,11 +228,39 @@ impl Vault {
         )
     }
 
+    /// A short, stable, public name for the vault's identity, for reading out
+    /// to another device to confirm it is the same vault.
+    ///
+    /// Safe to print anywhere: it is a one way tag of the vault's key (through
+    /// its `pin`), so it reveals nothing and cannot be reproduced by anyone who
+    /// cannot already decrypt the vault. This is the security property of an
+    /// SSH host key fingerprint.
+    ///
+    /// Two things about it surprise people, so both are said plainly: it is the
+    /// **same** across generations, recipient changes and entry edits, and it
+    /// **changes** if the vault is renamed, because the name is inside the pin.
+    ///
+    /// The value is 120 bits of the pin, as six hyphen separated groups of four
+    /// lowercase base32 characters, for example `k7fq-2mxv-8d3n-wpls-a4rt-9cez`.
+    #[must_use]
+    pub fn fingerprint(&self) -> String {
+        let pin = self.pin();
+        // The pin is a 32 byte HMAC, so its first 15 bytes are always present.
+        #[allow(clippy::indexing_slicing)]
+        let encoded = BASE32_NOPAD.encode(&pin[..15]).to_lowercase();
+        encoded
+            .as_bytes()
+            .chunks(4)
+            .map(|group| std::str::from_utf8(group).unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+
     /// Marks the vault as changed: one generation on, at the current time.
     /// Returns what it was, to put back if saving fails.
     pub(crate) fn advance(&mut self) -> (u64, String) {
         let before = (self.generation, self.updated.clone());
-        self.generation += 1;
+        self.generation = self.generation.saturating_add(1);
         self.updated = now();
         before
     }
@@ -291,7 +323,8 @@ impl Vault {
     /// ignoring case, which is unambiguous because names are unique that way.
     #[must_use]
     pub fn entry(&self, name: &str) -> Option<&Entry> {
-        self.entry_index(name).map(|index| &self.entries[index])
+        self.entry_index(name)
+            .and_then(|index| self.entries.get(index))
     }
 
     pub(crate) fn entry_index(&self, name: &str) -> Option<usize> {
@@ -405,6 +438,34 @@ mod tests {
         let mut rekeyed = vault.clone();
         rekeyed.key = crypto::random_key();
         assert_ne!(*rekeyed.pin(), *vault.pin());
+    }
+
+    #[test]
+    fn a_fingerprint_is_stable_across_changes_and_follows_the_name() {
+        let (_, mut vault) = vault();
+        let original = vault.fingerprint();
+        // Shape: six groups of four lowercase base32 characters.
+        assert_eq!(original.len(), 29, "{original}");
+        assert_eq!(original.split('-').count(), 6);
+        assert!(
+            original
+                .chars()
+                .all(|c| c == '-' || c.is_ascii_lowercase() || c.is_ascii_digit())
+        );
+
+        // A new generation and new recipients do not change it.
+        vault.advance();
+        vault.set_recipients(vec![
+            crate::vault::crypto::Identity::generate()
+                .to_public()
+                .to_string(),
+        ]);
+        assert_eq!(vault.fingerprint(), original);
+
+        // A rename does, because the name is inside the pin.
+        let mut renamed = vault.clone();
+        renamed.name = "renamed".to_string();
+        assert_ne!(renamed.fingerprint(), original);
     }
 
     #[test]

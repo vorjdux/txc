@@ -66,6 +66,9 @@ impl SecretInput {
     }
 
     /// Adds a character, unless the field is full.
+    // `text.len()` is bounded by its small fixed capacity and `ch.len_utf8()`
+    // is at most 4, nowhere near overflowing `usize`.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn insert(&mut self, ch: char) {
         if self.text.len() + ch.len_utf8() <= self.text.capacity() {
             self.text.push(ch);
@@ -322,6 +325,10 @@ impl EntryForm {
 
     /// A form filled in from an entry. Its secrets stay sealed and empty,
     /// meaning unchanged; its notes come already opened in `notes`.
+    // `index` is either an existing position in `fields`, or `fields.len() -
+    // 1` right after that same field was pushed, so both are always in
+    // bounds.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     #[must_use]
     pub fn editing(
         entry: &Entry,
@@ -389,12 +396,17 @@ impl EntryForm {
     }
 
     /// The screen's index of the chosen vault.
+    // `vault` is always kept within `0..vaults.len()` by construction and by
+    // `edit`'s wrapping arithmetic on `Row::Vault`.
+    #[allow(clippy::indexing_slicing)]
     #[must_use]
     pub fn vault_index(&self) -> usize {
         self.vaults[self.vault].0
     }
 
     /// The chosen vault's name.
+    // Same invariant as `vault_index` above.
+    #[allow(clippy::indexing_slicing)]
     #[must_use]
     pub fn vault_name(&self) -> &str {
         &self.vaults[self.vault].1
@@ -409,6 +421,9 @@ impl EntryForm {
         }
     }
 
+    // `rows()` always returns at least `Row::Name` and `Row::Tags`, so
+    // `rows.len()` is never 0 and `next` is always a valid index into `rows`.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     fn step(&mut self, forward: bool) {
         self.reveal = false;
         let rows = self.rows();
@@ -427,6 +442,9 @@ impl EntryForm {
 
     /// Whether the cursor is at the top or bottom of what the row holds, so
     /// the arrow keys should leave the row rather than move inside it.
+    // A note's row from `text.cursor()` is always within its own line count,
+    // and both are tiny compared to `usize::MAX`.
+    #[allow(clippy::arithmetic_side_effects)]
     fn at_edge(&self, down: bool) -> bool {
         match self.focused().map(|field| &field.input) {
             Some(Input::Note(text)) => {
@@ -481,6 +499,10 @@ impl EntryForm {
         FormAction::Stay
     }
 
+    // `Row::Vault` is only ever the current row when `rows()` included it,
+    // which only happens when `vaults.len() > 1`, so `count - 1` and the
+    // modulo below cannot underflow or divide by zero.
+    #[allow(clippy::arithmetic_side_effects)]
     fn edit(&mut self, code: KeyCode, control: bool) {
         let changed = match self.row {
             Row::Name => edit_line(&mut self.name, code, control),
@@ -540,6 +562,9 @@ impl EntryForm {
         }
     }
 
+    // `Row::Field(index)` is only ever built from `self.fields`'s own
+    // indices (see `rows`), so `index` is always in bounds.
+    #[allow(clippy::indexing_slicing)]
     fn generate_here(&mut self) {
         let Row::Field(index) = self.row else {
             self.error = Some("move to a field that can be generated first".to_string());

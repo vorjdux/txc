@@ -160,6 +160,9 @@ impl OptionsEditor {
     /// }
     /// assert_eq!(editor.selected(), 0); // all the way round
     /// ```
+    // Guarded by the emptiness check just above, so the modulo divisor is
+    // never zero.
+    #[allow(clippy::arithmetic_side_effects)]
     pub const fn select_next(&mut self) {
         if !self.fields.is_empty() {
             self.selected = (self.selected + 1) % self.fields.len();
@@ -167,6 +170,8 @@ impl OptionsEditor {
     }
 
     /// Moves to the previous field, wrapping round at the start.
+    // Same reasoning as `select_next`: guarded by the emptiness check.
+    #[allow(clippy::arithmetic_side_effects)]
     pub const fn select_previous(&mut self) {
         if !self.fields.is_empty() {
             self.selected = (self.selected + self.fields.len() - 1) % self.fields.len();
@@ -198,6 +203,9 @@ impl OptionsEditor {
     }
 
     /// Types one character into the selected value field. Switches ignore it.
+    // `field.cursor` tracks characters typed by hand at a keyboard, so it
+    // cannot realistically reach `usize::MAX`.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn insert(&mut self, ch: char) {
         if let Some(field) = self.current()
             && !field.param.is_flag()
@@ -209,6 +217,9 @@ impl OptionsEditor {
     }
 
     /// Deletes the character before the cursor in the selected value field.
+    // `field.cursor > 0` is checked just above, so the subtraction cannot
+    // underflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn backspace(&mut self) {
         if let Some(field) = self.current()
             && !field.param.is_flag()
@@ -222,6 +233,9 @@ impl OptionsEditor {
     }
 
     /// Deletes the character after the cursor in the selected value field.
+    // `field.cursor < field.value.chars().count()` is checked just above, so
+    // `cursor + 1` cannot exceed the character count.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn delete(&mut self) {
         if let Some(field) = self.current()
             && !field.param.is_flag()
@@ -241,6 +255,8 @@ impl OptionsEditor {
     }
 
     /// Moves the cursor one character right within the selected value.
+    // `field.cursor` tracks a UI cursor position, far below `usize::MAX`.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn move_right(&mut self) {
         if let Some(field) = self.current() {
             field.cursor = (field.cursor + 1).min(field.value.chars().count());

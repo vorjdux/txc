@@ -57,8 +57,15 @@ pub fn split_words(input: &str) -> Vec<String> {
         }
 
         if !current.is_empty() {
+            // current is only non-empty once a character has been pushed onto it,
+            // which happens at the end of some earlier iteration, so i is at
+            // least 1 here.
+            #[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
             let prev = chars[i - 1];
             let lower_to_upper = (prev.is_lowercase() || prev.is_numeric()) && ch.is_uppercase();
+            // i is a valid index into chars, bounded by chars.len() (which is
+            // bounded by memory), so i + 1 cannot overflow.
+            #[allow(clippy::arithmetic_side_effects)]
             let acronym_end = prev.is_uppercase()
                 && ch.is_uppercase()
                 && chars.get(i + 1).is_some_and(|n| n.is_lowercase());
@@ -125,7 +132,12 @@ pub fn to_hex(bytes: &[u8], upper: bool) -> String {
     const LOWER_DIGITS: &[u8; 16] = b"0123456789abcdef";
     const UPPER_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
     let digits = if upper { UPPER_DIGITS } else { LOWER_DIGITS };
+    // bytes.len() is bounded by available memory, so doubling it cannot
+    // realistically overflow. byte >> 4 and byte & 0x0f are both always
+    // 0..=15, in bounds for the 16-entry digit tables.
+    #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
     let mut out = String::with_capacity(bytes.len() * 2);
+    #[allow(clippy::indexing_slicing)]
     for byte in bytes {
         out.push(digits[(byte >> 4) as usize] as char);
         out.push(digits[(byte & 0x0f) as usize] as char);
@@ -169,7 +181,7 @@ pub fn from_hex(input: &str) -> anyhow::Result<Vec<u8>> {
         let text = std::str::from_utf8(pair).unwrap_or_default();
         out.push(
             u8::from_str_radix(text, 16)
-                .map_err(|_| anyhow::anyhow!("{text:?} is not a hex byte"))?,
+                .map_err(|e| anyhow::anyhow!("{text:?} is not a hex byte: {e}"))?,
         );
     }
     Ok(out)

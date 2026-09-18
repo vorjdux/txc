@@ -177,6 +177,32 @@ fn every_file(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     files
 }
 
+/// The fingerprint a vault prints, for reading onto another device.
+fn fingerprint(sandbox: &Sandbox, vault: &str) -> String {
+    let out = succeeds(&sandbox.vault(&["fingerprint", vault]));
+    out.split_whitespace().last().unwrap().to_string()
+}
+
+/// Copies a whole vault home, as syncing the directory across would, keeping
+/// the owner-only permissions txc insists on.
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(to, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    for item in std::fs::read_dir(from).unwrap() {
+        let entry = item.unwrap();
+        let dest = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &dest);
+        } else {
+            std::fs::copy(entry.path(), dest).unwrap();
+        }
+    }
+}
+
 #[test]
 fn init_prints_the_public_key_and_creates_the_personal_vault() {
     let sandbox = Sandbox::new("init");
@@ -381,7 +407,7 @@ fn a_changed_vault_file_is_refused() {
 }
 
 #[test]
-fn an_old_copy_put_back_is_refused_until_trusted_again() {
+fn an_old_copy_put_back_stays_refused_without_a_terminal() {
     let sandbox = Sandbox::new("rollback");
     sandbox.init();
     let path = sandbox.home().join("vaults/personal.vault.age");
@@ -392,9 +418,19 @@ fn an_old_copy_put_back_is_refused_until_trusted_again() {
     let error = fails(&sandbox.vault(&["list", "personal"]));
     assert!(error.contains("older"), "{error}");
 
-    fails(&sandbox.vault(&["trust", "personal"]));
-    succeeds(&sandbox.vault(&["trust", "personal", "--yes"]));
-    succeeds(&sandbox.vault(&["list", "personal"]));
+    // A rollback is a policy change: --yes does not cover it, and there is no
+    // terminal here, so it stays refused. Its fingerprint would settle nothing.
+    let no_terminal = fails(&sandbox.vault(&["trust", "personal"]));
+    assert!(no_terminal.contains("terminal"), "{no_terminal}");
+    let yes = fails(&sandbox.vault(&["trust", "personal", "--yes"]));
+    assert!(yes.contains("terminal"), "{yes}");
+
+    let fp = fingerprint(&sandbox, "personal");
+    let expect = fails(&sandbox.vault(&["trust", "personal", "--expect", &fp]));
+    assert!(expect.contains("cannot settle this"), "{expect}");
+
+    // The vault is still not openable; that is the correct end state here.
+    fails(&sandbox.vault(&["list", "personal"]));
 }
 
 #[test]
@@ -612,4 +648,144 @@ fn an_entry_moves_to_another_vault_and_keeps_its_secret() {
     assert!(clash.contains("already has an entry"), "{clash}");
     // Refused move left the source untouched.
     succeeds(&sandbox.vault(&["show", "personal/note"]));
+}
+
+#[test]
+fn an_unattended_job_cannot_trust_a_replaced_vault() {
+    // Alice has a vault. An attacker holds only Alice's public key.
+    let alice = Sandbox::new("attack-alice");
+    alice.init();
+    let alice_key = succeeds(&alice.vault(&["identity"])).trim().to_string();
+
+    // The attacker builds a vault of the same name, encrypted to Alice and to
+    // themselves, and drops it into Alice's synced vaults directory.
+    let attacker = Sandbox::new("attack-eve");
+    attacker.init();
+    std::fs::remove_file(attacker.home().join("vaults/personal.vault.age")).unwrap();
+    let _ = std::fs::remove_file(attacker.home().join("vaults/personal.vault.age.bak"));
+    succeeds(&attacker.vault(&["create", "personal", "--recipient", &alice_key]));
+    std::fs::copy(
+        attacker.home().join("vaults/personal.vault.age"),
+        alice.home().join("vaults/personal.vault.age"),
+    )
+    .unwrap();
+
+    // An unattended job cannot pin the replacement, and nothing on disk changes.
+    let before = std::fs::read(alice.home().join("trust.json")).unwrap();
+    let error = fails(&alice.vault(&["trust", "personal", "--yes"]));
+    assert!(error.contains("terminal"), "{error}");
+    let after = std::fs::read(alice.home().join("trust.json")).unwrap();
+    assert_eq!(before, after, "trust.json changed under an unattended job");
+}
+
+#[test]
+fn a_fingerprint_lets_a_script_accept_a_replaced_vault() {
+    let alice = Sandbox::new("fp-alice");
+    let bob = Sandbox::new("fp-bob");
+    alice.init();
+    bob.init();
+    let bob_key = succeeds(&bob.vault(&["identity"])).trim().to_string();
+
+    succeeds(&alice.vault(&["create", "team", "--recipient", &bob_key]));
+    succeeds(&alice.vault_piped(
+        &[
+            "add",
+            "team/deploy",
+            "--kind",
+            "api-key",
+            "--secret-from-stdin",
+        ],
+        "k",
+    ));
+    let fp = fingerprint(&alice, "team");
+
+    // Bob receives the vault; it is new to him.
+    std::fs::copy(
+        alice.home().join("vaults/team.vault.age"),
+        bob.home().join("vaults/team.vault.age"),
+    )
+    .unwrap();
+
+    // A wrong fingerprint pins nothing and leaves it untrusted.
+    let wrong = fails(&bob.vault(&["trust", "team", "--expect", "aaaa-bbbb-cccc-dddd-eeee-ffff"]));
+    assert!(wrong.contains("fingerprint is"), "{wrong}");
+    fails(&bob.vault(&["list", "team"]));
+
+    // The right fingerprint accepts it with no terminal.
+    succeeds(&bob.vault(&["trust", "team", "--expect", &fp]));
+    assert_eq!(
+        succeeds(&bob.vault(&["copy", "team/deploy", "--print"])),
+        "k"
+    );
+
+    // A matching fingerprint still does not settle a rollback.
+    let path = alice.home().join("vaults/team.vault.age");
+    let gen_one = std::fs::read(&path).unwrap();
+    succeeds(&alice.vault_piped(
+        &[
+            "add",
+            "team/another",
+            "--kind",
+            "secret",
+            "--secret-from-stdin",
+        ],
+        "y",
+    ));
+    std::fs::write(&path, gen_one).unwrap();
+    let team_fp = fingerprint(&alice, "team");
+    let rolled = fails(&alice.vault(&["trust", "team", "--expect", &team_fp]));
+    assert!(rolled.contains("cannot settle this"), "{rolled}");
+}
+
+#[test]
+fn two_devices_changing_a_vault_at_once_is_refused() {
+    let a = Sandbox::new("diverge-a");
+    a.init();
+    // Device B is a full copy of A: same identity, same vault, same trust.
+    let b = Sandbox::new("diverge-b");
+    copy_dir(&a.home(), &b.home());
+
+    // Each adds a different entry offline, both reaching the next generation.
+    succeeds(&a.vault_piped(&["add", "from-a", "--secret-from-stdin"], "a"));
+    succeeds(&b.vault_piped(&["add", "from-b", "--secret-from-stdin"], "b"));
+
+    // A's version is synced over B's.
+    std::fs::copy(
+        a.home().join("vaults/personal.vault.age"),
+        b.home().join("vaults/personal.vault.age"),
+    )
+    .unwrap();
+
+    // On B this is a divergence, not a silent overwrite of B's entry.
+    let error = fails(&b.vault(&["list", "personal"]));
+    assert!(error.contains("diverged"), "{error}");
+}
+
+#[test]
+fn trusting_records_what_it_replaced() {
+    let alice = Sandbox::new("hist-alice");
+    alice.init();
+    let alice_key = succeeds(&alice.vault(&["identity"])).trim().to_string();
+
+    // A vault of the same name is rebuilt elsewhere and copied over Alice's.
+    let other = Sandbox::new("hist-other");
+    other.init();
+    std::fs::remove_file(other.home().join("vaults/personal.vault.age")).unwrap();
+    let _ = std::fs::remove_file(other.home().join("vaults/personal.vault.age.bak"));
+    succeeds(&other.vault(&["create", "personal", "--recipient", &alice_key]));
+    let fp = fingerprint(&other, "personal");
+    std::fs::copy(
+        other.home().join("vaults/personal.vault.age"),
+        alice.home().join("vaults/personal.vault.age"),
+    )
+    .unwrap();
+
+    // Alice accepts it with the fingerprint she verified, and the log records
+    // that it replaced the vault she had.
+    succeeds(&alice.vault(&["trust", "personal", "--expect", &fp]));
+    let history = succeeds(&alice.vault(&["history", "personal"]));
+    assert!(
+        history.contains("replaced another vault of the same name"),
+        "{history}"
+    );
 }

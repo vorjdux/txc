@@ -6,6 +6,48 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-18
+
+### Security
+
+- `txc vault trust <name> --yes` now accepts only a vault that is new to this
+  device. It no longer accepts a vault that changed under a name you already
+  trust, which an unattended job could previously have been made to pin: anyone
+  who knew your public key could drop a same-name vault encrypted to their own
+  key into a synced `vaults/` directory, and `--yes` would trust it. Accepting a
+  changed vault now needs a person at a terminal, or the fingerprint passed with
+  `--expect <fingerprint>`, verified out of band.
+
+### Added
+
+- `txc vault fingerprint <name>` prints a vault's fingerprint, a short string
+  derived from its key, so two devices can confirm out of band that they mean
+  the same vault. `txc vault trust` prints it as well, and accepts it through
+  `--expect <fingerprint>` to trust a changed vault without a prompt.
+- `txc vault history <name>` lists what this device has trusted for a name and
+  what each decision replaced.
+
+### Fixed
+
+- A vault changed by two devices at the same generation is now refused instead
+  of reported as trusted, which previously let one device's version overwrite
+  the other's entries without warning. The trust record keeps a digest of the
+  bytes it last opened and treats a different vault at the same generation as a
+  divergence to be shown and accepted.
+
+### Changed
+
+- The device trust record `trust.json` is written in a new format that also
+  stores each vault's digest and a short log of trust decisions. Records written
+  by an older txc are read and upgraded in place; a `trust.json` written by this
+  version is not read by an older one, so run the same version on every device
+  that shares an identity.
+- Hardened the code against latent panics. A strict set of clippy lints now
+  guards production code against unchecked indexing, overflowing arithmetic and
+  quietly dropped errors, and the few unreachable `unwrap`/`expect` sites this
+  surfaced are now ordinary errors. There is no change in behaviour on valid
+  input.
+
 ## [0.5.2] - 2026-09-16
 
 ### Fixed

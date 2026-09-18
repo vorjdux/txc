@@ -55,7 +55,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 };
                 let digits = strip_base_prefix(digits, from);
                 let value = i128::from_str_radix(digits, from)
-                    .map_err(|_| anyhow::anyhow!("{trimmed:?} is not a base {from} number"))?;
+                    .map_err(|e| anyhow::anyhow!("{trimmed:?} is not a base {from} number: {e}"))?;
 
                 let rendered = to_radix(value.unsigned_abs(), to, p.flag("upper"));
                 Ok(if negative {
@@ -102,7 +102,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 }
                 let value: u32 = trimmed
                     .parse()
-                    .map_err(|_| anyhow::anyhow!("{trimmed:?} is not a whole number"))?;
+                    .map_err(|e| anyhow::anyhow!("{trimmed:?} is not a whole number: {e}"))?;
                 if !(1..=3999).contains(&value) {
                     bail!("roman numerals cover 1 to 3999, got {value}");
                 }
@@ -110,6 +110,8 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 let mut left = value;
                 let mut roman = String::new();
                 for (amount, symbol) in TABLE {
+                    // The while condition guarantees left >= amount here.
+                    #[allow(clippy::arithmetic_side_effects)]
                     while left >= amount {
                         roman.push_str(symbol);
                         left -= amount;
@@ -146,10 +148,13 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                         'M' => 1000,
                         other => bail!("{other:?} is not a roman numeral"),
                     };
+                    // Malformed input (e.g. too many small numerals before a
+                    // larger one) is not otherwise validated, so saturate
+                    // rather than under/overflow on adversarial input.
                     if value < previous {
-                        total -= value;
+                        total = total.saturating_sub(value);
                     } else {
-                        total += value;
+                        total = total.saturating_add(value);
                         previous = value;
                     }
                 }
@@ -174,7 +179,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 }
                 let value: i64 = trimmed
                     .parse()
-                    .map_err(|_| anyhow::anyhow!("{trimmed:?} is not a whole number"))?;
+                    .map_err(|e| anyhow::anyhow!("{trimmed:?} is not a whole number: {e}"))?;
                 Ok(spell_number(value))
             },
         )
@@ -195,7 +200,7 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 }
                 let value: i64 = trimmed
                     .parse()
-                    .map_err(|_| anyhow::anyhow!("{trimmed:?} is not a whole number"))?;
+                    .map_err(|e| anyhow::anyhow!("{trimmed:?} is not a whole number: {e}"))?;
                 let suffix = match (value.abs() % 100, value.abs() % 10) {
                     (11..=13, _) => "th",
                     (_, 1) => "st",
@@ -224,6 +229,10 @@ fn strip_base_prefix(digits: &str, base: u32) -> &str {
         .unwrap_or(digits)
 }
 
+// base is validated to be 2..=36 by every caller, and DIGITS has 36 entries,
+// so `value % base` is always a valid index; the division only ever shrinks
+// value, so it cannot overflow.
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 fn to_radix(mut value: u128, base: u32, upper: bool) -> String {
     const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
     if value == 0 {
@@ -286,6 +295,8 @@ fn spell_number(value: i64) -> String {
     spell_magnitude(value.unsigned_abs())
 }
 
+// value < 20 is checked above, and ONES has 20 entries.
+#[allow(clippy::indexing_slicing)]
 fn spell_magnitude(value: u64) -> String {
     if value < 20 {
         return ONES[value as usize].to_string();
@@ -300,6 +311,8 @@ fn spell_magnitude(value: u64) -> String {
     }
 
     let mut parts = Vec::new();
+    // u64::MAX < 1000^7, so groups has at most 7 entries, matching SCALES.
+    #[allow(clippy::indexing_slicing)]
     for (index, group) in groups.iter().enumerate().rev() {
         if *group == 0 {
             continue;
@@ -309,6 +322,10 @@ fn spell_magnitude(value: u64) -> String {
     parts.join(" ")
 }
 
+// group is always 0..1000 (a three digit group), so hundreds is 0..=9 and
+// rest is 0..100, both well within the ONES (20 entries) and TENS (10
+// entries) tables.
+#[allow(clippy::indexing_slicing)]
 fn spell_group(group: u16) -> String {
     let mut parts = Vec::new();
     let hundreds = group / 100;

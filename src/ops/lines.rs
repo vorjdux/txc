@@ -228,6 +228,8 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 };
                 let lines = to_lines(s);
                 let mut counts = std::collections::HashMap::new();
+                // Bounded by lines.len(), which is bounded by the input length.
+                #[allow(clippy::arithmetic_side_effects)]
                 for line in &lines {
                     *counts.entry(key_of(line)).or_insert(0usize) += 1;
                 }
@@ -236,7 +238,11 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .iter()
                     .filter(|line| {
                         let key = key_of(line);
-                        counts[&key] > 1 && emitted.insert(key)
+                        // Every key here was inserted into counts in the loop above,
+                        // since it comes from the same `lines` and the same key_of.
+                        #[allow(clippy::indexing_slicing)]
+                        let seen = counts[&key] > 1;
+                        seen && emitted.insert(key)
                     })
                     .copied()
                     .collect::<Vec<_>>()
@@ -370,7 +376,9 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                     .into_iter()
                     .enumerate()
                     .map(|(i, line)| {
-                        let n = start + i;
+                        // start is user supplied and could be near usize::MAX; saturate
+                        // instead of overflowing for that extreme case.
+                        let n = start.saturating_add(i);
                         let label = if zeros {
                             format!("{n:0width$}")
                         } else {
@@ -483,6 +491,9 @@ pub(crate) fn register(out: &mut Vec<Op>) {
         "Remove the common leading whitespace",
         |s, _| {
             let lines = to_lines(s);
+            // trim_start() only removes a leading run of whitespace, so
+            // l.trim_start().len() never exceeds l.len().
+            #[allow(clippy::arithmetic_side_effects)]
             let common = lines
                 .iter()
                 .filter(|l| !l.trim().is_empty())
@@ -492,11 +503,11 @@ pub(crate) fn register(out: &mut Vec<Op>) {
             Ok(lines
                 .iter()
                 .map(|l| {
-                    if l.len() >= common {
-                        &l[common..]
-                    } else {
-                        l.trim_start()
-                    }
+                    // common is the smallest leading-whitespace byte count across all
+                    // lines, but a shorter line's boundary may fall mid-character in
+                    // another line's multi-byte whitespace, so fall back to
+                    // trim_start() rather than slicing at a non-boundary.
+                    l.get(common..).unwrap_or_else(|| l.trim_start())
                 })
                 .collect::<Vec<_>>()
                 .join("\n"))
@@ -532,6 +543,8 @@ pub(crate) fn register(out: &mut Vec<Op>) {
                 if len >= width {
                     return Ok(s.to_string());
                 }
+                // len < width is guaranteed by the check above, so this cannot underflow.
+                #[allow(clippy::arithmetic_side_effects)]
                 let left = (width - len) / 2;
                 Ok(format!("{}{s}", " ".repeat(left)))
             },
@@ -619,7 +632,11 @@ fn leading_number(line: &str) -> f64 {
     let end = trimmed
         .find(|c: char| !(c.is_ascii_digit() || c == '-' || c == '+' || c == '.'))
         .unwrap_or(trimmed.len());
-    trimmed[..end].parse().unwrap_or(f64::NEG_INFINITY)
+    // str::find always returns a char-boundary byte index (or trimmed.len(), also
+    // a boundary), so this slice is always valid.
+    #[allow(clippy::string_slice)]
+    let prefix = &trimmed[..end];
+    prefix.parse().unwrap_or(f64::NEG_INFINITY)
 }
 
 fn pad(line: &str, width: usize, fill: &str, left: bool) -> String {
@@ -628,6 +645,8 @@ fn pad(line: &str, width: usize, fill: &str, left: bool) -> String {
     if len >= width {
         return line.to_string();
     }
+    // len < width is guaranteed by the check above, so this cannot underflow.
+    #[allow(clippy::arithmetic_side_effects)]
     let padding: String = std::iter::repeat_n(fill_char, width - len).collect();
     if left {
         format!("{padding}{line}")
