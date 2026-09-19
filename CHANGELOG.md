@@ -6,6 +6,18 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-19
+
+### Fixed
+
+- Changing a vault from the full-screen interface could get stuck asking for
+  the write passphrase: the prompt was opened by the change itself, then hidden
+  behind the change's own form, so adding an entry went nowhere. The interface
+  now asks for the write passphrase once, right after the identity is unlocked,
+  so later changes go through without stopping. A session that dismisses that
+  prompt to read only is offered it again, before any form, the first time it
+  changes something.
+
 ## [0.7.0] - 2026-09-19
 
 The read/write split. Reading a vault and changing one are now separate
