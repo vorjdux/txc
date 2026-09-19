@@ -1119,6 +1119,12 @@ impl VaultScreen {
     }
 
     fn begin_add(&mut self) {
+        // Unlock the write key before the form opens, so a change is never
+        // stopped halfway through filling one in.
+        if let Err(message) = self.require_write_key() {
+            self.status = message;
+            return;
+        }
         if self.vaults.iter().all(|vault| vault.opened.is_none()) {
             self.status = "no vault is open to add to".to_string();
         } else {
@@ -1176,6 +1182,10 @@ impl VaultScreen {
     }
 
     fn begin_edit(&mut self) {
+        if let Err(message) = self.require_write_key() {
+            self.status = message;
+            return;
+        }
         match self.edit_form() {
             Ok(form) => self.dialog = Some(Dialog::Entry(Box::new(form))),
             Err(message) => self.status = message,
@@ -1183,6 +1193,10 @@ impl VaultScreen {
     }
 
     fn begin_delete(&mut self) {
+        if let Err(message) = self.require_write_key() {
+            self.status = message;
+            return;
+        }
         if let Some((vault, entry)) = self.selected() {
             self.dialog = Some(Dialog::Delete {
                 vault,
@@ -1331,6 +1345,7 @@ impl VaultScreen {
     fn finish_job(&mut self, job: Job, result: Result<Unlocked, String>) {
         match result {
             Ok(Unlocked::Identity(keyring)) => {
+                let can_write = keyring.can_write();
                 self.dialog = None;
                 self.recent = keyring.recent();
                 self.keyring = Some(keyring);
@@ -1344,6 +1359,16 @@ impl VaultScreen {
                     self.status = "created your identity; run: txc vault init \
                                    to add your write key and personal vault"
                         .to_string();
+                } else if can_write {
+                    // Ask for the write passphrase now, once, so that changing a
+                    // vault later never stops to ask. A read-only session can
+                    // press esc here and simply not change anything.
+                    self.dialog = Some(Dialog::UnlockWriter {
+                        passphrase: SecretInput::default(),
+                        error: None,
+                    });
+                    self.status =
+                        "unlock the write key to make changes, or esc to read only".to_string();
                 }
             }
             Ok(Unlocked::Writer(write_key)) => {
@@ -1395,6 +1420,10 @@ impl VaultScreen {
         if let Ok(home) = &self.home {
             self.write_key =
                 Keyring::open_writer(home, &SecretString::from(passphrase.to_string())).ok();
+        }
+        // Close the write-passphrase dialog that a real unlock now opens.
+        if matches!(self.dialog, Some(Dialog::UnlockWriter { .. })) {
+            self.dialog = None;
         }
     }
 
@@ -2357,6 +2386,9 @@ pub(crate) mod tests {
         type_text(&mut screen, PASSPHRASE);
         press(&mut screen, KeyCode::Enter);
         settle(&mut screen);
+        // Unlocking now offers the write passphrase; this test only trusts and
+        // reads, so dismiss it to a read-only session.
+        press(&mut screen, KeyCode::Esc);
 
         screen.set_section(Section::Vault(0));
         let (_, vault) = screen.problem().expect("the vault did not open");
@@ -2370,6 +2402,54 @@ pub(crate) mod tests {
         assert!(matches!(screen.dialog, Some(Dialog::Trust(_))));
         press(&mut screen, KeyCode::Char('y'));
         assert!(screen.problem().is_none(), "{}", screen.status);
+    }
+
+    #[test]
+    fn the_write_key_is_unlocked_after_the_identity_and_a_change_goes_through() {
+        // In tests the write passphrase equals the identity passphrase.
+        let (_scratch, mut screen) = locked("tui-write-unlock");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+
+        // Unlocking the identity now offers the write passphrase.
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(screen.dialog.is_none(), "{}", screen.status);
+
+        // A change is no longer blocked: add opens the kind picker.
+        press(&mut screen, KeyCode::Char('a'));
+        assert!(
+            matches!(screen.dialog, Some(Dialog::PickKind { .. })),
+            "add was blocked: {}",
+            screen.status
+        );
+    }
+
+    #[test]
+    fn a_read_only_session_unlocks_the_write_key_when_it_first_writes() {
+        let (_scratch, mut screen) = locked("tui-write-later");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        // Esc the write passphrase to stay read only for now.
+        press(&mut screen, KeyCode::Esc);
+        assert!(screen.dialog.is_none());
+
+        // Trying to add opens the write passphrase dialog, not a doomed form.
+        press(&mut screen, KeyCode::Char('a'));
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+
+        // Now add works.
+        press(&mut screen, KeyCode::Char('a'));
+        assert!(matches!(screen.dialog, Some(Dialog::PickKind { .. })));
     }
 
     #[test]
