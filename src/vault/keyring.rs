@@ -14,9 +14,11 @@ use age::secrecy::SecretString;
 use anyhow::{Context, Result, anyhow, ensure};
 use data_encoding::BASE64;
 
-use crate::vault::crypto::{self, Identity, Key};
+use crate::vault::crypto::{self, Identity, Key, WriteKey, WriterId};
 use crate::vault::document::{self, Vault, now};
-use crate::vault::home::{self, Home, IDENTITY_LIMIT, PRIVATE, UNCHANGEABLE, VAULT_LIMIT};
+use crate::vault::home::{
+    self, Home, IDENTITY_LIMIT, PRIVATE, UNCHANGEABLE, VAULT_LIMIT, WRITER_LIMIT, WRITERS_LIMIT,
+};
 use crate::vault::model::{
     Entry, Field, Kind, MAX_ENTRIES, MAX_SECRET_BYTES, Value, check_entry_name, check_field_name,
 };
@@ -35,6 +37,10 @@ pub struct Keyring {
     home: Home,
     identity: Identity,
     trust_key: Key,
+    /// The writer public keys this device has pinned. A vault whose signature
+    /// does not verify against one of these does not open. Empty on a device
+    /// that has pinned no writer, which fails closed for version 2 vaults.
+    writers: Vec<WriterId>,
 }
 
 impl fmt::Debug for Keyring {
@@ -71,7 +77,7 @@ impl Keyring {
             std::fs::remove_file(&trust)
                 .with_context(|| format!("cannot remove {}", trust.display()))?;
         }
-        Ok(Self::from_identity(home.clone(), identity))
+        Self::from_identity(home.clone(), identity)
     }
 
     /// Unlocks the identity with its passphrase.
@@ -89,16 +95,91 @@ impl Keyring {
         home.check()?;
         let sealed = home::read_private(&home.identity_path(), IDENTITY_LIMIT, PRIVATE)?;
         let identity = crypto::open_identity(&sealed, passphrase)?;
-        Ok(Self::from_identity(home.clone(), identity))
+        Self::from_identity(home.clone(), identity)
     }
 
-    fn from_identity(home: Home, identity: Identity) -> Self {
+    fn from_identity(home: Home, identity: Identity) -> Result<Self> {
         let trust_key = crypto::derive(&identity, TRUST_KEY_LABEL);
-        Self {
+        let writers = load_writers(&home)?;
+        Ok(Self {
             home,
             identity,
             trust_key,
+            writers,
+        })
+    }
+
+    /// The writer public keys this device has pinned.
+    #[must_use]
+    pub fn writers(&self) -> &[WriterId] {
+        &self.writers
+    }
+
+    /// Whether this device can write, i.e. whether a write key is present.
+    #[must_use]
+    pub fn can_write(&self) -> bool {
+        self.home.has_writer()
+    }
+
+    /// Unlocks the write key with its own passphrase. Reader-only homes fail
+    /// here with the reason and the remedy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there is no write key, when its file is open to
+    /// other users, or when the passphrase is wrong.
+    pub fn open_writer(home: &Home, passphrase: &SecretString) -> Result<WriteKey> {
+        ensure!(
+            home.has_writer(),
+            "this device is provisioned to read only: there is no write key at {}, so it \
+             cannot change a vault. Copy writer.age from a device that can write, or create one \
+             with: txc vault init",
+            home.writer_path().display()
+        );
+        let sealed = home::read_private(&home.writer_path(), WRITER_LIMIT, PRIVATE)?;
+        crypto::open_write_key(&sealed, passphrase, WRITER_LIMIT)
+    }
+
+    /// Whether a writer public key is pinned here.
+    #[must_use]
+    pub fn is_pinned(&self, id: &WriterId) -> bool {
+        self.writers.iter().any(|pinned| pinned == id)
+    }
+
+    /// Pins a writer public key (base64), so vaults it signs will open here.
+    /// Reads the current file, adds the key if new, and writes it back.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is malformed or the file cannot be written.
+    pub fn pin_writer(&mut self, id: &str) -> Result<bool> {
+        let parsed = crypto::parse_writer_id(id)?;
+        let mut ids = read_writer_lines(&self.home)?;
+        if ids.iter().any(|pinned| pinned == id.trim()) {
+            return Ok(false);
         }
+        ids.push(id.trim().to_string());
+        write_writer_lines(&self.home, &ids)?;
+        self.writers.push(parsed);
+        Ok(true)
+    }
+
+    /// Unpins a writer public key. Returns whether it was pinned.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be written.
+    pub fn unpin_writer(&mut self, id: &str) -> Result<bool> {
+        let mut ids = read_writer_lines(&self.home)?;
+        let before = ids.len();
+        ids.retain(|pinned| pinned != id.trim());
+        if ids.len() == before {
+            return Ok(false);
+        }
+        write_writer_lines(&self.home, &ids)?;
+        self.writers
+            .retain(|pinned| crypto::writer_id_string(pinned) != id.trim());
+        Ok(true)
     }
 
     /// Where the identity and the vaults live.
@@ -159,13 +240,13 @@ impl Keyring {
     ///
     /// Returns an error when the name is invalid or taken, when a public key
     /// is malformed, or when the files cannot be written.
-    pub fn create_vault(&self, name: &str, others: &[String]) -> Result<()> {
+    pub fn create_vault(&self, name: &str, others: &[String], write_key: &WriteKey) -> Result<()> {
         let path = self.home.vault_path(name)?;
         self.home.prepare()?;
         ensure!(!home::exists(&path), "a vault named {name} already exists");
 
         let vault = Vault::new(name, self.recipient_list(others)?);
-        let ciphertext = vault.seal()?;
+        let ciphertext = vault.seal(write_key)?;
         home::write_atomic(&path, &ciphertext, None)?;
 
         let mut trust = self.trust()?;
@@ -188,7 +269,7 @@ impl Keyring {
         let ciphertext = home::read_private(&path, VAULT_LIMIT, UNCHANGEABLE)?;
         let plaintext = crypto::decrypt(&self.identity, &ciphertext, VAULT_LIMIT)
             .with_context(|| format!("cannot open the vault {name}"))?;
-        let vault = Vault::from_plaintext(&plaintext)
+        let vault = Vault::from_plaintext(&plaintext, &self.writers)
             .with_context(|| format!("cannot open the vault {name}"))?;
         ensure!(
             vault.name() == name,
@@ -255,23 +336,43 @@ impl Keyring {
         Ok(self.trust()?.history(name))
     }
 
-    /// Deletes a vault and forgets it. A backup of its last version is kept
-    /// beside it, still encrypted.
+    /// Deletes a vault, keeping its last version beside it as a single
+    /// `.deleted` recovery file, and forgets it from the trust record and the
+    /// recent list.
     ///
     /// # Errors
     ///
-    /// Returns an error when the vault cannot be opened or removed.
+    /// Returns an error when a `.deleted` file is already there, or when the
+    /// files cannot be read, written or removed.
     pub fn delete_vault(&self, opened: &Opened) -> Result<()> {
+        let recovery = opened.path.with_extension("age.deleted");
+        // Do not overwrite a recovery file from an earlier delete of a vault
+        // that had this name: predictable beats clever, so refuse instead.
+        ensure!(
+            !home::exists(&recovery),
+            "a deleted copy is already at {}; move it aside before deleting another vault of \
+             this name",
+            recovery.display()
+        );
         home::write_atomic(
-            &opened.path.with_extension("age.deleted"),
+            &recovery,
             &home::read_private(&opened.path, VAULT_LIMIT, UNCHANGEABLE)?,
             None,
         )?;
         std::fs::remove_file(&opened.path)
             .with_context(|| format!("cannot remove {}", opened.path.display()))?;
+        // Remove the ordinary backup too, so only the one `.deleted` file is
+        // left where the operator expects a single recovery file.
+        let backup = opened.path.with_extension("age.bak");
+        if home::exists(&backup) {
+            std::fs::remove_file(&backup)
+                .with_context(|| format!("cannot remove {}", backup.display()))?;
+        }
         let mut trust = self.trust()?;
         trust.forget(&opened.vault);
-        trust.save(&self.home)
+        trust.save(&self.home)?;
+        // The recent list still names entries in a vault that is gone.
+        self.forget_vault(opened.vault.name())
     }
 
     /// The entries used most recently on this device, newest first. A list
@@ -319,6 +420,18 @@ impl Keyring {
         })
     }
 
+    /// Takes every entry of a vault off the recent list, for when the vault is
+    /// deleted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the list cannot be written.
+    pub fn forget_vault(&self, vault: &str) -> Result<()> {
+        recent::update(&self.home, &self.identity, |uses| {
+            uses.retain(|found| found.vault != vault);
+        })
+    }
+
     /// Moves an entry from an open vault into another vault, re-sealing its
     /// secrets to the destination's recipients.
     ///
@@ -332,7 +445,13 @@ impl Keyring {
     /// Returns an error when the destination is the source, does not exist or
     /// is not trusted, already holds an entry of that name, or when a secret
     /// cannot be re-sealed or a vault cannot be written.
-    pub fn move_entry(&self, source: &mut Opened, dest_vault: &str, name: &str) -> Result<()> {
+    pub fn move_entry(
+        &self,
+        source: &mut Opened,
+        dest_vault: &str,
+        name: &str,
+        write_key: &WriteKey,
+    ) -> Result<()> {
         let entry = source.entry(name)?.clone();
         ensure!(
             source.vault.name() != dest_vault,
@@ -367,13 +486,13 @@ impl Keyring {
 
         // The destination is written first: if this fails, the source still
         // holds the entry and nothing is lost.
-        dest.save(self)?;
+        dest.save(self, write_key)?;
 
         // Only now is it taken out of the source. Should this fail, the entry
         // is in both vaults, which is safe, and the message says how to
         // finish by hand.
         source.remove(name)?;
-        source.save(self).with_context(|| {
+        source.save(self, write_key).with_context(|| {
             format!(
                 "{:?} was copied to {dest_vault} but could not be removed from {}; \
                  remove it there with: txc vault rm {}/{}",
@@ -744,7 +863,7 @@ impl Opened {
     /// Returns an error when the file changed on disk since the vault was
     /// opened, when this identity is no longer among the recipients, or when
     /// the files cannot be written.
-    pub fn save(&mut self, keyring: &Keyring) -> Result<()> {
+    pub fn save(&mut self, keyring: &Keyring, write_key: &WriteKey) -> Result<()> {
         ensure!(
             self.vault.recipients().contains(&keyring.public_key()),
             "this identity is not among the vault's recipients, so saving would lock it out"
@@ -757,7 +876,7 @@ impl Opened {
         );
 
         let before = self.vault.advance();
-        let written = self.vault.seal().and_then(|ciphertext| {
+        let written = self.vault.seal(write_key).and_then(|ciphertext| {
             home::write_atomic(&self.path, &ciphertext, Some(UNCHANGEABLE))?;
             Ok(ciphertext)
         });
@@ -770,10 +889,47 @@ impl Opened {
         };
         self.digest = crypto::sha256(&[&ciphertext]);
 
+        // A write records the new bytes as trusted, but logs a decision only
+        // when the recipients or the writer changed (see D3): a routine edit is
+        // not a trust decision and must not evict the genuine ones from the log.
+        let writer = crypto::writer_id_string(&crypto::writer_id(write_key));
         let mut trust = keyring.trust()?;
-        trust.pin(&self.vault, &self.digest);
+        trust.record_write(&self.vault, &self.digest, &writer);
         trust.save(keyring.home())
     }
+}
+
+/// Reads the pinned writer keys, one base64 per line. An absent file is an
+/// empty set, which fails closed for version 2 vaults.
+fn load_writers(home: &Home) -> Result<Vec<WriterId>> {
+    let mut writers = Vec::new();
+    for line in read_writer_lines(home)? {
+        writers.push(crypto::parse_writer_id(&line)?);
+    }
+    Ok(writers)
+}
+
+/// The lines of the writers file, trimmed and without blanks. Absent is empty.
+fn read_writer_lines(home: &Home) -> Result<Vec<String>> {
+    let path = home.writers_path();
+    if !home::exists(&path) {
+        return Ok(Vec::new());
+    }
+    let bytes = home::read_private(&path, WRITERS_LIMIT, PRIVATE)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| anyhow!("the writers file is damaged"))?;
+    Ok(text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+/// Writes the writers file, one key per line, owner readable only.
+fn write_writer_lines(home: &Home, ids: &[String]) -> Result<()> {
+    let mut text = ids.join("\n");
+    text.push('\n');
+    home::write_atomic(&home.writers_path(), text.as_bytes(), None)
 }
 
 /// "a login", "an API key": the kind's label with its article, for messages.
@@ -804,9 +960,11 @@ pub(crate) mod tests {
         SecretString::from(text.to_string())
     }
 
-    /// A keyring on a fresh home, made quickly: the identity file is sealed
-    /// with a low work factor rather than going through `create`.
-    pub fn keyring(label: &str) -> (Scratch, Keyring) {
+    /// A keyring on a fresh home, made quickly: the identity and write key are
+    /// sealed with a low work factor rather than going through `create`. The
+    /// write key is pinned, so vaults it signs open here, and returned so tests
+    /// can write with it.
+    pub fn keyring(label: &str) -> (Scratch, Keyring, WriteKey) {
         let scratch = Scratch::new(label);
         let home = Home::at(&scratch.0);
         home.prepare().unwrap();
@@ -817,8 +975,20 @@ pub(crate) mod tests {
             None,
         )
         .unwrap();
+        let write_key = crypto::new_write_key();
+        home::write_atomic(
+            &home.writer_path(),
+            &crypto::seal_write_key_for_test(&write_key, PASSPHRASE),
+            None,
+        )
+        .unwrap();
+        write_writer_lines(
+            &home,
+            &[crypto::writer_id_string(&crypto::writer_id(&write_key))],
+        )
+        .unwrap();
         let keyring = Keyring::unlock(&home, &secret(PASSPHRASE)).unwrap();
-        (scratch, keyring)
+        (scratch, keyring, write_key)
     }
 
     fn login(name: &str, password: &str) -> NewEntry {
@@ -834,8 +1004,8 @@ pub(crate) mod tests {
 
     #[test]
     fn a_secret_field_cannot_be_stored_in_the_clear_nor_a_plain_one_sealed() {
-        let (_scratch, keyring) = keyring("sensitivity");
-        keyring.create_vault("personal", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("sensitivity");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
         let mut vault = keyring.open("personal").unwrap();
 
         let card = |plain: Vec<(&str, &str)>, secrets: Vec<(&str, &str)>| NewEntry {
@@ -889,13 +1059,13 @@ pub(crate) mod tests {
 
     #[test]
     fn a_favourite_is_saved_in_the_vault_without_touching_the_updated_time() {
-        let (_scratch, keyring) = keyring("favourite");
-        keyring.create_vault("personal", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("favourite");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
         let mut vault = keyring.open("personal").unwrap();
         vault.add(login("site", "p")).unwrap();
         let updated = vault.entry("site").unwrap().updated.clone();
         vault.set_favourite("site", true).unwrap();
-        vault.save(&keyring).unwrap();
+        vault.save(&keyring, &write_key).unwrap();
 
         let vault = keyring.open("personal").unwrap();
         let entry = vault.entry("site").unwrap();
@@ -905,7 +1075,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_recent_list_follows_renames_and_removals() {
-        let (_scratch, keyring) = keyring("recent-uses");
+        let (_scratch, keyring, _write_key) = keyring("recent-uses");
         keyring.record_use("personal", "one").unwrap();
         keyring.record_use("personal", "two").unwrap();
         keyring.rename_use("personal", "one", "uno").unwrap();
@@ -919,17 +1089,25 @@ pub(crate) mod tests {
     fn an_entry_moves_between_vaults_and_its_secret_is_resealed() {
         // The destination is encrypted to a second identity as well, so the
         // move must re-seal the secret to that key, not just copy the bytes.
-        let (_scratch, keyring) = keyring("move");
-        let (_other_scratch, other) = self::keyring("move-other");
-        keyring.create_vault("personal", &[]).unwrap();
-        keyring.create_vault("work", &[other.public_key()]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("move");
+        let (_other_scratch, mut other, _other_write_key) = self::keyring("move-other");
+        // The other device pins this device's writer, so a vault it signed opens.
+        other
+            .pin_writer(&crypto::writer_id_string(&crypto::writer_id(&write_key)))
+            .unwrap();
+        keyring.create_vault("personal", &[], &write_key).unwrap();
+        keyring
+            .create_vault("work", &[other.public_key()], &write_key)
+            .unwrap();
 
         let mut personal = keyring.open("personal").unwrap();
         personal.add(login("GitHub", "hunter2")).unwrap();
-        personal.save(&keyring).unwrap();
+        personal.save(&keyring, &write_key).unwrap();
 
         let mut personal = keyring.open("personal").unwrap();
-        keyring.move_entry(&mut personal, "work", "GitHub").unwrap();
+        keyring
+            .move_entry(&mut personal, "work", "GitHub", &write_key)
+            .unwrap();
 
         // Gone from the source, present in the destination, still openable.
         assert!(keyring.open("personal").unwrap().entry("GitHub").is_err());
@@ -965,26 +1143,26 @@ pub(crate) mod tests {
 
     #[test]
     fn a_move_is_refused_when_the_name_is_taken_or_the_vault_is_the_same() {
-        let (_scratch, keyring) = keyring("move-refuse");
-        keyring.create_vault("personal", &[]).unwrap();
-        keyring.create_vault("work", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("move-refuse");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
+        keyring.create_vault("work", &[], &write_key).unwrap();
         let mut personal = keyring.open("personal").unwrap();
         personal.add(login("site", "p")).unwrap();
-        personal.save(&keyring).unwrap();
+        personal.save(&keyring, &write_key).unwrap();
 
         let mut personal = keyring.open("personal").unwrap();
         assert!(
             keyring
-                .move_entry(&mut personal, "personal", "site")
+                .move_entry(&mut personal, "personal", "site", &write_key)
                 .is_err()
         );
 
         let mut work = keyring.open("work").unwrap();
         work.add(login("site", "other")).unwrap();
-        work.save(&keyring).unwrap();
+        work.save(&keyring, &write_key).unwrap();
         let mut personal = keyring.open("personal").unwrap();
         let error = keyring
-            .move_entry(&mut personal, "work", "site")
+            .move_entry(&mut personal, "work", "site", &write_key)
             .unwrap_err()
             .to_string();
         assert!(error.contains("already has an entry"), "{error}");
@@ -994,12 +1172,12 @@ pub(crate) mod tests {
 
     #[test]
     fn a_secret_saved_in_a_vault_comes_back_after_reopening() {
-        let (_scratch, keyring) = keyring("round-trip");
-        keyring.create_vault("personal", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("round-trip");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
 
         let mut vault = keyring.open("personal").unwrap();
         vault.add(login("GitHub", "hunter2")).unwrap();
-        vault.save(&keyring).unwrap();
+        vault.save(&keyring, &write_key).unwrap();
 
         let vault = keyring.open("personal").unwrap();
         assert_eq!(vault.vault().generation(), 2);
@@ -1017,18 +1195,25 @@ pub(crate) mod tests {
 
     #[test]
     fn the_wrong_passphrase_does_not_unlock() {
-        let (scratch, _) = keyring("wrong-passphrase");
+        let (scratch, _, _) = keyring("wrong-passphrase");
         let home = Home::at(&scratch.0);
         assert!(Keyring::unlock(&home, &secret("not the passphrase at all")).is_err());
     }
 
     #[test]
     fn a_vault_from_somewhere_else_must_be_trusted_before_it_opens() {
-        let (_scratch, keyring) = keyring("foreign");
+        let (_scratch, mut keyring, _write_key) = keyring("foreign");
         // Another identity creates a vault encrypted to this one too.
-        let (_other_scratch, other) = self::keyring("foreign-other");
+        let (_other_scratch, other, other_write_key) = self::keyring("foreign-other");
         other
-            .create_vault("shared", &[keyring.public_key()])
+            .create_vault("shared", &[keyring.public_key()], &other_write_key)
+            .unwrap();
+        // Pin the other device's writer, so the signature check passes and the
+        // trust layer is what decides, which is the point of this test.
+        keyring
+            .pin_writer(&crypto::writer_id_string(&crypto::writer_id(
+                &other_write_key,
+            )))
             .unwrap();
         std::fs::create_dir_all(keyring.home().vaults_dir()).unwrap();
         std::fs::copy(
@@ -1048,14 +1233,14 @@ pub(crate) mod tests {
 
     #[test]
     fn an_old_copy_put_back_is_refused() {
-        let (_scratch, keyring) = keyring("rollback");
-        keyring.create_vault("personal", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("rollback");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
         let path = keyring.home().vault_path("personal").unwrap();
         let original = std::fs::read(&path).unwrap();
 
         let mut vault = keyring.open("personal").unwrap();
         vault.add(login("site", "one")).unwrap();
-        vault.save(&keyring).unwrap();
+        vault.save(&keyring, &write_key).unwrap();
 
         home::write_atomic(&path, &original, None).unwrap();
         let error = keyring.open("personal").unwrap_err();
@@ -1067,24 +1252,24 @@ pub(crate) mod tests {
 
     #[test]
     fn a_vault_changed_underneath_is_not_overwritten() {
-        let (_scratch, keyring) = keyring("concurrent");
-        keyring.create_vault("personal", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("concurrent");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
 
         let mut first = keyring.open("personal").unwrap();
         let mut second = keyring.open("personal").unwrap();
         first.add(login("one", "1")).unwrap();
-        first.save(&keyring).unwrap();
+        first.save(&keyring, &write_key).unwrap();
 
         second.add(login("two", "2")).unwrap();
-        let error = second.save(&keyring).unwrap_err().to_string();
+        let error = second.save(&keyring, &write_key).unwrap_err().to_string();
         assert!(error.contains("changed on disk"), "{error}");
     }
 
     #[test]
     fn swapping_one_vault_file_for_another_is_noticed() {
-        let (_scratch, keyring) = keyring("swap");
-        keyring.create_vault("personal", &[]).unwrap();
-        keyring.create_vault("work", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("swap");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
+        keyring.create_vault("work", &[], &write_key).unwrap();
         let home = keyring.home();
         std::fs::copy(
             home.vault_path("work").unwrap(),
@@ -1097,16 +1282,20 @@ pub(crate) mod tests {
 
     #[test]
     fn adding_a_recipient_reseals_every_secret_for_them() {
-        let (_scratch, keyring) = keyring("recipients");
-        let (_other_scratch, other) = self::keyring("recipients-other");
-        keyring.create_vault("personal", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("recipients");
+        let (_other_scratch, mut other, _other_write_key) = self::keyring("recipients-other");
+        // The other device pins this device's writer, so the shared vault opens.
+        other
+            .pin_writer(&crypto::writer_id_string(&crypto::writer_id(&write_key)))
+            .unwrap();
+        keyring.create_vault("personal", &[], &write_key).unwrap();
 
         let mut vault = keyring.open("personal").unwrap();
         vault.add(login("site", "for both of us")).unwrap();
         vault
             .set_recipients(&keyring, &[other.public_key()])
             .unwrap();
-        vault.save(&keyring).unwrap();
+        vault.save(&keyring, &write_key).unwrap();
 
         std::fs::create_dir_all(other.home().vaults_dir()).unwrap();
         std::fs::copy(
@@ -1127,8 +1316,8 @@ pub(crate) mod tests {
 
     #[test]
     fn entries_keep_their_primary_secret_and_unique_names() {
-        let (_scratch, keyring) = keyring("rules");
-        keyring.create_vault("personal", &[]).unwrap();
+        let (_scratch, keyring, write_key) = keyring("rules");
+        keyring.create_vault("personal", &[], &write_key).unwrap();
         let mut vault = keyring.open("personal").unwrap();
 
         let mut missing = login("site", "x");
@@ -1164,7 +1353,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_passphrase_can_be_changed() {
-        let (scratch, keyring) = keyring("passphrase");
+        let (scratch, keyring, _write_key) = keyring("passphrase");
         keyring
             .change_passphrase(&secret("a whole new passphrase"))
             .unwrap();

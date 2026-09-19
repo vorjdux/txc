@@ -47,6 +47,7 @@ pub mod clipboard;
 pub mod command;
 mod crypto;
 mod document;
+mod grant;
 pub mod harden;
 mod home;
 mod keyring;
@@ -57,6 +58,7 @@ mod trust;
 
 #[cfg(debug_assertions)]
 pub use crypto::TEST_WORK_FACTOR_VARIABLE;
+pub(crate) use crypto::WriteKey;
 pub use document::Vault;
 pub use home::{HOME_VARIABLE, Home};
 pub use keyring::{Change, Inspection, Keyring, NewEntry, NotTrusted, Opened};

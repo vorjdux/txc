@@ -6,6 +6,75 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-19
+
+The read/write split. Reading a vault and changing one are now separate
+powers, so a device, or an automated job, can be given the ability to read
+without the ability to write.
+
+### Security
+
+- A vault is now signed by a **write key**, an Ed25519 key kept apart from the
+  identity and protected by its own passphrase. The signature is checked when a
+  vault is parsed, before any trust decision, against the writer keys this
+  device has pinned. A vault signed by a key you have not pinned does not open,
+  and a device that holds only the identity, such as one given
+  `--passphrase-file`, cannot produce a vault that any txc will open. This
+  closes the case where a single `recipients --add`, or a `move` into a more
+  widely shared vault, by anything holding the identity, granted an attacker
+  retroactive read access. The write passphrase is never read from
+  `--passphrase-file`.
+- Because the check does not rest on `trust.json`, which a holder of the
+  identity can forge, forging the trust record no longer helps: an unsigned or
+  wrongly signed vault is still refused.
+
+### Added
+
+- `txc vault writer` prints this device's writer public key and fingerprint.
+- `txc vault writers` lists the pinned writer keys, and `--add`/`--remove`
+  pin or unpin one (an authorization change, so it needs a terminal or `--yes`).
+  Several keys can be pinned, so two of your devices can both write and a
+  colleague's writer can be trusted.
+- `txc vault writer --rotate` replaces the write key with a fresh one and
+  re-signs every vault. It unlocks the current write key first, so a holder of
+  the identity alone cannot rotate to a key they control, and it keeps the old
+  key pinned while re-signing, so a vault is always signed by a pinned key and
+  never stops opening, even if the rotation is interrupted. Retire the old key
+  with `writers --remove` once every device has the new one.
+- `txc vault upgrade [VAULT]` re-signs vaults still in the old format.
+- `txc vault delete <VAULT>` removes a whole vault, keeping its last version
+  beside it as a single `.deleted` recovery file and printing the `mv` that
+  restores it. It opens the vault first, so it must be trusted and its
+  signature must verify, needs the write key like any change, and confirms by
+  the vault's name typed at a terminal or `--yes`. It refuses rather than
+  overwrite an existing recovery file, and clears the vault from the trust
+  record and the recent list.
+- `txc vault grant <entry> --to <recipient> --expires 1h` seals one secret to
+  another key, and `txc vault redeem <file>` opens it, so an automated host can
+  be given exactly one secret without the identity or a passphrase. `--to-file`
+  bundles a fresh key for the quick local case, at the cost that the file then
+  is the secret. A grant is a snapshot and cannot be revoked: rotating the
+  secret is the only real revocation, and the expiry is hygiene that `redeem`
+  checks. Issuing a grant is a read, so it needs no write key.
+- `txc vault init --reader-only` provisions a device that can read but never
+  write: an identity and an empty writers list, and no write key.
+- `--write-passphrase-file <PATH>`, mirroring `--passphrase-file`, for a device
+  that legitimately writes without a person present. Its help says plainly that
+  giving it on a machine where untrusted code runs as you removes the split.
+
+### Changed
+
+- `txc vault init` now also creates the write key, asking for its own
+  passphrase, and creates it too on an existing 0.6.0 home that has none. Run it
+  once after upgrading.
+- The vault file format is now version 2, carrying the writer and the
+  signature. This release reads version 1 as well and writes version 2; a
+  future release will stop reading version 1. `rage -d` still opens a vault, as
+  the signature is an ordinary field.
+- The trust decision log now records a write only when the recipients or the
+  writer changed, so routine edits no longer push the genuine decisions out of
+  the capped log.
+
 ## [0.6.0] - 2026-09-18
 
 ### Security

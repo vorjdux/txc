@@ -24,7 +24,9 @@ use crate::tui::textarea::TextArea;
 use crate::vault::clipboard::{DEFAULT_CLEAR_SECONDS, Held};
 use crate::vault::model::{DEFAULT_VAULT, Entry, Kind, Sensitivity, check_vault_name};
 use crate::vault::prompt::check_new_passphrase;
-use crate::vault::{Change, Home, Inspection, Keyring, NewEntry, NotTrusted, Opened, Use, harden};
+use crate::vault::{
+    Change, Home, Inspection, Keyring, NewEntry, NotTrusted, Opened, Use, WriteKey, harden,
+};
 
 pub use form::{EntryForm, FormAction, SecretInput};
 
@@ -143,6 +145,14 @@ pub struct NoteView {
 enum Job {
     Unlock,
     Create,
+    UnlockWriter,
+}
+
+/// What a background job produced: an unlocked identity, or an unlocked write
+/// key.
+enum Unlocked {
+    Identity(Keyring),
+    Writer(WriteKey),
 }
 
 /// Work running in the background, and when it started.
@@ -154,7 +164,7 @@ pub struct Busy {
     /// When it started.
     pub started: Instant,
     job: Job,
-    receiver: Receiver<Result<Keyring, String>>,
+    receiver: Receiver<Result<Unlocked, String>>,
 }
 
 /// A window over the vault screen.
@@ -162,6 +172,13 @@ pub enum Dialog {
     /// Asking for the passphrase.
     Unlock {
         /// The passphrase typed.
+        passphrase: SecretInput,
+        /// Why the last attempt failed.
+        error: Option<String>,
+    },
+    /// Asking for the write passphrase, to enable changes this session.
+    UnlockWriter {
+        /// The write passphrase typed.
         passphrase: SecretInput,
         /// Why the last attempt failed.
         error: Option<String>,
@@ -219,6 +236,9 @@ pub enum Dialog {
 pub struct VaultScreen {
     home: Result<Home, String>,
     keyring: Option<Keyring>,
+    /// The write key for this session, unlocked on the first change. `None`
+    /// until then, and always `None` on a reader-only device.
+    write_key: Option<WriteKey>,
     vaults: Vec<LoadedVault>,
     locked_names: Vec<String>,
     recent: Vec<Use>,
@@ -253,6 +273,7 @@ impl VaultScreen {
         Self {
             home: home.map_err(|error| format!("{error:#}")),
             keyring: None,
+            write_key: None,
             vaults: Vec::new(),
             locked_names: Vec::new(),
             recent: Vec::new(),
@@ -674,7 +695,9 @@ impl VaultScreen {
             return;
         }
         match self.dialog.as_mut() {
-            Some(Dialog::Unlock { passphrase, .. }) => passphrase.insert_str(text, false),
+            Some(Dialog::Unlock { passphrase, .. } | Dialog::UnlockWriter { passphrase, .. }) => {
+                passphrase.insert_str(text, false);
+            }
             Some(Dialog::CreateIdentity {
                 passphrase,
                 again,
@@ -1062,14 +1085,16 @@ impl VaultScreen {
         vault: usize,
         change: impl FnOnce(&mut Opened) -> anyhow::Result<()>,
     ) -> Result<(), String> {
+        self.require_write_key()?;
         let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
+        let write_key = self.write_key.as_ref().ok_or("the write key is locked")?;
         let opened = self
             .vaults
             .get_mut(vault)
             .and_then(|loaded| loaded.opened.as_mut())
             .ok_or("the vault is not open")?;
         change(opened).map_err(|error| format!("{error:#}"))?;
-        if let Err(error) = opened.save(keyring) {
+        if let Err(error) = opened.save(keyring, write_key) {
             let message = format!("{error:#}");
             self.reload(vault);
             return Err(message);
@@ -1199,6 +1224,7 @@ impl VaultScreen {
     // (via `get_mut`, which returns before this point on failure).
     #[allow(clippy::indexing_slicing)]
     fn do_move(&mut self, source: usize, entry: &str, dest: usize) -> Result<String, String> {
+        self.require_write_key()?;
         let dest_name = self
             .vaults
             .get(dest)
@@ -1206,13 +1232,14 @@ impl VaultScreen {
             .ok_or("that vault is gone")?;
         let result = {
             let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
+            let write_key = self.write_key.as_ref().ok_or("the write key is locked")?;
             let source = self
                 .vaults
                 .get_mut(source)
                 .and_then(|vault| vault.opened.as_mut())
                 .ok_or("the vault is not open")?;
             keyring
-                .move_entry(source, &dest_name, entry)
+                .move_entry(source, &dest_name, entry, write_key)
                 .map_err(|error| format!("{error:#}"))
         };
         // Both files may have changed on disk; read them back so what is shown
@@ -1271,8 +1298,11 @@ impl VaultScreen {
             .name("txc-vault-unlock".to_string())
             .spawn(move || {
                 let result = match job {
-                    Job::Unlock => Keyring::unlock(&home, &passphrase),
-                    Job::Create => create_identity(&home, &passphrase),
+                    Job::Unlock => Keyring::unlock(&home, &passphrase).map(Unlocked::Identity),
+                    Job::Create => create_identity(&home, &passphrase).map(Unlocked::Identity),
+                    Job::UnlockWriter => {
+                        Keyring::open_writer(&home, &passphrase).map(Unlocked::Writer)
+                    }
                 };
                 drop(passphrase);
                 sender
@@ -1284,6 +1314,7 @@ impl VaultScreen {
                 let (title, message) = match job {
                     Job::Unlock => ("Unlocking", "Checking your passphrase"),
                     Job::Create => ("Creating your identity", "Protecting your new key"),
+                    Job::UnlockWriter => ("Unlocking the write key", "Checking your passphrase"),
                 };
                 self.busy = Some(Busy {
                     title,
@@ -1297,9 +1328,9 @@ impl VaultScreen {
         }
     }
 
-    fn finish_job(&mut self, job: Job, result: Result<Keyring, String>) {
+    fn finish_job(&mut self, job: Job, result: Result<Unlocked, String>) {
         match result {
-            Ok(keyring) => {
+            Ok(Unlocked::Identity(keyring)) => {
                 self.dialog = None;
                 self.recent = keyring.recent();
                 self.keyring = Some(keyring);
@@ -1310,11 +1341,22 @@ impl VaultScreen {
                 self.pane = Pane::Items;
                 self.last_key = Instant::now();
                 if job == Job::Create {
-                    self.status = "created your identity and the personal vault".to_string();
+                    self.status = "created your identity; run: txc vault init \
+                                   to add your write key and personal vault"
+                        .to_string();
                 }
             }
+            Ok(Unlocked::Writer(write_key)) => {
+                self.dialog = None;
+                self.write_key = Some(write_key);
+                self.last_key = Instant::now();
+                self.status = "the write key is unlocked; repeat the change".to_string();
+            }
             Err(message) => match self.dialog.as_mut() {
-                Some(Dialog::Unlock { passphrase, error }) => {
+                Some(
+                    Dialog::Unlock { passphrase, error }
+                    | Dialog::UnlockWriter { passphrase, error },
+                ) => {
                     passphrase.clear();
                     *error = Some(message);
                 }
@@ -1324,6 +1366,35 @@ impl VaultScreen {
                 }
                 _ => self.status = message,
             },
+        }
+    }
+
+    /// Ensures the write key is unlocked before a change. When it is not, opens
+    /// the write passphrase dialog (or reports a reader-only device) and returns
+    /// an error, so the caller stops and the operator unlocks and repeats.
+    fn require_write_key(&mut self) -> Result<(), String> {
+        if self.write_key.is_some() {
+            return Ok(());
+        }
+        if !self.keyring.as_ref().is_some_and(Keyring::can_write) {
+            return Err("this device is provisioned to read only; \
+                        changes must be made on a device that has the write key"
+                .to_string());
+        }
+        self.dialog = Some(Dialog::UnlockWriter {
+            passphrase: SecretInput::default(),
+            error: None,
+        });
+        Err("unlock the write key to make changes, then repeat that".to_string())
+    }
+
+    /// Unlocks the write key directly, for tests, so a write-flow test does not
+    /// have to drive the write passphrase dialog every time.
+    #[cfg(test)]
+    pub(crate) fn unlock_writer_for_test(&mut self, passphrase: &str) {
+        if let Ok(home) = &self.home {
+            self.write_key =
+                Keyring::open_writer(home, &SecretString::from(passphrase.to_string())).ok();
         }
     }
 
@@ -1424,6 +1495,37 @@ impl VaultScreen {
                     Some(Dialog::Unlock { passphrase, error })
                 }
                 _ => Some(Dialog::Unlock { passphrase, error }),
+            },
+
+            Dialog::UnlockWriter {
+                mut passphrase,
+                error,
+            } => match (key.code, control) {
+                (KeyCode::Esc, _) => None,
+                (KeyCode::Enter, _) if passphrase.is_empty() => Some(Dialog::UnlockWriter {
+                    passphrase,
+                    error: Some("type your write passphrase".to_string()),
+                }),
+                (KeyCode::Enter, _) => {
+                    self.start_job(Job::UnlockWriter, passphrase.secret());
+                    Some(Dialog::UnlockWriter {
+                        passphrase,
+                        error: None,
+                    })
+                }
+                (KeyCode::Char('u'), true) => {
+                    passphrase.clear();
+                    Some(Dialog::UnlockWriter { passphrase, error })
+                }
+                (KeyCode::Char(ch), false) => {
+                    passphrase.insert(ch);
+                    Some(Dialog::UnlockWriter { passphrase, error })
+                }
+                (KeyCode::Backspace, _) => {
+                    passphrase.backspace();
+                    Some(Dialog::UnlockWriter { passphrase, error })
+                }
+                _ => Some(Dialog::UnlockWriter { passphrase, error }),
             },
 
             Dialog::CreateIdentity {
@@ -1750,9 +1852,11 @@ impl VaultScreen {
 
     fn create_vault(&mut self, name: &str) -> Result<(), String> {
         check_vault_name(name).map_err(|error| error.to_string())?;
+        self.require_write_key()?;
         let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
+        let write_key = self.write_key.as_ref().ok_or("the write key is locked")?;
         keyring
-            .create_vault(name, &[])
+            .create_vault(name, &[], write_key)
             .map_err(|error| format!("{error:#}"))?;
         self.load_vaults();
         if let Some(index) = self.vaults.iter().position(|vault| vault.name == name) {
@@ -1786,13 +1890,12 @@ impl Drop for VaultScreen {
     }
 }
 
-/// Creates the identity and, unless there already is one, the personal vault.
+/// Creates the identity. The write key and the personal vault are added by
+/// `txc vault init`, which collects the separate write passphrase; the
+/// interface cannot ask for a second passphrase during creation, so it leaves
+/// that step to the command line.
 fn create_identity(home: &Home, passphrase: &SecretString) -> anyhow::Result<Keyring> {
-    let keyring = Keyring::create(home, passphrase)?;
-    if !home.vault_names()?.iter().any(|name| name == DEFAULT_VAULT) {
-        keyring.create_vault(DEFAULT_VAULT, &[])?;
-    }
-    Ok(keyring)
+    Keyring::create(home, passphrase)
 }
 
 /// Whether an entry answers the search: its name, kind, vault, tags or any
@@ -1854,14 +1957,17 @@ pub(crate) mod tests {
     /// A screen on a fresh vault directory holding an identity and the
     /// personal vault, not yet unlocked.
     pub fn locked(label: &str) -> (Scratch, VaultScreen) {
-        let (scratch, keyring) = keyring(label);
-        keyring.create_vault(DEFAULT_VAULT, &[]).unwrap();
+        let (scratch, keyring, write_key) = keyring(label);
+        keyring
+            .create_vault(DEFAULT_VAULT, &[], &write_key)
+            .unwrap();
         drop(keyring);
         let screen = VaultScreen::new(Ok(Home::at(&scratch.0)));
         (scratch, screen)
     }
 
-    /// The same, unlocked through the passphrase dialog.
+    /// The same, unlocked through the passphrase dialog, with the write key
+    /// unlocked too so changes go through without the extra dialog in tests.
     pub fn unlocked(label: &str) -> (Scratch, VaultScreen) {
         let (scratch, mut screen) = locked(label);
         screen.enter();
@@ -1869,6 +1975,7 @@ pub(crate) mod tests {
         press(&mut screen, KeyCode::Enter);
         settle(&mut screen);
         assert!(screen.is_unlocked(), "{:?}", screen.status);
+        screen.unlock_writer_for_test(PASSPHRASE);
         (scratch, screen)
     }
 

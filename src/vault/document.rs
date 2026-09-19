@@ -10,17 +10,20 @@ use std::fmt;
 
 use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::{Result, anyhow, ensure};
-use data_encoding::{BASE32_NOPAD, BASE64};
+use data_encoding::BASE64;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::vault::crypto::{self, Key, Recipient};
+use crate::vault::crypto::{self, Key, Recipient, WriteKey, WriterId};
 use crate::vault::model::{
     Entry, MAX_ENTRIES, MAX_SECRET_BYTES, check_plain_value, check_vault_name,
 };
 
 const FORMAT: &str = "txc-vault";
-const VERSION: u32 = 1;
+/// The current on-disk version. Version 1 (v0.6.0 and earlier) carries no
+/// writer or signature; version 2 is signed by a write key. This release reads
+/// both and writes only version 2.
+const VERSION: u32 = 2;
 const PIN_LABEL: &[u8] = b"txc vault pin v1";
 
 /// The most recipients a vault may be encrypted to.
@@ -35,6 +38,12 @@ pub const MAX_RECIPIENTS: usize = 64;
 pub struct Vault {
     id: String,
     name: String,
+    /// The format version this vault was read as. A vault read as version 1
+    /// carries no signature and is upgraded to version 2 on the next write.
+    version: u32,
+    /// The writer key that signed the version read, base64, or empty for a
+    /// version 1 vault. Used to tell whether a re-sign is still needed.
+    writer: String,
     generation: u64,
     /// Known only to those who can decrypt the vault. The trust record pins
     /// a tag made with it, which nobody holding just the public keys can
@@ -71,6 +80,13 @@ struct Stored {
     created: String,
     updated: String,
     entries: Vec<Entry>,
+    /// The writer's Ed25519 public key, base64. Absent in version 1.
+    #[serde(default)]
+    writer: String,
+    /// Ed25519 over the canonical bytes of this record with `signature` empty.
+    /// Absent in version 1.
+    #[serde(default)]
+    signature: String,
 }
 
 impl Drop for Stored {
@@ -92,6 +108,8 @@ struct StoredRef<'a> {
     created: &'a str,
     updated: &'a str,
     entries: &'a [Entry],
+    writer: &'a str,
+    signature: &'a str,
 }
 
 impl Vault {
@@ -101,6 +119,8 @@ impl Vault {
         Self {
             id: uuid::Uuid::new_v4().simple().to_string(),
             name: name.to_string(),
+            version: VERSION,
+            writer: String::new(),
             generation: 1,
             key: crypto::random_key(),
             recipients,
@@ -110,14 +130,20 @@ impl Vault {
         }
     }
 
-    /// Reads a decrypted vault, checking every part of it.
-    pub(crate) fn from_plaintext(plaintext: &[u8]) -> Result<Self> {
+    /// Reads a decrypted vault, checking every part of it, and for a version 2
+    /// vault verifying its signature against a pinned writer.
+    ///
+    /// The signature check happens here, where there is no trust record to
+    /// consult and no flag to pass: a version 2 vault whose signature does not
+    /// verify against a pinned writer is not a vault, and no later decision can
+    /// rescue it. `writers` is the set this device has pinned.
+    pub(crate) fn from_plaintext(plaintext: &[u8], writers: &[WriterId]) -> Result<Self> {
         let mut stored: Stored = serde_json::from_slice(plaintext).map_err(|_| {
             anyhow!("the vault's contents are not in a form this version of txc reads")
         })?;
         ensure!(stored.format == FORMAT, "this is not a txc vault");
         ensure!(
-            stored.version == VERSION,
+            stored.version == 1 || stored.version == VERSION,
             "the vault was written in format {}, which this version of txc does not read; upgrade txc",
             stored.version
         );
@@ -170,9 +196,36 @@ impl Vault {
         check_plain_value("created", &stored.created)?;
         check_plain_value("updated", &stored.updated)?;
 
+        // The signature check for a version 2 vault. A version 1 vault carries
+        // no signature and falls back to the trust layer alone, until the next
+        // write upgrades it; this release still reads it.
+        if stored.version == VERSION {
+            ensure!(
+                !stored.writer.is_empty() && !stored.signature.is_empty(),
+                "the vault {} is missing its signature",
+                stored.name
+            );
+            let writer = crypto::parse_writer_id(&stored.writer)?;
+            ensure!(
+                writers.iter().any(|pinned| pinned == &writer),
+                "the vault {} was written by a key this device does not know; \
+                 pin it with: txc vault writers --add",
+                stored.name
+            );
+            let signature = decode_signature(&stored.signature)?;
+            let canonical = canonical_bytes(&stored)?;
+            ensure!(
+                crypto::verify_signature(&writer, &canonical, &signature),
+                "the vault {} was changed by something that does not hold its write key",
+                stored.name
+            );
+        }
+
         Ok(Self {
             id: std::mem::take(&mut stored.id),
             name: std::mem::take(&mut stored.name),
+            version: stored.version,
+            writer: std::mem::take(&mut stored.writer),
             generation: stored.generation,
             key,
             recipients: std::mem::take(&mut stored.recipients),
@@ -182,11 +235,31 @@ impl Vault {
         })
     }
 
-    /// Serialises the vault. The result holds the vault's key, so it is
-    /// wiped when dropped.
-    pub(crate) fn to_plaintext(&self) -> Result<Zeroizing<Vec<u8>>> {
+    /// Whether this vault was read in an older format and will be upgraded to
+    /// the current one on the next write.
+    #[must_use]
+    pub(crate) const fn needs_upgrade(&self) -> bool {
+        self.version < VERSION
+    }
+
+    /// The writer key that signed the version read, base64, or empty for a
+    /// version 1 vault.
+    #[must_use]
+    pub(crate) fn writer(&self) -> &str {
+        &self.writer
+    }
+
+    /// Serialises the vault as version 2, signed by `write_key`. The result
+    /// holds the vault's key, so it is wiped when dropped.
+    ///
+    /// The signature covers every field of the record, `writer` and `version`
+    /// included, with `signature` itself empty. Verification in
+    /// [`from_plaintext`](Self::from_plaintext) reconstructs exactly these
+    /// bytes, so the two sides cannot drift within a version.
+    pub(crate) fn to_plaintext(&self, write_key: &WriteKey) -> Result<Zeroizing<Vec<u8>>> {
         let key = Zeroizing::new(BASE64.encode(&self.key[..]));
-        let stored = StoredRef {
+        let writer = crypto::writer_id_string(&crypto::writer_id(write_key));
+        let mut stored = StoredRef {
             format: FORMAT,
             version: VERSION,
             id: &self.id,
@@ -197,13 +270,18 @@ impl Vault {
             created: &self.created,
             updated: &self.updated,
             entries: &self.entries,
+            writer: &writer,
+            signature: "",
         };
+        let canonical = serde_json::to_vec(&stored)?;
+        let signature = BASE64.encode(&crypto::sign(write_key, &canonical));
+        stored.signature = &signature;
         Ok(Zeroizing::new(serde_json::to_vec(&stored)?))
     }
 
-    /// Encrypts the whole vault to its recipients.
-    pub(crate) fn seal(&self) -> Result<Vec<u8>> {
-        crypto::encrypt(&self.recipient_keys()?, &self.to_plaintext()?)
+    /// Encrypts the whole vault to its recipients, signed by `write_key`.
+    pub(crate) fn seal(&self, write_key: &WriteKey) -> Result<Vec<u8>> {
+        crypto::encrypt(&self.recipient_keys()?, &self.to_plaintext(write_key)?)
     }
 
     /// Encrypts one secret on its own, to the vault's recipients.
@@ -244,16 +322,7 @@ impl Vault {
     /// lowercase base32 characters, for example `k7fq-2mxv-8d3n-wpls-a4rt-9cez`.
     #[must_use]
     pub fn fingerprint(&self) -> String {
-        let pin = self.pin();
-        // The pin is a 32 byte HMAC, so its first 15 bytes are always present.
-        #[allow(clippy::indexing_slicing)]
-        let encoded = BASE32_NOPAD.encode(&pin[..15]).to_lowercase();
-        encoded
-            .as_bytes()
-            .chunks(4)
-            .map(|group| std::str::from_utf8(group).unwrap_or_default())
-            .collect::<Vec<_>>()
-            .join("-")
+        crypto::fingerprint(&self.pin()[..])
     }
 
     /// Marks the vault as changed: one generation on, at the current time.
@@ -366,6 +435,38 @@ pub(crate) fn seal_to(recipients: &[Recipient], secret: &SecretString) -> Result
     Ok(BASE64.encode(&crypto::encrypt(recipients, bytes)?))
 }
 
+/// The bytes a version 2 signature covers: the record serialised with
+/// `signature` empty. Built from a parsed [`Stored`] so verification
+/// reconstructs exactly what [`Vault::to_plaintext`] signed.
+fn canonical_bytes(stored: &Stored) -> Result<Vec<u8>> {
+    let stored_ref = StoredRef {
+        format: &stored.format,
+        version: stored.version,
+        id: &stored.id,
+        name: &stored.name,
+        generation: stored.generation,
+        key: &stored.key,
+        recipients: &stored.recipients,
+        created: &stored.created,
+        updated: &stored.updated,
+        entries: &stored.entries,
+        writer: &stored.writer,
+        signature: "",
+    };
+    Ok(serde_json::to_vec(&stored_ref)?)
+}
+
+/// Decodes a base64 Ed25519 signature.
+fn decode_signature(text: &str) -> Result<[u8; 64]> {
+    let bytes = BASE64
+        .decode(text.as_bytes())
+        .map_err(|_| anyhow!("the vault's signature is damaged"))?;
+    bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow!("the vault's signature is damaged"))
+}
+
 /// The current time, as RFC 3339 to the second.
 pub(crate) fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
@@ -376,18 +477,23 @@ mod tests {
     use super::*;
     use crate::vault::crypto::Identity;
 
-    fn vault() -> (Identity, Vault) {
+    fn vault() -> (Identity, Vault, WriteKey) {
         let identity = Identity::generate();
         let vault = Vault::new("work", vec![identity.to_public().to_string()]);
-        (identity, vault)
+        (identity, vault, crypto::new_write_key())
+    }
+
+    /// The pinned-writers slice for a write key, for `from_plaintext`.
+    fn pinned(write_key: &WriteKey) -> Vec<WriterId> {
+        vec![crypto::writer_id(write_key)]
     }
 
     #[test]
     fn a_vault_survives_being_written_and_read() {
-        let (identity, vault) = vault();
-        let ciphertext = vault.seal().unwrap();
+        let (identity, vault, write_key) = vault();
+        let ciphertext = vault.seal(&write_key).unwrap();
         let plaintext = crypto::decrypt(&identity, &ciphertext, 1 << 20).unwrap();
-        let read = Vault::from_plaintext(&plaintext).unwrap();
+        let read = Vault::from_plaintext(&plaintext, &pinned(&write_key)).unwrap();
 
         assert_eq!(read.id(), vault.id());
         assert_eq!(read.name(), "work");
@@ -397,7 +503,7 @@ mod tests {
 
     #[test]
     fn the_plaintext_holds_no_secret_in_the_clear() {
-        let (_, vault) = vault();
+        let (_, vault, write_key) = vault();
         let sealed = vault
             .seal_secret(&"hunter2-very-secret".to_string().into())
             .unwrap();
@@ -414,14 +520,14 @@ mod tests {
             created: now(),
             updated: now(),
         });
-        let plaintext = with_entry.to_plaintext().unwrap();
+        let plaintext = with_entry.to_plaintext(&write_key).unwrap();
         let text = String::from_utf8_lossy(&plaintext);
         assert!(!text.contains("hunter2"), "{text}");
     }
 
     #[test]
     fn a_sealed_secret_opens_with_the_identity() {
-        let (identity, vault) = vault();
+        let (identity, vault, _) = vault();
         let sealed = vault.seal_secret(&"hunter2".to_string().into()).unwrap();
         let bytes = BASE64.decode(sealed.as_bytes()).unwrap();
         let opened = crypto::decrypt(&identity, &bytes, MAX_SECRET_BYTES).unwrap();
@@ -430,7 +536,7 @@ mod tests {
 
     #[test]
     fn the_pin_changes_with_the_key_or_the_name() {
-        let (_, vault) = vault();
+        let (_, vault, _) = vault();
         let mut renamed = vault.clone();
         renamed.name = "other".to_string();
         assert_ne!(*renamed.pin(), *vault.pin());
@@ -442,7 +548,7 @@ mod tests {
 
     #[test]
     fn a_fingerprint_is_stable_across_changes_and_follows_the_name() {
-        let (_, mut vault) = vault();
+        let (_, mut vault, _) = vault();
         let original = vault.fingerprint();
         // Shape: six groups of four lowercase base32 characters.
         assert_eq!(original.len(), 29, "{original}");
@@ -470,18 +576,19 @@ mod tests {
 
     #[test]
     fn contents_that_break_the_rules_are_refused() {
-        let (_, vault) = vault();
+        let (_, vault, write_key) = vault();
+        let writers = pinned(&write_key);
         let good: serde_json::Value =
-            serde_json::from_slice(&vault.to_plaintext().unwrap()).unwrap();
+            serde_json::from_slice(&vault.to_plaintext(&write_key).unwrap()).unwrap();
 
         let broken = |change: &dyn Fn(&mut serde_json::Value)| {
             let mut value = good.clone();
             change(&mut value);
-            Vault::from_plaintext(&serde_json::to_vec(&value).unwrap()).is_err()
+            Vault::from_plaintext(&serde_json::to_vec(&value).unwrap(), &writers).is_err()
         };
 
         assert!(broken(&|v| v["format"] = "other".into()));
-        assert!(broken(&|v| v["version"] = 2.into()));
+        assert!(broken(&|v| v["version"] = 99.into()));
         assert!(broken(&|v| v["name"] = "../escape".into()));
         assert!(broken(&|v| v["key"] = "c2hvcnQ=".into()));
         assert!(broken(&|v| v["recipients"] = serde_json::json!([])));
@@ -491,8 +598,45 @@ mod tests {
     }
 
     #[test]
+    fn every_field_is_covered_by_the_signature() {
+        let (_, vault, write_key) = vault();
+        let writers = pinned(&write_key);
+        let good: serde_json::Value =
+            serde_json::from_slice(&vault.to_plaintext(&write_key).unwrap()).unwrap();
+
+        // Each change keeps the structure valid, so only the signature can
+        // catch it. If a field were left out of the signed bytes, one of these
+        // would open, and adding a new unsigned field would slip past too.
+        let tampered = |change: &dyn Fn(&mut serde_json::Value)| {
+            let mut value = good.clone();
+            change(&mut value);
+            Vault::from_plaintext(&serde_json::to_vec(&value).unwrap(), &writers).is_err()
+        };
+        assert!(tampered(&|v| v["generation"] = 9.into()));
+        assert!(tampered(&|v| v["created"] = "2020-01-01T00:00:00Z".into()));
+        assert!(tampered(&|v| v["updated"] = "2020-01-01T00:00:00Z".into()));
+        assert!(tampered(&|v| v["id"] = "0".repeat(32).into()));
+        assert!(tampered(&|v| v["signature"] = "AA".into()));
+        // The unchanged vault still opens, so the checks above fail for the
+        // right reason.
+        assert!(!tampered(&|_| {}));
+    }
+
+    #[test]
+    fn a_vault_signed_by_an_unpinned_writer_is_refused() {
+        let (identity, vault, write_key) = vault();
+        let ciphertext = vault.seal(&write_key).unwrap();
+        let plaintext = crypto::decrypt(&identity, &ciphertext, 1 << 20).unwrap();
+        // A different writer's key is not pinned, so the vault does not open.
+        let stranger = pinned(&crypto::new_write_key());
+        assert!(Vault::from_plaintext(&plaintext, &stranger).is_err());
+        // Nor does an empty pin set: an unprovisioned reader fails closed.
+        assert!(Vault::from_plaintext(&plaintext, &[]).is_err());
+    }
+
+    #[test]
     fn empty_and_oversized_secrets_are_refused() {
-        let (_, vault) = vault();
+        let (_, vault, _) = vault();
         assert!(vault.seal_secret(&String::new().into()).is_err());
         assert!(
             vault

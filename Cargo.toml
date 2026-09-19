@@ -2,7 +2,7 @@
 name = "txc"
 description = "Offline text utilities for the terminal, and an encrypted local vault for passwords, keys and other secrets: nothing is sent anywhere"
 authors = ["Matheus Santos <vorj.dux@gmail.com>"]
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.88"
 readme = "README.md"
@@ -24,7 +24,7 @@ path = "src/main.rs"
 default = ["vault"]
 # The encrypted vault for passwords, API keys and other secrets. Building
 # without it leaves a binary with no key handling and no clipboard library.
-vault = ["dep:age", "dep:arboard", "dep:libc", "dep:rpassword", "dep:zeroize"]
+vault = ["dep:age", "dep:arboard", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:zeroize"]
 
 [dependencies]
 age = { version = "0.12", optional = true }
@@ -42,6 +42,9 @@ crossterm = "0.29"
 csv = "1.4"
 data-encoding = "2.11"
 digest = "0.11"
+# The vault write key: Ed25519 so a reader can verify a vault without being
+# able to write one. verify_strict is used everywhere (see crypto.rs).
+ed25519-dalek = { version = "2", optional = true, default-features = false, features = ["std", "zeroize"] }
 hmac = "0.13"
 html-escape = "0.2"
 md-5 = "0.11"

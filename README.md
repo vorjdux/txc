@@ -55,7 +55,7 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.6.0 Shift letters by a fixed amount
+ txc  0.7.0 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
@@ -108,7 +108,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.6.0 Generate UUIDs
+ txc  0.7.0 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -248,6 +248,8 @@ txc vault show visa                # secrets are shown masked
 txc vault copy github              # the password, cleared from the clipboard after 20s
 txc vault copy visa --field cvv
 txc vault move github work         # added it to the wrong vault? move it, secrets and all
+txc vault rm github                # remove one entry
+txc vault delete work              # remove a whole vault, keeping a .deleted recovery copy
 export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 ```
 
@@ -258,7 +260,7 @@ export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 and each vault. The list is in the middle and the selected entry on the right.
 
 ```
- txc  0.6.0 Vault unlocked · 3 entries in 1 vault
+ txc  0.7.0 Vault unlocked · 3 entries in 1 vault
 ╭ Browse ────────────────╮╭ Search ──────────────────────────────╮╭ GitHub ──────────────────────────────────╮
 │★ Favourites          1 ││/ to search                           ││ Login · personal  ★ favourite            │
 │◷ Recently used       0 │╰──────────────────────────────────────╯│                                          │
@@ -404,6 +406,17 @@ rests on keys alone.
   pass `txc vault trust <name> --expect <fingerprint>`. `txc vault history
   <name>` lists what this device has trusted for that name and what each
   decision replaced.
+- **Reading and writing are separate.** Changing a vault needs a **write key**,
+  an Ed25519 key kept in `writer.age` under its own passphrase, apart from the
+  identity. A vault is signed with it, and a device opens a vault only when it
+  is signed by a writer that device has pinned (in the `writers` file), a check
+  made before trust even enters into it. So a device, or an automated job, given
+  the identity but not the write key can read but cannot write: it cannot
+  produce a vault any txc will open, which means a stray `recipients --add` or
+  `move` by something holding only the identity can no longer hand your secrets
+  to another key. The write passphrase is never read from `--passphrase-file`.
+  `txc vault writer` shows this device's writer key, `txc vault writers` pins
+  others, and `txc vault init --reader-only` provisions a read-only device.
 - **On disk** every file is written to a temporary file and renamed into
   place, readable by you alone, and refused when it is a link, belongs to
   another user, or could have been changed by one. The previous version of a
@@ -421,6 +434,8 @@ on Linux, `~/Library/Application Support/txc/vault` on macOS and
 ```
 vault/
 ├── identity.age              your private key, encrypted with your passphrase
+├── writer.age                your write key, encrypted with the write passphrase
+├── writers                   the writer keys this device will open vaults from
 ├── trust.json                what this device trusts, authenticated by your key
 ├── recent.age                what you used recently on this device, encrypted to your key
 └── vaults/
@@ -430,14 +445,22 @@ vault/
 
 ### Several devices, and sharing
 
-To use the same vaults on another device, copy `identity.age` and the `vaults/`
-directory across, then run `txc vault trust <name>` there once for each vault.
-Because `trust.json` is authenticated by your identity, not by the machine, you
-can copy it across too, and the new device then already trusts everything the
-first one did; only `vaults/` needs synchronising afterwards. This is the way to
-provision an unattended device, which has no person to confirm a vault at a
-prompt: give it `identity.age` and a `trust.json` that already covers the
-vaults it will open. `recent.age` belongs to each device.
+What a device can do is decided by which files you copy to it, which is easy to
+get right and easy to audit:
+
+| The device | Copy | Can read | Can write |
+|---|---|---|---|
+| Another of your own | `identity.age`, `writer.age`, `writers`, `trust.json` | yes | yes |
+| An automation host that reads | `identity.age`, `writers`, `trust.json` | yes | no |
+| A reader you set up fresh | `txc vault init --reader-only`, then pin a writer | after pinning | no |
+
+The write key travels with the identity to another of your own devices, so both
+can write and neither has to pin the other. An automation host that should only
+read is given everything **except** `writer.age`: it opens vaults but cannot
+change them, and needs no person at a prompt because a process that cannot make
+a trust decision cannot make it wrong. `trust.json` is authenticated by your
+identity, not by the machine, so copying it across carries your trust decisions
+too; `recent.age` belongs to each device.
 
 A vault can also be encrypted to other keys: a second device with its own
 identity, a backup key kept offline, or a colleague. `txc vault identity`
@@ -445,7 +468,35 @@ prints your public key, and the owner of a vault adds it with
 `txc vault create team --recipient age1...` or
 `txc vault recipients personal --add age1...`. Every secret is sealed again for
 the new set of keys. Removing a key does the same, but it cannot reach copies
-of the vault made before, so change any secret that key could read.
+of the vault made before, so change any secret that key could read. For another
+person to open a vault you wrote, they pin your writer key with
+`txc vault writers --add`, the way you would confirm an SSH host key. Several
+writers can be pinned at once, so two of your devices can both write. If a write
+key is lost or you retire a device, `txc vault writer --rotate` makes a fresh
+key and re-signs every vault, keeping the old key pinned until you retire it
+with `txc vault writers --remove`, so nothing stops opening in between.
+
+### Giving one secret to a script
+
+An agent or a CI job usually needs one secret, not your whole vault. The
+README used to reach for `export KEY="$(txc vault copy work/openai --print)"`,
+which hands the agent the identity in order to give it one thing. A grant gives
+it the one thing instead:
+
+```sh
+host$   age-keygen -o host.key                                    # a key with no vault access
+laptop$ txc vault grant work/openai --to age1... --expires 1h > deploy.grant
+host$   txc vault redeem deploy.grant --identity host.key
+```
+
+The grant holds the secret sealed to the host's own key, never the identity, so
+the file at rest is useless to anyone else and can travel over a channel you do
+not fully trust. `--to-file` bundles a fresh key for the quick local case,
+which makes the file equivalent to the secret, so prefer `--to` when you can.
+Two limits are worth stating plainly: a grant is a snapshot, so it does not
+follow later edits, and it cannot be revoked, because the holder already has the
+sealed value. Rotating the secret is the only real revocation; the expiry is
+hygiene that `redeem` checks, not enforcement.
 
 ### Opening a vault without txc
 
@@ -466,11 +517,16 @@ echo '<sealed value>' | base64 -d | rage -d -i identity.age
   clipboard managers that ignore the request to leave it out of their history.
 - Anyone who can see your screen, or record it, while you reveal a secret or
   read a note.
-- Someone who can write into a synced `vaults/` directory is held to what the
-  trust record allows: a vault they forge, rebuild or change under a name you
-  trust is refused until you accept it, so a secret you save is never quietly
-  sent to their key. It does not stop them deleting or corrupting a vault file,
-  which is what backups and the `.bak` copy kept beside each vault are for.
+- Someone who can write into a synced `vaults/` directory: a vault they forge,
+  rebuild or change is signed by a writer you have not pinned, so it does not
+  open on any other device, and a secret you save is never quietly sent to their
+  key. It does not stop them deleting or corrupting a vault file, which is what
+  backups and the `.bak` copy kept beside each vault are for.
+- The write key on a machine where hostile code runs as you: it can rewrite the
+  `writers` file and re-sign a vault with its own key. The guarantee then is not
+  prevention on that machine but that the result is refused by every other
+  device, so the tampering is contained and visible. Giving
+  `--write-passphrase-file` on such a machine removes the split entirely.
 - A forgotten passphrase, or a lost `identity.age`: neither can be recovered,
   and without them the vaults cannot be opened. Keep a copy of `identity.age`
   somewhere safe; it is encrypted.
