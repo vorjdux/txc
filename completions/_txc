@@ -2847,6 +2847,31 @@ _arguments "${_arguments_options[@]}" : \
 ':VAULT:_default' \
 && ret=0
 ;;
+(grant)
+_arguments "${_arguments_options[@]}" : \
+'--field=[Grant this field rather than the main secret]:NAME:_default' \
+'(--to-file)--to=[Seal to this age public key, the host'\''s own key]:RECIPIENT:_default' \
+'--expires=[How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement]:DURATION:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--to-file[Bundle a fresh key in the grant; the file then is the secret]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':ENTRY:_default' \
+&& ret=0
+;;
+(redeem)
+_arguments "${_arguments_options[@]}" : \
+'--identity=[The host'\''s age secret key file, unless the grant bundles one]:PATH:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'-h[Print help]' \
+'--help[Print help]' \
+':FILE:_default' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_txc__subcmd__vault__subcmd__help_commands" \
@@ -2936,6 +2961,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(grant)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(redeem)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3652,6 +3685,14 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(grant)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(redeem)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4956,6 +4997,8 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'writers:List, pin or unpin the writer keys this device trusts' \
 'upgrade:Re-sign vaults still in the old format, without other changes' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
+'grant:Seal one secret to another key, for a host to redeem' \
+'redeem:Open a grant, printing its secret to a pipe' \
     )
     _describe -t commands 'txc help vault commands' commands "$@"
 }
@@ -4994,6 +5037,11 @@ _txc__subcmd__help__subcmd__vault__subcmd__fingerprint_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault fingerprint commands' commands "$@"
 }
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__grant_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__grant_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault grant commands' commands "$@"
+}
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__history_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__history_commands() {
     local commands; commands=()
@@ -5028,6 +5076,11 @@ _txc__subcmd__help__subcmd__vault__subcmd__passwd_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__recipients_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault recipients commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__redeem_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__redeem_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault redeem commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__rm_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__rm_commands() {
@@ -5609,6 +5662,8 @@ _txc__subcmd__vault_commands() {
 'writers:List, pin or unpin the writer keys this device trusts' \
 'upgrade:Re-sign vaults still in the old format, without other changes' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
+'grant:Seal one secret to another key, for a host to redeem' \
+'redeem:Open a grant, printing its secret to a pipe' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc vault commands' commands "$@"
@@ -5648,6 +5703,11 @@ _txc__subcmd__vault__subcmd__fingerprint_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault fingerprint commands' commands "$@"
 }
+(( $+functions[_txc__subcmd__vault__subcmd__grant_commands] )) ||
+_txc__subcmd__vault__subcmd__grant_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault grant commands' commands "$@"
+}
 (( $+functions[_txc__subcmd__vault__subcmd__help_commands] )) ||
 _txc__subcmd__vault__subcmd__help_commands() {
     local commands; commands=(
@@ -5671,6 +5731,8 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'writers:List, pin or unpin the writer keys this device trusts' \
 'upgrade:Re-sign vaults still in the old format, without other changes' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
+'grant:Seal one secret to another key, for a host to redeem' \
+'redeem:Open a grant, printing its secret to a pipe' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc vault help commands' commands "$@"
@@ -5709,6 +5771,11 @@ _txc__subcmd__vault__subcmd__help__subcmd__favourite_commands() {
 _txc__subcmd__vault__subcmd__help__subcmd__fingerprint_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help fingerprint commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__grant_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__grant_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help grant commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__help_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__help_commands() {
@@ -5749,6 +5816,11 @@ _txc__subcmd__vault__subcmd__help__subcmd__passwd_commands() {
 _txc__subcmd__vault__subcmd__help__subcmd__recipients_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help recipients commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__redeem_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__redeem_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help redeem commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__rm_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__rm_commands() {
@@ -5814,6 +5886,11 @@ _txc__subcmd__vault__subcmd__passwd_commands() {
 _txc__subcmd__vault__subcmd__recipients_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault recipients commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__redeem_commands] )) ||
+_txc__subcmd__vault__subcmd__redeem_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault redeem commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__rm_commands] )) ||
 _txc__subcmd__vault__subcmd__rm_commands() {

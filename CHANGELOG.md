@@ -41,6 +41,13 @@ without the ability to write.
   the vault's name typed at a terminal or `--yes`. It refuses rather than
   overwrite an existing recovery file, and clears the vault from the trust
   record and the recent list.
+- `txc vault grant <entry> --to <recipient> --expires 1h` seals one secret to
+  another key, and `txc vault redeem <file>` opens it, so an automated host can
+  be given exactly one secret without the identity or a passphrase. `--to-file`
+  bundles a fresh key for the quick local case, at the cost that the file then
+  is the secret. A grant is a snapshot and cannot be revoked: rotating the
+  secret is the only real revocation, and the expiry is hygiene that `redeem`
+  checks. Issuing a grant is a read, so it needs no write key.
 - `txc vault init --reader-only` provisions a device that can read but never
   write: an identity and an empty writers list, and no write key.
 - `--write-passphrase-file <PATH>`, mirroring `--passphrase-file`, for a device

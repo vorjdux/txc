@@ -470,6 +470,28 @@ of the vault made before, so change any secret that key could read. For another
 person to open a vault you wrote, they pin your writer key with
 `txc vault writers --add`, the way you would confirm an SSH host key.
 
+### Giving one secret to a script
+
+An agent or a CI job usually needs one secret, not your whole vault. The
+README used to reach for `export KEY="$(txc vault copy work/openai --print)"`,
+which hands the agent the identity in order to give it one thing. A grant gives
+it the one thing instead:
+
+```sh
+host$   age-keygen -o host.key                                    # a key with no vault access
+laptop$ txc vault grant work/openai --to age1... --expires 1h > deploy.grant
+host$   txc vault redeem deploy.grant --identity host.key
+```
+
+The grant holds the secret sealed to the host's own key, never the identity, so
+the file at rest is useless to anyone else and can travel over a channel you do
+not fully trust. `--to-file` bundles a fresh key for the quick local case,
+which makes the file equivalent to the secret, so prefer `--to` when you can.
+Two limits are worth stating plainly: a grant is a snapshot, so it does not
+follow later edits, and it cannot be revoked, because the holder already has the
+sealed value. Rotating the secret is the only real revocation; the expiry is
+hygiene that `redeem` checks, not enforcement.
+
 ### Opening a vault without txc
 
 Nothing is locked inside txc. A vault is an age file, and `identity.age` is an

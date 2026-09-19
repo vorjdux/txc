@@ -2294,6 +2294,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults still in the old format, without other changes'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
+            cand grant 'Seal one secret to another key, for a host to redeem'
+            cand redeem 'Open a grant, printing its secret to a pipe'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;init'= {
@@ -2497,6 +2499,25 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'txc;vault;grant'= {
+            cand --field 'Grant this field rather than the main secret'
+            cand --to 'Seal to this age public key, the host''s own key'
+            cand --expires 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --to-file 'Bundle a fresh key in the grant; the file then is the secret'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;redeem'= {
+            cand --identity 'The host''s age secret key file, unless the grant bundles one'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
         &'txc;vault;help'= {
             cand init 'Create your identity, write key and the personal vault'
             cand identity 'Print your public key, for encrypting a vault to you elsewhere'
@@ -2518,6 +2539,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults still in the old format, without other changes'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
+            cand grant 'Seal one secret to another key, for a host to redeem'
+            cand redeem 'Open a grant, printing its secret to a pipe'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;help;init'= {
@@ -2559,6 +2582,10 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;upgrade'= {
         }
         &'txc;vault;help;delete'= {
+        }
+        &'txc;vault;help;grant'= {
+        }
+        &'txc;vault;help;redeem'= {
         }
         &'txc;vault;help;help'= {
         }
@@ -3039,6 +3066,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults still in the old format, without other changes'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
+            cand grant 'Seal one secret to another key, for a host to redeem'
+            cand redeem 'Open a grant, printing its secret to a pipe'
         }
         &'txc;help;vault;init'= {
         }
@@ -3079,6 +3108,10 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;upgrade'= {
         }
         &'txc;help;vault;delete'= {
+        }
+        &'txc;help;vault;grant'= {
+        }
+        &'txc;help;vault;redeem'= {
         }
         &'txc;help;list'= {
         }

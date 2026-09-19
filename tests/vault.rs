@@ -1013,3 +1013,64 @@ fn rm_still_removes_an_entry_not_a_vault() {
     assert!(s.home().join("vaults/personal.vault.age").exists());
     fails(&s.vault(&["show", "personal/one"]));
 }
+
+#[test]
+fn a_grant_lets_a_host_open_one_secret_and_no_other() {
+    let s = Sandbox::new("grant-roundtrip");
+    s.init();
+    succeeds(&s.vault_piped(&["add", "site", "--secret-from-stdin"], "the-secret"));
+    succeeds(&s.vault_piped(&["add", "other", "--secret-from-stdin"], "not-this-one"));
+
+    // A --to-file grant bundles the key that opens it: the quick local case.
+    let grant_json = succeeds(&s.vault(&["grant", "personal/site", "--to-file"]));
+    assert!(
+        !grant_json.contains("the-secret"),
+        "the secret is in the grant in the clear: {grant_json}"
+    );
+    assert!(
+        !grant_json.contains("not-this-one"),
+        "the grant leaked another secret"
+    );
+
+    let grant_path = s.root.join("deploy.grant");
+    std::fs::write(&grant_path, &grant_json).unwrap();
+    let redeemed = succeeds(&s.vault(&["redeem", grant_path.to_str().unwrap()]));
+    assert_eq!(redeemed, "the-secret");
+}
+
+#[test]
+fn a_grant_needs_no_write_key() {
+    // A reader-only device holds no write key, yet can still issue a grant,
+    // because a grant is a read: it can already print the secret.
+    let writer = Sandbox::new("grant-ro-writer");
+    writer.init();
+    succeeds(&writer.vault_piped(&["add", "site", "--secret-from-stdin"], "shared"));
+
+    let reader = Sandbox::new("grant-ro-reader");
+    std::fs::create_dir_all(reader.home().join("vaults")).unwrap();
+    for name in [
+        "identity.age",
+        "writers",
+        "trust.json",
+        "vaults/personal.vault.age",
+    ] {
+        std::fs::copy(writer.home().join(name), reader.home().join(name)).unwrap();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for dir in [reader.home(), reader.home().join("vaults")] {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
+
+    // It cannot write, but it can grant.
+    assert!(fails(&reader.vault(&["rm", "site", "--yes"])).contains("read only"));
+    let grant_json = succeeds(&reader.vault(&["grant", "personal/site", "--to-file"]));
+    let grant_path = reader.root.join("g.grant");
+    std::fs::write(&grant_path, &grant_json).unwrap();
+    assert_eq!(
+        succeeds(&reader.vault(&["redeem", grant_path.to_str().unwrap()])),
+        "shared"
+    );
+}

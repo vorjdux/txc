@@ -153,6 +153,20 @@ pub(crate) fn parse_recipient(text: &str) -> Result<Recipient> {
         .map_err(|_| anyhow!("{text:?} is not an age public key, which starts with age1"))
 }
 
+/// Reads a bare age X25519 secret key (`AGE-SECRET-KEY-...`), as a grant host
+/// holds one. It protects nothing but the grants issued to it, so it is kept
+/// unencrypted like any `age-keygen` key.
+pub(crate) fn parse_identity(text: &str) -> Result<Identity> {
+    text.trim()
+        .parse::<Identity>()
+        .map_err(|_| anyhow!("that is not an age secret key, which starts with AGE-SECRET-KEY-"))
+}
+
+/// A fresh age identity, for a grant that bundles the key that opens it.
+pub(crate) fn new_identity() -> Identity {
+    Identity::generate()
+}
+
 /// Encrypts to every recipient: any one of their identities can decrypt.
 pub(crate) fn encrypt(recipients: &[Recipient], plaintext: &[u8]) -> Result<Vec<u8>> {
     let recipients: Vec<&dyn age::Recipient> = recipients

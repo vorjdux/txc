@@ -18,6 +18,7 @@ use rand::RngExt;
 
 use crate::vault::clipboard::{self, Held, MAX_CLEAR_SECONDS};
 use crate::vault::crypto::{self, WriteKey};
+use crate::vault::grant::{self, Grant};
 use crate::vault::home;
 use crate::vault::model::{
     DEFAULT_VAULT, Entry, FieldSpec, Generator, Kind, Reference, check_field_name,
@@ -503,6 +504,55 @@ pub fn command() -> Command {
                         .help("Delete without asking for the vault's name"),
                 ),
         )
+        .subcommand(
+            Command::new("grant")
+                .about("Seal one secret to another key, for a host to redeem")
+                .long_about(
+                    "Seal one secret to another key, so an automated host can be given exactly \
+                     that secret without the identity or a passphrase. Write it to a file or a \
+                     pipe.\n\n\
+                     A grant is a snapshot and cannot be revoked: it does not follow later edits, \
+                     and the only real revocation is rotating the secret. It is a read of the \
+                     vault, so it needs no write key.",
+                )
+                .arg(Arg::new("ENTRY").required(true))
+                .arg(
+                    Arg::new("field")
+                        .long("field")
+                        .value_name("NAME")
+                        .help("Grant this field rather than the main secret"),
+                )
+                .arg(
+                    Arg::new("to")
+                        .long("to")
+                        .value_name("RECIPIENT")
+                        .conflicts_with("to-file")
+                        .help("Seal to this age public key, the host's own key"),
+                )
+                .arg(
+                    Arg::new("to-file")
+                        .long("to-file")
+                        .action(ArgAction::SetTrue)
+                        .help("Bundle a fresh key in the grant; the file then is the secret"),
+                )
+                .arg(
+                    Arg::new("expires")
+                        .long("expires")
+                        .value_name("DURATION")
+                        .help("How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement"),
+                ),
+        )
+        .subcommand(
+            Command::new("redeem")
+                .about("Open a grant, printing its secret to a pipe")
+                .arg(Arg::new("FILE").required(true))
+                .arg(
+                    Arg::new("identity")
+                        .long("identity")
+                        .value_name("PATH")
+                        .help("The host's age secret key file, unless the grant bundles one"),
+                ),
+        )
 }
 
 /// The ways a main secret can be given, shared by `add` and `edit`.
@@ -607,6 +657,8 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "writers" => context.writers(sub),
         "upgrade" => context.upgrade(sub),
         "delete" => context.delete(sub),
+        "grant" => context.grant(sub),
+        "redeem" => context.redeem(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
 }
@@ -1439,6 +1491,108 @@ impl Session {
         eprintln!("  mv {} {}", recovery.display(), live.display());
         Ok(())
     }
+
+    /// Seals one secret to another key as a grant, so a host can be given that
+    /// one secret without the identity. A read operation: it needs no write key.
+    fn grant(&self, sub: &ArgMatches) -> Result<()> {
+        ensure!(
+            !io::stdout().is_terminal(),
+            "a grant is written to a file or a pipe, not the terminal where it would linger in \
+             the scrollback; redirect it, as: txc vault grant <entry> --to age1... > deploy.grant"
+        );
+        let reference: Reference = required(sub, "ENTRY").parse()?;
+        let to = sub.get_one::<String>("to");
+        let to_file = sub.get_flag("to-file");
+        ensure!(
+            to.is_some() ^ to_file,
+            "give --to <recipient> to seal to a host's own key, or --to-file to bundle a fresh \
+             key in the grant (which then is the secret); not both"
+        );
+        let expires = match sub.get_one::<String>("expires") {
+            Some(spec) => Some(grant::expiry_from(spec)?),
+            None => None,
+        };
+
+        let keyring = self.unlock()?;
+        let vault = keyring.open(&reference.vault)?;
+        let entry = vault.entry(&reference.entry)?;
+        let field = sub
+            .get_one::<String>("field")
+            .cloned()
+            .unwrap_or_else(|| entry.kind.primary().to_string());
+        let entry_name = entry.name.clone();
+        let label = format!("{}/{entry_name}.{field}", reference.vault);
+        let secret = vault.reveal(&keyring, &entry_name, &field)?;
+
+        // For --to, seal to the host's own public key, so the grant file at rest
+        // is useless to anyone else. For --to-file, bundle a fresh key.
+        let ephemeral = to_file.then(crypto::new_identity);
+        let (recipient_text, recipient) = match (&to, &ephemeral) {
+            (Some(key), _) => ((*key).clone(), crypto::parse_recipient(key)?),
+            (None, Some(id)) => {
+                let key = id.to_public().to_string();
+                let recipient = crypto::parse_recipient(&key)?;
+                (key, recipient)
+            }
+            (None, None) => unreachable!("checked above"),
+        };
+        let grant = Grant::issue(
+            &label,
+            &secret,
+            &recipient,
+            &recipient_text,
+            expires,
+            ephemeral.as_ref(),
+        )?;
+        drop(secret);
+        if to_file {
+            eprintln!(
+                "This grant bundles the key that opens it, so the file is equivalent to the \
+                 secret. Keep it as you would the secret, and prefer --to <recipient> when you can."
+            );
+        }
+        eprintln!(
+            "A grant is a snapshot and cannot be revoked: it will not follow later edits, and \
+             deleting your copy changes nothing. Rotate the secret to revoke access."
+        );
+        output(&grant.to_json()?)
+    }
+
+    /// Opens one grant, printing the secret to a pipe. Needs no identity of its
+    /// own beyond the host key that the grant was sealed to, so it uses nothing
+    /// from the session; it stays a method for a uniform command dispatch.
+    #[allow(clippy::unused_self)]
+    fn redeem(&self, sub: &ArgMatches) -> Result<()> {
+        ensure!(
+            !io::stdout().is_terminal(),
+            "redeem writes the secret to a pipe, not the terminal; use it as: \
+             export KEY=\"$(txc vault redeem deploy.grant --identity host.key)\""
+        );
+        let file = required(sub, "FILE");
+        let text = std::fs::read_to_string(file)
+            .with_context(|| format!("cannot read the grant {file}"))?;
+        let grant = Grant::from_json(&text)?;
+        let secret = if let Some(path) = sub.get_one::<String>("identity") {
+            let key = std::fs::read_to_string(path)
+                .with_context(|| format!("cannot read the identity {path}"))?;
+            grant.redeem(&crypto::parse_identity(&key)?)?
+        } else {
+            ensure!(
+                grant.is_bundled(),
+                "this grant was sealed to a host key; give that key with --identity <path>"
+            );
+            grant.redeem_bundled()?
+        };
+
+        let mut stdout = io::stdout().lock();
+        let written = stdout
+            .write_all(secret.expose_secret().as_bytes())
+            .and_then(|()| stdout.flush());
+        match written {
+            Err(error) if error.kind() != io::ErrorKind::BrokenPipe => Err(error.into()),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// The definition of a kind's main secret field.
@@ -1820,6 +1974,9 @@ mod tests {
             "remove",
             "length",
             "expect",
+            "to",
+            "expires",
+            "identity",
         ];
         walk(&command(), &valued);
     }

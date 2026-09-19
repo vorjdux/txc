@@ -47,6 +47,7 @@ pub mod clipboard;
 pub mod command;
 mod crypto;
 mod document;
+mod grant;
 pub mod harden;
 mod home;
 mod keyring;

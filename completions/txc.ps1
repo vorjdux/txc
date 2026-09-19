@@ -2441,6 +2441,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
+            [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
+            [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -2667,6 +2669,27 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
+        'txc;vault;grant' {
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Grant this field rather than the main secret')
+            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'Seal to this age public key, the host''s own key')
+            [CompletionResult]::new('--expires', '--expires', [CompletionResultType]::ParameterName, 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--to-file', '--to-file', [CompletionResultType]::ParameterName, 'Bundle a fresh key in the grant; the file then is the secret')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;redeem' {
+            [CompletionResult]::new('--identity', '--identity', [CompletionResultType]::ParameterName, 'The host''s age secret key file, unless the grant bundles one')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'txc;vault;help' {
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create your identity, write key and the personal vault')
             [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
@@ -2688,6 +2711,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
+            [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
+            [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -2749,6 +2774,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;delete' {
+            break
+        }
+        'txc;vault;help;grant' {
+            break
+        }
+        'txc;vault;help;redeem' {
             break
         }
         'txc;vault;help;help' {
@@ -3379,6 +3410,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
+            [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
+            [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
             break
         }
         'txc;help;vault;init' {
@@ -3439,6 +3472,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;delete' {
+            break
+        }
+        'txc;help;vault;grant' {
+            break
+        }
+        'txc;help;vault;redeem' {
             break
         }
         'txc;help;list' {
