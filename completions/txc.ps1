@@ -2440,6 +2440,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key and fingerprint')
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -2657,6 +2658,15 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;delete' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Delete without asking for the vault''s name')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;help' {
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create your identity, write key and the personal vault')
             [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
@@ -2677,6 +2687,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key and fingerprint')
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -2735,6 +2746,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;upgrade' {
+            break
+        }
+        'txc;vault;help;delete' {
             break
         }
         'txc;vault;help;help' {
@@ -3364,6 +3378,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key and fingerprint')
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             break
         }
         'txc;help;vault;init' {
@@ -3421,6 +3436,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;upgrade' {
+            break
+        }
+        'txc;help;vault;delete' {
             break
         }
         'txc;help;list' {

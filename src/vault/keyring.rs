@@ -336,23 +336,43 @@ impl Keyring {
         Ok(self.trust()?.history(name))
     }
 
-    /// Deletes a vault and forgets it. A backup of its last version is kept
-    /// beside it, still encrypted.
+    /// Deletes a vault, keeping its last version beside it as a single
+    /// `.deleted` recovery file, and forgets it from the trust record and the
+    /// recent list.
     ///
     /// # Errors
     ///
-    /// Returns an error when the vault cannot be opened or removed.
+    /// Returns an error when a `.deleted` file is already there, or when the
+    /// files cannot be read, written or removed.
     pub fn delete_vault(&self, opened: &Opened) -> Result<()> {
+        let recovery = opened.path.with_extension("age.deleted");
+        // Do not overwrite a recovery file from an earlier delete of a vault
+        // that had this name: predictable beats clever, so refuse instead.
+        ensure!(
+            !home::exists(&recovery),
+            "a deleted copy is already at {}; move it aside before deleting another vault of \
+             this name",
+            recovery.display()
+        );
         home::write_atomic(
-            &opened.path.with_extension("age.deleted"),
+            &recovery,
             &home::read_private(&opened.path, VAULT_LIMIT, UNCHANGEABLE)?,
             None,
         )?;
         std::fs::remove_file(&opened.path)
             .with_context(|| format!("cannot remove {}", opened.path.display()))?;
+        // Remove the ordinary backup too, so only the one `.deleted` file is
+        // left where the operator expects a single recovery file.
+        let backup = opened.path.with_extension("age.bak");
+        if home::exists(&backup) {
+            std::fs::remove_file(&backup)
+                .with_context(|| format!("cannot remove {}", backup.display()))?;
+        }
         let mut trust = self.trust()?;
         trust.forget(&opened.vault);
-        trust.save(&self.home)
+        trust.save(&self.home)?;
+        // The recent list still names entries in a vault that is gone.
+        self.forget_vault(opened.vault.name())
     }
 
     /// The entries used most recently on this device, newest first. A list
@@ -397,6 +417,18 @@ impl Keyring {
     pub fn forget_use(&self, vault: &str, entry: &str) -> Result<()> {
         recent::update(&self.home, &self.identity, |uses| {
             uses.retain(|found| !(found.vault == vault && found.entry == entry));
+        })
+    }
+
+    /// Takes every entry of a vault off the recent list, for when the vault is
+    /// deleted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the list cannot be written.
+    pub fn forget_vault(&self, vault: &str) -> Result<()> {
+        recent::update(&self.home, &self.identity, |uses| {
+            uses.retain(|found| found.vault != vault);
         })
     }
 

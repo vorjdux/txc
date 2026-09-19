@@ -2293,6 +2293,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand writer 'Print this device''s writer public key and fingerprint'
             cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults still in the old format, without other changes'
+            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;init'= {
@@ -2488,6 +2489,14 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'txc;vault;delete'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --yes 'Delete without asking for the vault''s name'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'txc;vault;help'= {
             cand init 'Create your identity, write key and the personal vault'
             cand identity 'Print your public key, for encrypting a vault to you elsewhere'
@@ -2508,6 +2517,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand writer 'Print this device''s writer public key and fingerprint'
             cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults still in the old format, without other changes'
+            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;help;init'= {
@@ -2547,6 +2557,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;writers'= {
         }
         &'txc;vault;help;upgrade'= {
+        }
+        &'txc;vault;help;delete'= {
         }
         &'txc;vault;help;help'= {
         }
@@ -3026,6 +3038,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand writer 'Print this device''s writer public key and fingerprint'
             cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults still in the old format, without other changes'
+            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
         }
         &'txc;help;vault;init'= {
         }
@@ -3064,6 +3077,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;writers'= {
         }
         &'txc;help;vault;upgrade'= {
+        }
+        &'txc;help;vault;delete'= {
         }
         &'txc;help;list'= {
         }

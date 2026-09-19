@@ -486,6 +486,23 @@ pub fn command() -> Command {
                         .help("Only this vault, rather than every one that needs it"),
                 ),
         )
+        .subcommand(
+            Command::new("delete")
+                .about("Delete a whole vault, keeping a recovery copy beside it")
+                .long_about(
+                    "Delete a whole vault, keeping its last version as a .deleted recovery \
+                     file next to it. This removes an entire vault and all its entries, unlike \
+                     rm, which removes one entry. The vault must open first, so it must be \
+                     trusted and its signature must verify.",
+                )
+                .arg(Arg::new("VAULT").required(true))
+                .arg(
+                    Arg::new("yes")
+                        .long("yes")
+                        .action(ArgAction::SetTrue)
+                        .help("Delete without asking for the vault's name"),
+                ),
+        )
 }
 
 /// The ways a main secret can be given, shared by `add` and `edit`.
@@ -589,6 +606,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "writer" => context.writer(),
         "writers" => context.writers(sub),
         "upgrade" => context.upgrade(sub),
+        "delete" => context.delete(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
 }
@@ -1379,6 +1397,46 @@ impl Session {
         if upgraded == 0 {
             eprintln!("Every vault is already in the current format.");
         }
+        Ok(())
+    }
+
+    /// Deletes a vault, keeping its last version as a `.deleted` recovery file.
+    fn delete(&self, sub: &ArgMatches) -> Result<()> {
+        let name = required(sub, "VAULT");
+        check_vault_name(name)?;
+        let keyring = self.unlock()?;
+        // Require the write key, as every mutation does. Deletion produces no
+        // vault file, so the signature check cannot cover it; this is a policy
+        // gate that stops accidents and keeps a reader-only device from changing
+        // the vault store. It does not stop an attacker, who has `rm`.
+        let _write_key = self.write_key()?;
+        // Open first, so a vault that is untrusted or fails its signature cannot
+        // be deleted through the command; the error names the file to remove by
+        // hand, and there is deliberately no --force that deletes by path.
+        let opened = keyring.open(name)?;
+        let count = opened.vault().entries().len();
+        eprintln!(
+            "The vault {name} holds {count} {}.",
+            if count == 1 { "entry" } else { "entries" }
+        );
+        if !sub.get_flag("yes") {
+            ensure!(
+                prompt::confirm_value(
+                    &format!("Type the vault's name to delete it: {name}"),
+                    name,
+                    "pass --yes"
+                )?,
+                "the vault was not deleted"
+            );
+        }
+        keyring.delete_vault(&opened)?;
+
+        let live = keyring.home().vault_path(name)?;
+        let recovery = live.with_extension("age.deleted");
+        eprintln!("Deleted {name}. Its last version is kept, still encrypted, at:");
+        eprintln!("  {}", recovery.display());
+        eprintln!("Restore it with:");
+        eprintln!("  mv {} {}", recovery.display(), live.display());
         Ok(())
     }
 }

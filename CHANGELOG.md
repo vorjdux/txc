@@ -34,6 +34,13 @@ without the ability to write.
 - `txc vault writers` lists the pinned writer keys, and `--add`/`--remove`
   pin or unpin one (an authorization change, so it needs a terminal or `--yes`).
 - `txc vault upgrade [VAULT]` re-signs vaults still in the old format.
+- `txc vault delete <VAULT>` removes a whole vault, keeping its last version
+  beside it as a single `.deleted` recovery file and printing the `mv` that
+  restores it. It opens the vault first, so it must be trusted and its
+  signature must verify, needs the write key like any change, and confirms by
+  the vault's name typed at a terminal or `--yes`. It refuses rather than
+  overwrite an existing recovery file, and clears the vault from the trust
+  record and the recent list.
 - `txc vault init --reader-only` provisions a device that can read but never
   write: an identity and an empty writers list, and no write key.
 - `--write-passphrase-file <PATH>`, mirroring `--passphrase-file`, for a device

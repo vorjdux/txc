@@ -899,3 +899,117 @@ fn the_identity_passphrase_does_not_unlock_the_write_key() {
         "{error}"
     );
 }
+
+#[test]
+fn a_deleted_vault_can_be_restored_and_reopened() {
+    let s = Sandbox::new("del-restore");
+    s.init();
+    succeeds(&s.vault_piped(&["add", "keep", "--secret-from-stdin"], "value"));
+
+    let output = s.vault(&["delete", "personal", "--yes"]);
+    assert!(output.status.success(), "delete failed");
+    let told = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        told.contains("mv "),
+        "the output should show how to restore: {told}"
+    );
+
+    let live = s.home().join("vaults/personal.vault.age");
+    let recovery = s.home().join("vaults/personal.vault.age.deleted");
+    assert!(!live.exists(), "the vault file is still there after delete");
+    assert!(recovery.exists(), "no recovery file was kept");
+    assert!(
+        !s.home().join("vaults/personal.vault.age.bak").exists(),
+        "the .bak should have been removed, leaving one recovery file"
+    );
+    fails(&s.vault(&["list", "personal"]));
+
+    // Restore by hand, as the output instructs, then trust it again.
+    std::fs::rename(&recovery, &live).unwrap();
+    succeeds(&s.vault(&["trust", "personal", "--yes"]));
+    assert_eq!(succeeds(&s.vault(&["copy", "keep", "--print"])), "value");
+}
+
+#[test]
+fn deleting_forgets_the_trust_record_and_the_recent_entries() {
+    let s = Sandbox::new("del-forget");
+    s.init();
+    succeeds(&s.vault_piped(&["add", "used", "--secret-from-stdin"], "value"));
+    succeeds(&s.vault(&["copy", "used", "--print"]));
+    assert!(
+        succeeds(&s.vault(&["list", "--recent"])).contains("used"),
+        "the entry was not recorded as recently used"
+    );
+
+    succeeds(&s.vault(&["delete", "personal", "--yes"]));
+
+    // Restore the vault, but the recent entry stays forgotten: deletion cleaned
+    // recent.age, and bringing the vault back does not bring the recent use back.
+    let live = s.home().join("vaults/personal.vault.age");
+    std::fs::rename(s.home().join("vaults/personal.vault.age.deleted"), &live).unwrap();
+    succeeds(&s.vault(&["trust", "personal", "--yes"]));
+    assert!(
+        !succeeds(&s.vault(&["list", "--recent"])).contains("used"),
+        "the recent entry survived the delete"
+    );
+    assert_eq!(succeeds(&s.vault(&["copy", "used", "--print"])), "value");
+}
+
+#[test]
+fn deleting_a_second_vault_of_the_same_name_refuses_rather_than_overwriting() {
+    let s = Sandbox::new("del-twice");
+    s.init();
+    succeeds(&s.vault(&["delete", "personal", "--yes"]));
+    succeeds(&s.vault(&["create", "personal"]));
+    let error = fails(&s.vault(&["delete", "personal", "--yes"]));
+    assert!(error.contains("already"), "{error}");
+    // The second vault is untouched, since deleting it would overwrite the first
+    // one's recovery file.
+    assert!(s.home().join("vaults/personal.vault.age").exists());
+}
+
+#[test]
+fn a_reader_only_device_cannot_delete_a_vault() {
+    let writer = Sandbox::new("del-ro-writer");
+    writer.init();
+    let reader = Sandbox::new("del-ro-reader");
+    std::fs::create_dir_all(reader.home().join("vaults")).unwrap();
+    for name in [
+        "identity.age",
+        "writers",
+        "trust.json",
+        "vaults/personal.vault.age",
+    ] {
+        std::fs::copy(writer.home().join(name), reader.home().join(name)).unwrap();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for dir in [reader.home(), reader.home().join("vaults")] {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
+    let error = fails(&reader.vault(&["delete", "personal", "--yes"]));
+    assert!(error.contains("read only"), "{error}");
+    assert!(reader.home().join("vaults/personal.vault.age").exists());
+}
+
+#[test]
+fn deleting_without_a_terminal_or_yes_fails() {
+    let s = Sandbox::new("del-noyes");
+    s.init();
+    let error = fails(&s.vault(&["delete", "personal"]));
+    assert!(error.contains("terminal"), "{error}");
+    assert!(s.home().join("vaults/personal.vault.age").exists());
+}
+
+#[test]
+fn rm_still_removes_an_entry_not_a_vault() {
+    let s = Sandbox::new("del-rm-entry");
+    s.init();
+    succeeds(&s.vault_piped(&["add", "one", "--secret-from-stdin"], "value"));
+    succeeds(&s.vault(&["rm", "one", "--yes"]));
+    // The vault is still there; only the entry is gone.
+    assert!(s.home().join("vaults/personal.vault.age").exists());
+    fails(&s.vault(&["show", "personal/one"]));
+}
