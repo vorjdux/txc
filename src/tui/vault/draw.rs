@@ -582,6 +582,25 @@ fn draw_dialog(frame: &mut Frame, area: Rect, screen: &VaultScreen, dialog: &Dia
             place_cursor(frame, popup, 1, passphrase);
         }
 
+        Dialog::UnlockWriter { passphrase, error } => {
+            let columns: u16 = 70;
+            let mut lines = vec![Line::raw("")];
+            for line in textwrap::wrap(
+                "The write passphrase is the second passphrase, kept apart from the one that \
+                 unlocked reading. It is needed to change a vault.",
+                usize::from(columns) - 4,
+            ) {
+                lines.push(Line::styled(format!(" {line}"), muted()));
+            }
+            lines.push(Line::raw(""));
+            lines.push(masked_row("Write passphrase", passphrase, true));
+            lines.push(Line::raw(""));
+            lines.push(note(error.as_deref(), "enter to unlock, esc to cancel"));
+            let first_row = lines.len() - 3;
+            let popup = show(frame, area, "Unlock the write key", columns, lines);
+            place_cursor(frame, popup, first_row, passphrase);
+        }
+
         Dialog::CreateIdentity {
             passphrase,
             again,

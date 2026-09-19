@@ -17,6 +17,8 @@ use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 use rand::RngExt;
 
 use crate::vault::clipboard::{self, Held, MAX_CLEAR_SECONDS};
+use crate::vault::crypto::{self, WriteKey};
+use crate::vault::home;
 use crate::vault::model::{
     DEFAULT_VAULT, Entry, FieldSpec, Generator, Kind, Reference, check_field_name,
     check_plain_value, check_tag, check_vault_name,
@@ -142,13 +144,31 @@ pub fn command() -> Command {
                 .global(true)
                 .help("Read the passphrase from a file only you can read, rather than asking"),
         )
+        .arg(
+            Arg::new("write-passphrase-file")
+                .long("write-passphrase-file")
+                .value_name("PATH")
+                .global(true)
+                .help(
+                    "Read the write passphrase from a file only you can read. Providing it on a \
+                     machine where untrusted code runs as you collapses the read/write split.",
+                ),
+        )
         .subcommand(
             Command::new("init")
-                .about("Create your identity and the personal vault")
+                .about("Create your identity, write key and the personal vault")
                 .long_about(
-                    "Create your identity and the personal vault.\n\n\
-                     The identity is a private key protected by a passphrase. Without both, \
-                     nothing in the vaults can be opened, and neither can be recovered.",
+                    "Create your identity, write key and the personal vault.\n\n\
+                     The identity is a private key protected by a passphrase, and reads your \
+                     vaults. The write key is a second key with its own passphrase, and is what \
+                     changes a vault. Keeping them apart means a job given --passphrase-file can \
+                     read but not write. Run this on an existing 0.6.0 home to add the write key.",
+                )
+                .arg(
+                    Arg::new("reader-only")
+                        .long("reader-only")
+                        .action(ArgAction::SetTrue)
+                        .help("Create only an identity and an empty writers list, for an unattended reader"),
                 ),
         )
         .subcommand(
@@ -425,6 +445,47 @@ pub fn command() -> Command {
                 .about("Show this device's trust decisions for a vault")
                 .arg(Arg::new("VAULT").required(true)),
         )
+        .subcommand(
+            Command::new("writer")
+                .about("Print this device's writer public key and fingerprint"),
+        )
+        .subcommand(
+            Command::new("writers")
+                .about("List, pin or unpin the writer keys this device trusts")
+                .long_about(
+                    "List, pin or unpin the writer keys this device trusts.\n\n\
+                     A vault opens only when it is signed by a pinned writer. Pin another \
+                     device's writer to open vaults it wrote. Pinning and unpinning are \
+                     authorization changes, so they need a terminal or --yes.",
+                )
+                .arg(
+                    Arg::new("add")
+                        .long("add")
+                        .value_name("KEY")
+                        .conflicts_with("remove")
+                        .help("Pin this writer public key"),
+                )
+                .arg(
+                    Arg::new("remove")
+                        .long("remove")
+                        .value_name("KEY")
+                        .help("Unpin this writer public key"),
+                )
+                .arg(
+                    Arg::new("yes")
+                        .long("yes")
+                        .action(ArgAction::SetTrue)
+                        .help("Pin or unpin without asking"),
+                ),
+        )
+        .subcommand(
+            Command::new("upgrade")
+                .about("Re-sign vaults still in the old format, without other changes")
+                .arg(
+                    Arg::new("VAULT")
+                        .help("Only this vault, rather than every one that needs it"),
+                ),
+        )
 }
 
 /// The ways a main secret can be given, shared by `add` and `edit`.
@@ -493,13 +554,20 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
     let passphrase = matches
         .get_one::<String>("passphrase-file")
         .map_or(Passphrase::Terminal, |path| Passphrase::File(path.into()));
-    let context = Session { home, passphrase };
+    let write_passphrase = matches
+        .get_one::<String>("write-passphrase-file")
+        .map_or(Passphrase::Terminal, |path| Passphrase::File(path.into()));
+    let context = Session {
+        home,
+        passphrase,
+        write_passphrase,
+    };
 
     let Some((name, sub)) = matches.subcommand() else {
         unreachable!("clap requires a subcommand");
     };
     match name {
-        "init" => context.init(),
+        "init" => context.init(sub),
         "identity" => {
             let keyring = context.unlock()?;
             output(&keyring.public_key())
@@ -518,6 +586,9 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "trust" => context.trust(sub),
         "fingerprint" => context.fingerprint(sub),
         "history" => context.history(sub),
+        "writer" => context.writer(),
+        "writers" => context.writers(sub),
+        "upgrade" => context.upgrade(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
 }
@@ -552,6 +623,7 @@ fn working<T>(message: &str, work: impl FnOnce() -> Result<T>) -> Result<T> {
 struct Session {
     home: Home,
     passphrase: Passphrase,
+    write_passphrase: Passphrase,
 }
 
 impl Session {
@@ -560,7 +632,27 @@ impl Session {
         working("Unlocking...", || Keyring::unlock(&self.home, &passphrase))
     }
 
-    fn init(&self) -> Result<()> {
+    /// Unlocks the write key, asking for its own passphrase. A reader-only home
+    /// fails here with the reason and the remedy, before anything is changed.
+    ///
+    /// The write passphrase is never read from `--passphrase-file`, so an agent
+    /// holding the identity credential still cannot write.
+    fn write_key(&self) -> Result<WriteKey> {
+        ensure!(
+            self.home.has_writer(),
+            "this device is provisioned to read only: there is no write key at {}, so it \
+             cannot change a vault. Copy writer.age from a device that can write, or create one \
+             here with: txc vault init",
+            self.home.writer_path().display()
+        );
+        let passphrase = self.write_passphrase.ask_write("Write passphrase: ")?;
+        working("Unlocking the write key...", || {
+            Keyring::open_writer(&self.home, &passphrase)
+        })
+    }
+
+    fn init(&self, sub: &ArgMatches) -> Result<()> {
+        let reader_only = sub.get_flag("reader-only");
         let keyring = if self.home.has_identity() {
             eprintln!(
                 "An identity already exists at {}.",
@@ -581,6 +673,31 @@ impl Session {
             })?
         };
 
+        if reader_only {
+            // A device that reads but never writes. An empty writers file makes
+            // it fail closed on a version 2 vault until a writer is pinned.
+            if !home::exists(&self.home.writers_path()) {
+                home::write_atomic(&self.home.writers_path(), b"", None)?;
+            }
+            eprintln!(
+                "This device is provisioned to read only: no write key was created. Pin the \
+                 writer of the device that writes with: txc vault writers --add <key>"
+            );
+            eprintln!("Your public key, for encrypting a vault to you:");
+            return output(&keyring.public_key());
+        }
+
+        let mut keyring = keyring;
+        let write_key = if self.home.has_writer() {
+            eprintln!(
+                "A write key already exists at {}.",
+                self.home.writer_path().display()
+            );
+            self.write_key()?
+        } else {
+            self.provision_writer(&mut keyring)?
+        };
+
         if self
             .home
             .vault_names()?
@@ -589,11 +706,30 @@ impl Session {
         {
             eprintln!("The vault {DEFAULT_VAULT} already exists.");
         } else {
-            keyring.create_vault(DEFAULT_VAULT, &[])?;
+            keyring.create_vault(DEFAULT_VAULT, &[], &write_key)?;
             eprintln!("Created the vault {DEFAULT_VAULT}.");
         }
         eprintln!("Your public key, for encrypting a vault to you on another device:");
         output(&keyring.public_key())
+    }
+
+    /// Creates and pins a write key, protected by its own passphrase.
+    fn provision_writer(&self, keyring: &mut Keyring) -> Result<WriteKey> {
+        eprintln!(
+            "Creating your write key at {}.\n\
+             This is a second passphrase, kept apart from the identity's. A job given \
+             --passphrase-file can then read your vaults but cannot change them, because the \
+             write passphrase is never read from that file.",
+            self.home.writer_path().display()
+        );
+        let passphrase = self.write_passphrase.ask_new_write("Write passphrase: ")?;
+        let write_key = crypto::new_write_key();
+        let sealed = working("Protecting your write key...", || {
+            crypto::seal_write_key(&write_key, &passphrase)
+        })?;
+        home::write_atomic(&self.home.writer_path(), &sealed, None)?;
+        keyring.pin_writer(&crypto::writer_id_string(&crypto::writer_id(&write_key)))?;
+        Ok(write_key)
     }
 
     fn passwd(&self, sub: &ArgMatches) -> Result<()> {
@@ -620,7 +756,8 @@ impl Session {
         check_vault_name(name)?;
         let recipients = many(sub, "recipient");
         let keyring = self.unlock()?;
-        keyring.create_vault(name, &recipients)?;
+        let write_key = self.write_key()?;
+        keyring.create_vault(name, &recipients, &write_key)?;
         eprintln!("Created the vault {name}.");
         Ok(())
     }
@@ -744,8 +881,11 @@ impl Session {
             );
         }
 
-        // Everything that can be checked is checked before any secret is typed.
+        // Everything that can be checked is checked before any secret is typed,
+        // and the write key is unlocked first, so a reader-only device stops
+        // here rather than after a secret has been entered.
         let keyring = self.unlock()?;
+        let write_key = self.write_key()?;
         let mut vault = keyring.open(&reference.vault)?;
         ensure!(
             vault.vault().entry(&reference.entry).is_none(),
@@ -770,7 +910,7 @@ impl Session {
             tags,
             favourite: sub.get_flag("favourite"),
         })?;
-        vault.save(&keyring)?;
+        vault.save(&keyring, &write_key)?;
 
         eprintln!("Added {reference}.");
         if generated {
@@ -815,10 +955,11 @@ impl Session {
         let reference: Reference = required(sub, "ENTRY").parse()?;
         let remove = sub.get_flag("remove");
         let keyring = self.unlock()?;
+        let write_key = self.write_key()?;
         let mut vault = keyring.open(&reference.vault)?;
         let name = vault.entry(&reference.entry)?.name.clone();
         vault.set_favourite(&name, !remove)?;
-        vault.save(&keyring)?;
+        vault.save(&keyring, &write_key)?;
         if remove {
             eprintln!("Unstarred {reference}.");
         } else {
@@ -903,6 +1044,7 @@ impl Session {
         );
 
         let keyring = self.unlock()?;
+        let write_key = self.write_key()?;
         let mut vault = keyring.open(&reference.vault)?;
         let entry = vault.entry(&reference.entry)?;
         let (name, kind) = (entry.name.clone(), entry.kind);
@@ -929,7 +1071,7 @@ impl Session {
 
         let renamed = change.rename.clone();
         vault.change(&name, change)?;
-        vault.save(&keyring)?;
+        vault.save(&keyring, &write_key)?;
         if let Some(new_name) = renamed {
             // The recent list is a convenience cache; failing to update it does
             // not undo the change that was already saved.
@@ -942,6 +1084,7 @@ impl Session {
     fn remove(&self, sub: &ArgMatches) -> Result<()> {
         let reference: Reference = required(sub, "ENTRY").parse()?;
         let keyring = self.unlock()?;
+        let write_key = self.write_key()?;
         let mut vault = keyring.open(&reference.vault)?;
         let name = vault.entry(&reference.entry)?.name.clone();
 
@@ -952,7 +1095,7 @@ impl Session {
             );
         }
         vault.remove(&name)?;
-        vault.save(&keyring)?;
+        vault.save(&keyring, &write_key)?;
         // The recent list is a convenience cache; the entry is already removed.
         keyring.forget_use(&reference.vault, &name).ok();
         eprintln!("Removed {reference}.");
@@ -965,9 +1108,10 @@ impl Session {
         check_vault_name(dest)?;
 
         let keyring = self.unlock()?;
+        let write_key = self.write_key()?;
         let mut source = keyring.open(&reference.vault)?;
         let name = source.entry(&reference.entry)?.name.clone();
-        keyring.move_entry(&mut source, dest, &name)?;
+        keyring.move_entry(&mut source, dest, &name, &write_key)?;
         // The entry took its old reference with it; drop it from this device's
         // recent list, where it now points nowhere. Best effort: the move is done.
         keyring.forget_use(&reference.vault, &name).ok();
@@ -1013,8 +1157,11 @@ impl Session {
             .collect();
         others.extend(add);
 
+        // The write key is unlocked only now, on the change path, so a plain
+        // `recipients` listing above never asks for the write passphrase.
+        let write_key = self.write_key()?;
         vault.set_recipients(&keyring, &others)?;
-        vault.save(&keyring)?;
+        vault.save(&keyring, &write_key)?;
         eprintln!(
             "The vault {name} is now encrypted to {} key(s).",
             vault.vault().recipients().len()
@@ -1136,6 +1283,103 @@ impl Session {
             return Ok(());
         }
         output(&decisions.join("\n"))
+    }
+
+    /// Prints this device's writer public key and its fingerprint, for pinning
+    /// on another device.
+    fn writer(&self) -> Result<()> {
+        let write_key = self.write_key()?;
+        let id = crypto::writer_id(&write_key);
+        output(&format!(
+            "{}  {}",
+            crypto::writer_id_string(&id),
+            crypto::fingerprint(id.as_bytes())
+        ))
+    }
+
+    /// Lists, pins or unpins the writer keys this device trusts.
+    fn writers(&self, sub: &ArgMatches) -> Result<()> {
+        let mut keyring = self.unlock()?;
+        if let Some(key) = sub.get_one::<String>("add") {
+            crypto::parse_writer_id(key)?;
+            if !sub.get_flag("yes") {
+                ensure!(
+                    prompt::confirm(
+                        &format!("Pin the writer {key}, so vaults it signs will open here?"),
+                        "pass --yes"
+                    )?,
+                    "nothing was pinned"
+                );
+            }
+            if keyring.pin_writer(key)? {
+                eprintln!("Pinned the writer.");
+            } else {
+                eprintln!("That writer was already pinned.");
+            }
+            return Ok(());
+        }
+        if let Some(key) = sub.get_one::<String>("remove") {
+            if !sub.get_flag("yes") {
+                ensure!(
+                    prompt::confirm(
+                        &format!(
+                            "Unpin the writer {key}? Vaults it signed will no longer open here."
+                        ),
+                        "pass --yes"
+                    )?,
+                    "nothing was unpinned"
+                );
+            }
+            if keyring.unpin_writer(key)? {
+                eprintln!("Unpinned the writer.");
+            } else {
+                eprintln!("That writer was not pinned.");
+            }
+            return Ok(());
+        }
+        let lines: Vec<String> = keyring
+            .writers()
+            .iter()
+            .map(|id| {
+                format!(
+                    "{}  {}",
+                    crypto::writer_id_string(id),
+                    crypto::fingerprint(id.as_bytes())
+                )
+            })
+            .collect();
+        if lines.is_empty() {
+            eprintln!("No writers are pinned on this device.");
+            return Ok(());
+        }
+        output(&lines.join("\n"))
+    }
+
+    /// Re-signs vaults still in the old format as the current one, without any
+    /// other change.
+    fn upgrade(&self, sub: &ArgMatches) -> Result<()> {
+        let keyring = self.unlock()?;
+        let write_key = self.write_key()?;
+        let names = match sub.get_one::<String>("VAULT") {
+            Some(name) => {
+                check_vault_name(name)?;
+                vec![name.clone()]
+            }
+            None => keyring.home().vault_names()?,
+        };
+        let mut upgraded = 0u32;
+        for name in names {
+            let mut opened = keyring.open(&name)?;
+            if opened.vault().needs_upgrade() {
+                opened.save(&keyring, &write_key)?;
+                upgraded = upgraded.saturating_add(1);
+                eprintln!("Upgraded {name}.");
+            }
+        }
+        if upgraded == 0 {
+            eprintln!("Every vault is already in the current format.");
+        }
+        Ok(())
     }
 }
 
@@ -1501,6 +1745,7 @@ mod tests {
         let valued = [
             "home",
             "passphrase-file",
+            "write-passphrase-file",
             "new-passphrase-file",
             "recipient",
             "tag",

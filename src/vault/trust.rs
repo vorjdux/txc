@@ -128,6 +128,10 @@ struct Record {
     /// records written before this field existed; backfilled on the next open.
     #[serde(default)]
     digest: Option<String>,
+    /// The writer key that last signed this vault, base64. Absent in records
+    /// written before this field existed, and filled on the next write.
+    #[serde(default)]
+    writer: Option<String>,
 }
 
 /// One entry in the trust decision log: a vault accepted, and what it evicted.
@@ -316,6 +320,9 @@ impl Trust {
             (None, None) => (None, "trusted a vault new to this device"),
         };
 
+        // Carry the known writer forward, so re-trusting a vault does not lose
+        // what its record already knew about who signs it.
+        let writer = self.records.get(vault.id()).and_then(|r| r.writer.clone());
         self.records
             .retain(|id, record| id == vault.id() || record.name != vault.name());
         self.records.insert(
@@ -326,9 +333,55 @@ impl Trust {
                 recipients: sorted(vault.recipients()),
                 generation: vault.generation(),
                 digest: Some(hex),
+                writer,
             },
         );
 
+        self.push_decision(vault, note, replaced);
+    }
+
+    /// Records a write of an already trusted vault: updates the record to the
+    /// new bytes, and logs a decision only when the recipients or the writer
+    /// changed. A routine edit is not a trust decision, so logging it would
+    /// evict the genuine decisions from the capped log (this is D3).
+    pub(crate) fn record_write(&mut self, vault: &Vault, digest: &[u8; 32], writer: &str) {
+        let hex = HEXLOWER.encode(digest);
+        let pin_hex = HEXLOWER.encode(&vault.pin()[..]);
+        let recipients = sorted(vault.recipients());
+
+        let previous = self.records.get(vault.id());
+        let recipients_changed = previous.is_some_and(|r| r.recipients != recipients);
+        // A prior writer of None means "not yet known", not "changed", so the
+        // first write after a create or an upgrade does not log a false change.
+        let writer_changed = previous
+            .and_then(|r| r.writer.as_deref())
+            .is_some_and(|known| known != writer);
+
+        self.records.insert(
+            vault.id().to_string(),
+            Record {
+                name: vault.name().to_string(),
+                pin: pin_hex,
+                recipients,
+                generation: vault.generation(),
+                digest: Some(hex),
+                writer: Some(writer.to_string()),
+            },
+        );
+
+        if recipients_changed || writer_changed {
+            let note = match (recipients_changed, writer_changed) {
+                (true, true) => "changed the recipients and the writer",
+                (true, false) => "changed the recipients",
+                _ => "changed the writer",
+            };
+            self.push_decision(vault, note, None);
+        }
+    }
+
+    /// Appends a decision to the log and caps it at [`LOG_CAP`], dropping the
+    /// oldest.
+    fn push_decision(&mut self, vault: &Vault, note: &str, replaced: Option<Record>) {
         self.log.push(Decision {
             at: now(),
             vault: vault.name().to_string(),
@@ -489,10 +542,19 @@ mod tests {
             }
         );
 
-        let json = String::from_utf8(newer.to_plaintext().unwrap().to_vec()).unwrap();
+        // Rebuild the same vault under a different key. The key is signed, so
+        // after editing it the record is signed again with the same write key,
+        // as a genuine rebuild would be.
+        let write_key = crypto::new_write_key();
+        let writers = [crypto::writer_id(&write_key)];
+        let json = String::from_utf8(newer.to_plaintext(&write_key).unwrap().to_vec()).unwrap();
         let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
         value["key"] = BASE64.encode(&[1; 32]).into();
-        let rekeyed = Vault::from_plaintext(&serde_json::to_vec(&value).unwrap()).unwrap();
+        value["signature"] = String::new().into();
+        let canonical = serde_json::to_vec(&value).unwrap();
+        value["signature"] = BASE64.encode(&crypto::sign(&write_key, &canonical)).into();
+        let rekeyed =
+            Vault::from_plaintext(&serde_json::to_vec(&value).unwrap(), &writers).unwrap();
         assert_eq!(trust.standing(&rekeyed, &dig(2)), Standing::KeyChanged);
     }
 
@@ -540,6 +602,7 @@ mod tests {
                 recipients: sorted(vault.recipients()),
                 generation: 1,
                 digest: None,
+                writer: None,
             },
         );
         // Without a digest it cannot diverge, so it stays trusted, and the
@@ -553,6 +616,34 @@ mod tests {
             trust.standing(&vault, &dig(6)),
             Standing::Diverged { generation: 1 }
         );
+    }
+
+    #[test]
+    fn a_routine_write_is_not_logged_but_a_recipient_change_is() {
+        let (_scratch, home, identity, mut vault) = setup();
+        let mut trust = Trust::load(&home, crypto::derive(&identity, "test")).unwrap();
+        let writer = crypto::writer_id_string(&crypto::writer_id(&crypto::new_write_key()));
+        trust.pin(&vault, &dig(1));
+        let logged = trust.history("work").len();
+
+        // A routine edit: same recipients and writer, so nothing new is logged,
+        // and the genuine decision is not evicted (this is D3).
+        vault.advance();
+        trust.record_write(&vault, &dig(2), &writer);
+        assert_eq!(
+            trust.history("work").len(),
+            logged,
+            "a routine write was logged"
+        );
+
+        // A recipient change is a decision, so it is logged.
+        vault.set_recipients(vec![
+            identity.to_public().to_string(),
+            Identity::generate().to_public().to_string(),
+        ]);
+        vault.advance();
+        trust.record_write(&vault, &dig(3), &writer);
+        assert_eq!(trust.history("work").len(), logged + 1);
     }
 
     #[test]

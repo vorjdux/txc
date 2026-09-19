@@ -22,12 +22,19 @@ use crate::vault::model::check_vault_name;
 pub const HOME_VARIABLE: &str = "TXC_VAULT_HOME";
 
 const IDENTITY_FILE: &str = "identity.age";
+const WRITER_FILE: &str = "writer.age";
+const WRITERS_FILE: &str = "writers";
 const TRUST_FILE: &str = "trust.json";
 const VAULTS_DIR: &str = "vaults";
 const VAULT_SUFFIX: &str = ".vault.age";
 
 /// The largest identity file read, in bytes.
 pub(crate) const IDENTITY_LIMIT: usize = 64 * 1024;
+/// The largest write key file read, in bytes. A sealed 32 byte seed is tiny;
+/// this leaves generous room for the age header.
+pub(crate) const WRITER_LIMIT: usize = 64 * 1024;
+/// The largest pinned writers file read, in bytes.
+pub(crate) const WRITERS_LIMIT: usize = 64 * 1024;
 /// The largest trust file read, in bytes.
 pub(crate) const TRUST_LIMIT: usize = 4 * 1024 * 1024;
 /// The largest vault file read, in bytes.
@@ -97,6 +104,18 @@ impl Home {
         self.root.join(IDENTITY_FILE)
     }
 
+    /// The passphrase protected write key. Absent on a reader-only device.
+    #[must_use]
+    pub fn writer_path(&self) -> PathBuf {
+        self.root.join(WRITER_FILE)
+    }
+
+    /// The pinned writer public keys, one base64 per line.
+    #[must_use]
+    pub fn writers_path(&self) -> PathBuf {
+        self.root.join(WRITERS_FILE)
+    }
+
     /// The record of which vaults this device trusts.
     #[must_use]
     pub fn trust_path(&self) -> PathBuf {
@@ -124,6 +143,12 @@ impl Home {
     #[must_use]
     pub fn has_identity(&self) -> bool {
         fs::symlink_metadata(self.identity_path()).is_ok()
+    }
+
+    /// Whether a write key is present, i.e. whether this device can write.
+    #[must_use]
+    pub fn has_writer(&self) -> bool {
+        fs::symlink_metadata(self.writer_path()).is_ok()
     }
 
     /// The names of the vaults here, sorted. Reading a name needs no key, so

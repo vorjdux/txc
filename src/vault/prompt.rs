@@ -26,6 +26,8 @@ const MAX_PASSPHRASE_BYTES: usize = 4096;
 
 const NO_TERMINAL_FOR_PASSPHRASE: &str =
     "there is no terminal to type the passphrase at; use --passphrase-file";
+const NO_TERMINAL_FOR_WRITE: &str =
+    "there is no terminal to type the write passphrase at; use --write-passphrase-file";
 const NO_TERMINAL_FOR_SECRET: &str =
     "there is no terminal to type the secret at; pipe it in with --secret-from-stdin";
 
@@ -47,8 +49,23 @@ impl Passphrase {
     /// Returns an error when there is no terminal to ask at, or when the file
     /// cannot be read, is open to other users, or is empty.
     pub fn ask(&self, prompt: &str) -> Result<SecretString> {
+        self.ask_hinted(prompt, NO_TERMINAL_FOR_PASSPHRASE)
+    }
+
+    /// Reads the write passphrase to unlock the write key. Its no-terminal hint
+    /// names `--write-passphrase-file`, never the identity's file, so the two
+    /// credentials stay separate.
+    ///
+    /// # Errors
+    ///
+    /// As [`ask`](Self::ask).
+    pub fn ask_write(&self, prompt: &str) -> Result<SecretString> {
+        self.ask_hinted(prompt, NO_TERMINAL_FOR_WRITE)
+    }
+
+    fn ask_hinted(&self, prompt: &str, hint: &'static str) -> Result<SecretString> {
         match self {
-            Self::Terminal => hidden(prompt, NO_TERMINAL_FOR_PASSPHRASE),
+            Self::Terminal => hidden(prompt, hint),
             Self::File(path) => from_file(path),
         }
     }
@@ -61,10 +78,24 @@ impl Passphrase {
     /// Returns an error as [`ask`](Self::ask) does, when the two typings
     /// differ, or when the passphrase is too short.
     pub fn ask_new(&self, prompt: &str) -> Result<SecretString> {
-        let passphrase = self.ask(prompt)?;
+        self.ask_new_hinted(prompt, NO_TERMINAL_FOR_PASSPHRASE)
+    }
+
+    /// Reads a new write passphrase, as [`ask_new`](Self::ask_new) but hinting
+    /// `--write-passphrase-file` when there is no terminal.
+    ///
+    /// # Errors
+    ///
+    /// As [`ask_new`](Self::ask_new).
+    pub fn ask_new_write(&self, prompt: &str) -> Result<SecretString> {
+        self.ask_new_hinted(prompt, NO_TERMINAL_FOR_WRITE)
+    }
+
+    fn ask_new_hinted(&self, prompt: &str, hint: &'static str) -> Result<SecretString> {
+        let passphrase = self.ask_hinted(prompt, hint)?;
         check_new_passphrase(&passphrase)?;
         if *self == Self::Terminal {
-            let again = hidden("Type it again: ", NO_TERMINAL_FOR_PASSPHRASE)?;
+            let again = hidden("Type it again: ", hint)?;
             ensure!(
                 passphrase.expose_secret() == again.expose_secret(),
                 "the two passphrases did not match"

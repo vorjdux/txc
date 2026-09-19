@@ -18,6 +18,8 @@ use std::iter;
 
 use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::{Context, Result, anyhow, ensure};
+use data_encoding::{BASE32_NOPAD, BASE64};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
@@ -28,6 +30,14 @@ pub(crate) use age::x25519::{Identity, Recipient};
 
 /// A 32 byte key, wiped from memory when dropped.
 pub(crate) type Key = Zeroizing<[u8; 32]>;
+
+/// The vault write key: an Ed25519 signing key. It signs a vault so that a
+/// reader can verify who wrote it without being able to write one itself.
+pub(crate) type WriteKey = SigningKey;
+
+/// A writer's public identity: the Ed25519 verifying key that a device pins to
+/// decide whose vaults it will open.
+pub(crate) type WriterId = VerifyingKey;
 
 /// The scrypt work factor for a new identity: N = 2^18, which takes about a
 /// second and 256 MiB of memory for each guess at the passphrase.
@@ -70,19 +80,32 @@ pub(crate) fn seal_identity(identity: &Identity, passphrase: &SecretString) -> R
     text.push_str(secret.expose_secret());
     text.push('\n');
 
+    seal_secret_bytes(text.as_bytes(), passphrase)
+}
+
+/// Encrypts arbitrary bytes under a passphrase as an age scrypt file. This is
+/// the one place scrypt is set up, shared by the identity and the write key.
+fn seal_secret_bytes(plaintext: &[u8], passphrase: &SecretString) -> Result<Vec<u8>> {
     let mut recipient =
         age::scrypt::Recipient::new(SecretString::from(passphrase.expose_secret().to_owned()));
     recipient.set_work_factor(work_factor());
-    encrypt_to(&[&recipient], text.as_bytes())
+    encrypt_to(&[&recipient], plaintext)
 }
 
-/// Decrypts an identity file with its passphrase.
-pub(crate) fn open_identity(sealed: &[u8], passphrase: &SecretString) -> Result<Identity> {
-    let decryptor = age::Decryptor::new_buffered(sealed)
-        .map_err(|_| anyhow!("the identity file is damaged"))?;
+/// Decrypts an age scrypt file with its passphrase, reading at most `limit`
+/// bytes. `what` names the file in every error, so the identity and the write
+/// key each read in their own words.
+fn open_secret_bytes(
+    sealed: &[u8],
+    passphrase: &SecretString,
+    limit: usize,
+    what: &str,
+) -> Result<Zeroizing<Vec<u8>>> {
+    let decryptor =
+        age::Decryptor::new_buffered(sealed).map_err(|_| anyhow!("the {what} is damaged"))?;
     ensure!(
         decryptor.is_scrypt(),
-        "the identity file is not protected by a passphrase, so txc will not use it"
+        "the {what} is not protected by a passphrase, so txc will not use it"
     );
 
     let mut unlock =
@@ -92,16 +115,22 @@ pub(crate) fn open_identity(sealed: &[u8], passphrase: &SecretString) -> Result<
         .decrypt(iter::once(&unlock as &dyn age::Identity))
         .map_err(|error| match error {
             age::DecryptError::ExcessiveWork { .. } => {
-                anyhow!("the identity file demands more work to open than txc allows")
+                anyhow!("the {what} demands more work to open than txc allows")
             }
-            _ => anyhow!("wrong passphrase, or the identity file is damaged"),
+            _ => anyhow!("wrong passphrase, or the {what} is damaged"),
         })?;
 
-    let mut plaintext = Zeroizing::new(Vec::with_capacity(IDENTITY_LIMIT));
+    let mut plaintext = Zeroizing::new(Vec::with_capacity(limit));
     reader
-        .take(IDENTITY_LIMIT as u64)
+        .take(limit as u64)
         .read_to_end(&mut plaintext)
-        .map_err(|_| anyhow!("the identity file is damaged"))?;
+        .map_err(|_| anyhow!("the {what} is damaged"))?;
+    Ok(plaintext)
+}
+
+/// Decrypts an identity file with its passphrase.
+pub(crate) fn open_identity(sealed: &[u8], passphrase: &SecretString) -> Result<Identity> {
+    let plaintext = open_secret_bytes(sealed, passphrase, IDENTITY_LIMIT, "identity file")?;
     let text =
         std::str::from_utf8(&plaintext).map_err(|_| anyhow!("the identity file is damaged"))?;
 
@@ -190,17 +219,103 @@ pub(crate) fn derive(identity: &Identity, label: &str) -> Key {
     mac(label.as_bytes(), &[secret.expose_secret().as_bytes()])
 }
 
+/// Joins the parts into one buffer, each prefixed with its length, so no two
+/// different lists of parts can run together into the same bytes. Shared by the
+/// MAC and the Ed25519 signature so both frame their input the same way.
+fn framed(parts: &[&[u8]]) -> Zeroizing<Vec<u8>> {
+    let total: usize = parts.iter().map(|part| part.len() + 8).sum();
+    let mut buffer = Zeroizing::new(Vec::with_capacity(total));
+    for part in parts {
+        buffer.extend_from_slice(&(part.len() as u64).to_be_bytes());
+        buffer.extend_from_slice(part);
+    }
+    buffer
+}
+
 fn tagger(key: &[u8], parts: &[&[u8]]) -> Hmac<Sha256> {
     // HMAC accepts a key of any length, so this construction never fails.
     #[allow(clippy::expect_used)]
     let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC takes a key of any length");
-    // Each part is prefixed with its length, so no two different lists of
-    // parts can run together into the same input.
-    for part in parts {
-        mac.update(&(part.len() as u64).to_be_bytes());
-        mac.update(part);
-    }
+    mac.update(&framed(parts));
     mac
+}
+
+/// A new random write key. The seed comes from the same source as every other
+/// key here, so there is one place where randomness enters.
+pub(crate) fn new_write_key() -> WriteKey {
+    let seed = random_key();
+    WriteKey::from_bytes(&seed)
+}
+
+/// The public identity of a write key, for pinning and for stamping a vault.
+pub(crate) fn writer_id(key: &WriteKey) -> WriterId {
+    key.verifying_key()
+}
+
+/// A writer public key as base64, the shape stored in `writers` and in a vault.
+pub(crate) fn writer_id_string(id: &WriterId) -> String {
+    BASE64.encode(id.as_bytes())
+}
+
+/// Reads a base64 writer public key, rejecting anything that is not a valid
+/// Ed25519 point.
+pub(crate) fn parse_writer_id(text: &str) -> Result<WriterId> {
+    let bytes = BASE64
+        .decode(text.trim().as_bytes())
+        .map_err(|_| anyhow!("a writer key is not valid base64"))?;
+    let array: [u8; 32] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow!("a writer key is not 32 bytes"))?;
+    WriterId::from_bytes(&array).map_err(|_| anyhow!("a writer key is not a valid Ed25519 key"))
+}
+
+/// Seals a write key under its own passphrase, as an age scrypt file.
+pub(crate) fn seal_write_key(key: &WriteKey, passphrase: &SecretString) -> Result<Vec<u8>> {
+    let seed = Zeroizing::new(key.to_bytes());
+    seal_secret_bytes(&seed[..], passphrase)
+}
+
+/// Opens a sealed write key with its passphrase.
+pub(crate) fn open_write_key(
+    sealed: &[u8],
+    passphrase: &SecretString,
+    limit: usize,
+) -> Result<WriteKey> {
+    let bytes = open_secret_bytes(sealed, passphrase, limit, "write key file")?;
+    let seed: [u8; 32] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow!("the write key file is damaged"))?;
+    Ok(WriteKey::from_bytes(&seed))
+}
+
+/// Signs a message with a write key.
+pub(crate) fn sign(key: &WriteKey, message: &[u8]) -> [u8; 64] {
+    key.sign(message).to_bytes()
+}
+
+/// A short, readable fingerprint of some bytes: 120 bits of them as six
+/// hyphen-separated groups of four lowercase base32 characters, the same shape
+/// the vault fingerprint uses. The input must be at least 15 bytes.
+pub(crate) fn fingerprint(bytes: &[u8]) -> String {
+    // Callers pass a 32 byte pin or public key, so the first 15 are present.
+    #[allow(clippy::indexing_slicing)]
+    let encoded = BASE32_NOPAD.encode(&bytes[..15]).to_lowercase();
+    encoded
+        .as_bytes()
+        .chunks(4)
+        .map(|group| std::str::from_utf8(group).unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+/// Verifies a signature against a writer's public key with `verify_strict`,
+/// which rejects the small-order and mixed-order keys that plain `verify`
+/// accepts.
+pub(crate) fn verify_signature(id: &WriterId, message: &[u8], signature: &[u8; 64]) -> bool {
+    let signature = Signature::from_bytes(signature);
+    id.verify_strict(message, &signature).is_ok()
 }
 
 /// HMAC-SHA256 over the parts, each prefixed with its length.
@@ -241,6 +356,15 @@ pub(crate) fn seal_identity_for_test(identity: &Identity, passphrase: &str) -> V
     recipient.set_work_factor(4);
     let text = format!("{}\n", identity.to_string().expose_secret());
     encrypt_to(&[&recipient], text.as_bytes()).unwrap()
+}
+
+/// Seals a write key quickly, for tests.
+#[cfg(test)]
+pub(crate) fn seal_write_key_for_test(key: &WriteKey, passphrase: &str) -> Vec<u8> {
+    let mut recipient = age::scrypt::Recipient::new(SecretString::from(passphrase.to_owned()));
+    recipient.set_work_factor(4);
+    let seed = Zeroizing::new(key.to_bytes());
+    encrypt_to(&[&recipient], &seed[..]).unwrap()
 }
 
 #[cfg(test)]

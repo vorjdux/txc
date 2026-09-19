@@ -14,6 +14,9 @@ use std::time::Duration;
 
 const BIN: &str = env!("CARGO_BIN_EXE_txc");
 const PASSPHRASE: &str = "correct horse battery staple";
+/// The write key's passphrase, kept different from the identity's, as the two
+/// are meant to be.
+const WRITE_PASSPHRASE: &str = "a quite separate write passphrase";
 const PATIENCE: Duration = Duration::from_secs(60);
 
 /// A vault directory and passphrase file for one test, removed when dropped.
@@ -34,6 +37,7 @@ impl Sandbox {
         std::fs::create_dir_all(&root).unwrap();
         let sandbox = Self { root };
         sandbox.passphrase_file("pass", PASSPHRASE);
+        sandbox.passphrase_file("write-pass", WRITE_PASSPHRASE);
         sandbox
     }
 
@@ -69,6 +73,8 @@ impl Sandbox {
             .arg(home)
             .arg("--passphrase-file")
             .arg(pass)
+            .arg("--write-passphrase-file")
+            .arg(self.root.join("write-pass"))
             .args(args)
             // Debug builds read this, so identities are made in milliseconds.
             .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
@@ -181,6 +187,12 @@ fn every_file(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn fingerprint(sandbox: &Sandbox, vault: &str) -> String {
     let out = succeeds(&sandbox.vault(&["fingerprint", vault]));
     out.split_whitespace().last().unwrap().to_string()
+}
+
+/// This device's writer public key (the first field of `vault writer`).
+fn writer_key(sandbox: &Sandbox) -> String {
+    let out = succeeds(&sandbox.vault(&["writer"]));
+    out.split_whitespace().next().unwrap().to_string()
 }
 
 /// Copies a whole vault home, as syncing the directory across would, keeping
@@ -443,7 +455,14 @@ fn a_vault_copied_to_another_device_needs_trusting_there() {
     // records: exactly what copying the vault directory across looks like.
     let desktop = Sandbox::new("desktop");
     std::fs::create_dir_all(desktop.home().join("vaults")).unwrap();
-    for name in ["identity.age", "vaults/personal.vault.age"] {
+    // The write key and the pinned writers travel with the identity to another
+    // of your own devices, so a vault it signed opens there.
+    for name in [
+        "identity.age",
+        "writer.age",
+        "writers",
+        "vaults/personal.vault.age",
+    ] {
         std::fs::copy(laptop.home().join(name), desktop.home().join(name)).unwrap();
     }
     #[cfg(unix)]
@@ -490,6 +509,8 @@ fn a_vault_can_be_shared_with_another_identity() {
         bob.home().join("vaults/team.vault.age"),
     )
     .unwrap();
+    // Bob pins Alice's writer, so the vault she signed opens for him.
+    succeeds(&bob.vault(&["writers", "--add", &writer_key(&alice), "--yes"]));
     succeeds(&bob.vault(&["trust", "team", "--yes"]));
     assert_eq!(
         succeeds(&bob.vault(&["copy", "team/deploy", "--print"])),
@@ -670,10 +691,12 @@ fn an_unattended_job_cannot_trust_a_replaced_vault() {
     )
     .unwrap();
 
-    // An unattended job cannot pin the replacement, and nothing on disk changes.
+    // The attacker does not hold Alice's write key, so the forgery is signed by
+    // a writer Alice never pinned and is refused outright, before trust even
+    // enters into it. Nothing on disk changes.
     let before = std::fs::read(alice.home().join("trust.json")).unwrap();
     let error = fails(&alice.vault(&["trust", "personal", "--yes"]));
-    assert!(error.contains("terminal"), "{error}");
+    assert!(error.contains("does not know"), "{error}");
     let after = std::fs::read(alice.home().join("trust.json")).unwrap();
     assert_eq!(before, after, "trust.json changed under an unattended job");
 }
@@ -699,12 +722,14 @@ fn a_fingerprint_lets_a_script_accept_a_replaced_vault() {
     ));
     let fp = fingerprint(&alice, "team");
 
-    // Bob receives the vault; it is new to him.
+    // Bob receives the vault; it is new to him. He pins Alice's writer, so the
+    // signature verifies and the fingerprint is what settles trust.
     std::fs::copy(
         alice.home().join("vaults/team.vault.age"),
         bob.home().join("vaults/team.vault.age"),
     )
     .unwrap();
+    succeeds(&bob.vault(&["writers", "--add", &writer_key(&alice), "--yes"]));
 
     // A wrong fingerprint pins nothing and leaves it untrusted.
     let wrong = fails(&bob.vault(&["trust", "team", "--expect", "aaaa-bbbb-cccc-dddd-eeee-ffff"]));
@@ -780,12 +805,97 @@ fn trusting_records_what_it_replaced() {
     )
     .unwrap();
 
-    // Alice accepts it with the fingerprint she verified, and the log records
+    // Alice pins the other device's writer, so its vault reaches the trust
+    // layer, then accepts it with the fingerprint she verified. The log records
     // that it replaced the vault she had.
+    succeeds(&alice.vault(&["writers", "--add", &writer_key(&other), "--yes"]));
     succeeds(&alice.vault(&["trust", "personal", "--expect", &fp]));
     let history = succeeds(&alice.vault(&["history", "personal"]));
     assert!(
         history.contains("replaced another vault of the same name"),
         "{history}"
+    );
+}
+
+#[test]
+fn a_reader_only_device_can_read_but_not_write() {
+    let writer = Sandbox::new("ro-writer");
+    writer.init();
+    succeeds(&writer.vault_piped(&["add", "site", "--secret-from-stdin"], "the-secret"));
+
+    // Provision a reader: the identity, the pinned writers and the trust
+    // record, but NOT writer.age. This is the automation-host row of the
+    // provisioning matrix.
+    let reader = Sandbox::new("ro-reader");
+    std::fs::create_dir_all(reader.home().join("vaults")).unwrap();
+    for name in [
+        "identity.age",
+        "writers",
+        "trust.json",
+        "vaults/personal.vault.age",
+    ] {
+        std::fs::copy(writer.home().join(name), reader.home().join(name)).unwrap();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for dir in [reader.home(), reader.home().join("vaults")] {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
+
+    // It can read the secret.
+    assert_eq!(
+        succeeds(&reader.vault(&["copy", "site", "--print"])),
+        "the-secret"
+    );
+
+    // It cannot write, on any path, and every refusal names the reason.
+    let alice_key = succeeds(&reader.vault(&["identity"])).trim().to_string();
+    for args in [
+        vec!["rm", "site", "--yes"],
+        vec!["recipients", "personal", "--add", alice_key.as_str()],
+        vec!["create", "another"],
+    ] {
+        let error = fails(&reader.vault(&args));
+        assert!(error.contains("read only"), "{:?}: {error}", args);
+    }
+    // The secret is still there, unchanged.
+    assert_eq!(
+        succeeds(&reader.vault(&["copy", "site", "--print"])),
+        "the-secret"
+    );
+}
+
+#[test]
+fn the_identity_passphrase_does_not_unlock_the_write_key() {
+    // A full device, but the write passphrase given is the identity's, not the
+    // write key's. The write key does not open, so the change is refused: an
+    // agent holding only the identity credential cannot write. (I5.)
+    let alice = Sandbox::new("i5");
+    alice.init();
+
+    let mut command = Command::new(BIN);
+    command
+        .arg("vault")
+        .arg("--home")
+        .arg(alice.home())
+        .arg("--passphrase-file")
+        .arg(alice.root.join("pass"))
+        // The identity's passphrase file, not the write key's.
+        .arg("--write-passphrase-file")
+        .arg(alice.root.join("pass"))
+        .args(["add", "site", "--secret-from-stdin"])
+        .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+        .env_remove("TXC_VAULT_HOME")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().expect("txc starts");
+    child.stdin.as_mut().unwrap().write_all(b"secret").unwrap();
+    let error = fails(&child.wait_with_output().unwrap());
+    assert!(
+        error.contains("wrong passphrase") || error.contains("write key"),
+        "{error}"
     );
 }
