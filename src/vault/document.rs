@@ -41,6 +41,9 @@ pub struct Vault {
     /// The format version this vault was read as. A vault read as version 1
     /// carries no signature and is upgraded to version 2 on the next write.
     version: u32,
+    /// The writer key that signed the version read, base64, or empty for a
+    /// version 1 vault. Used to tell whether a re-sign is still needed.
+    writer: String,
     generation: u64,
     /// Known only to those who can decrypt the vault. The trust record pins
     /// a tag made with it, which nobody holding just the public keys can
@@ -117,6 +120,7 @@ impl Vault {
             id: uuid::Uuid::new_v4().simple().to_string(),
             name: name.to_string(),
             version: VERSION,
+            writer: String::new(),
             generation: 1,
             key: crypto::random_key(),
             recipients,
@@ -221,6 +225,7 @@ impl Vault {
             id: std::mem::take(&mut stored.id),
             name: std::mem::take(&mut stored.name),
             version: stored.version,
+            writer: std::mem::take(&mut stored.writer),
             generation: stored.generation,
             key,
             recipients: std::mem::take(&mut stored.recipients),
@@ -235,6 +240,13 @@ impl Vault {
     #[must_use]
     pub(crate) const fn needs_upgrade(&self) -> bool {
         self.version < VERSION
+    }
+
+    /// The writer key that signed the version read, base64, or empty for a
+    /// version 1 vault.
+    #[must_use]
+    pub(crate) fn writer(&self) -> &str {
+        &self.writer
     }
 
     /// Serialises the vault as version 2, signed by `write_key`. The result

@@ -33,6 +33,14 @@ without the ability to write.
 - `txc vault writer` prints this device's writer public key and fingerprint.
 - `txc vault writers` lists the pinned writer keys, and `--add`/`--remove`
   pin or unpin one (an authorization change, so it needs a terminal or `--yes`).
+  Several keys can be pinned, so two of your devices can both write and a
+  colleague's writer can be trusted.
+- `txc vault writer --rotate` replaces the write key with a fresh one and
+  re-signs every vault. It unlocks the current write key first, so a holder of
+  the identity alone cannot rotate to a key they control, and it keeps the old
+  key pinned while re-signing, so a vault is always signed by a pinned key and
+  never stops opening, even if the rotation is interrupted. Retire the old key
+  with `writers --remove` once every device has the new one.
 - `txc vault upgrade [VAULT]` re-signs vaults still in the old format.
 - `txc vault delete <VAULT>` removes a whole vault, keeping its last version
   beside it as a single `.deleted` recovery file and printing the `mv` that

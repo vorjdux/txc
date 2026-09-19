@@ -468,7 +468,11 @@ prints your public key, and the owner of a vault adds it with
 the new set of keys. Removing a key does the same, but it cannot reach copies
 of the vault made before, so change any secret that key could read. For another
 person to open a vault you wrote, they pin your writer key with
-`txc vault writers --add`, the way you would confirm an SSH host key.
+`txc vault writers --add`, the way you would confirm an SSH host key. Several
+writers can be pinned at once, so two of your devices can both write. If a write
+key is lost or you retire a device, `txc vault writer --rotate` makes a fresh
+key and re-signs every vault, keeping the old key pinned until you retire it
+with `txc vault writers --remove`, so nothing stops opening in between.
 
 ### Giving one secret to a script
 

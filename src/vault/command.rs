@@ -448,7 +448,13 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("writer")
-                .about("Print this device's writer public key and fingerprint"),
+                .about("Print this device's writer public key, or rotate the write key")
+                .arg(
+                    Arg::new("rotate")
+                        .long("rotate")
+                        .action(ArgAction::SetTrue)
+                        .help("Replace the write key with a fresh one and re-sign every vault"),
+                ),
         )
         .subcommand(
             Command::new("writers")
@@ -653,7 +659,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "trust" => context.trust(sub),
         "fingerprint" => context.fingerprint(sub),
         "history" => context.history(sub),
-        "writer" => context.writer(),
+        "writer" => context.writer(sub),
         "writers" => context.writers(sub),
         "upgrade" => context.upgrade(sub),
         "delete" => context.delete(sub),
@@ -1355,9 +1361,12 @@ impl Session {
         output(&decisions.join("\n"))
     }
 
-    /// Prints this device's writer public key and its fingerprint, for pinning
-    /// on another device.
-    fn writer(&self) -> Result<()> {
+    /// Prints this device's writer public key and its fingerprint, or, with
+    /// `--rotate`, replaces the write key and re-signs every vault.
+    fn writer(&self, sub: &ArgMatches) -> Result<()> {
+        if sub.get_flag("rotate") {
+            return self.rotate_writer();
+        }
         let write_key = self.write_key()?;
         let id = crypto::writer_id(&write_key);
         output(&format!(
@@ -1365,6 +1374,52 @@ impl Session {
             crypto::writer_id_string(&id),
             crypto::fingerprint(id.as_bytes())
         ))
+    }
+
+    /// Replaces the write key with a fresh one and re-signs every vault this
+    /// device can open.
+    ///
+    /// The new key is pinned while the old one stays pinned, and every vault is
+    /// re-signed before the old key is removed, so a vault is always signed by a
+    /// key still pinned and never stops opening, even if this is interrupted.
+    /// Unlocking the current write key first is what stops a holder of the
+    /// identity alone from rotating the write key to one they control.
+    fn rotate_writer(&self) -> Result<()> {
+        let mut keyring = self.unlock()?;
+        let old = self.write_key()?;
+        let old_id = crypto::writer_id_string(&crypto::writer_id(&old));
+
+        let new_key = crypto::new_write_key();
+        let new_id = crypto::writer_id_string(&crypto::writer_id(&new_key));
+        let passphrase = self
+            .write_passphrase
+            .ask_new_write("New write passphrase: ")?;
+        let sealed = working("Protecting the new write key...", || {
+            crypto::seal_write_key(&new_key, &passphrase)
+        })?;
+        // Persist and pin the new key first, keeping the old pinned, so every
+        // vault stays openable through the re-signing that follows.
+        home::write_atomic(&self.home.writer_path(), &sealed, None)?;
+        keyring.pin_writer(&new_id)?;
+
+        let mut resigned = 0u32;
+        for name in keyring.home().vault_names()? {
+            let mut opened = keyring.open(&name)?;
+            // Skip vaults already on the new key, so a re-run after an
+            // interruption finishes rather than re-signs everything again.
+            if opened.vault().writer() == new_id {
+                continue;
+            }
+            opened.save(&keyring, &new_key)?;
+            resigned = resigned.saturating_add(1);
+            eprintln!("Re-signed {name}.");
+        }
+
+        eprintln!("Rotated the write key and re-signed {resigned} vault(s).");
+        eprintln!("The old writer stays pinned so vaults still open on devices that have not");
+        eprintln!("caught up. Once every device has the new key, remove it with:");
+        eprintln!("  txc vault writers --remove {old_id}");
+        Ok(())
     }
 
     /// Lists, pins or unpins the writer keys this device trusts.

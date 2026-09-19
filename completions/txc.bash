@@ -9319,7 +9319,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__writer)
-            opts="-h --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --rotate --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

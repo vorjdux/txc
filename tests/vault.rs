@@ -1074,3 +1074,84 @@ fn a_grant_needs_no_write_key() {
         "shared"
     );
 }
+
+#[test]
+fn rotating_the_write_key_re_signs_every_vault_and_can_retire_the_old() {
+    let s = Sandbox::new("rotate");
+    s.init();
+    succeeds(&s.vault_piped(&["add", "site", "--secret-from-stdin"], "s1"));
+    succeeds(&s.vault(&["create", "work"]));
+    succeeds(&s.vault_piped(
+        &[
+            "add",
+            "work/deploy",
+            "--kind",
+            "api-key",
+            "--secret-from-stdin",
+        ],
+        "s2",
+    ));
+
+    let old = writer_key(&s);
+    succeeds(&s.vault(&["writer", "--rotate"]));
+    let new = writer_key(&s);
+    assert_ne!(old, new, "the write key did not change");
+
+    // Both writers are pinned, and every vault still opens after re-signing.
+    assert_eq!(succeeds(&s.vault(&["writers"])).lines().count(), 2);
+    assert_eq!(succeeds(&s.vault(&["copy", "site", "--print"])), "s1");
+    assert_eq!(
+        succeeds(&s.vault(&["copy", "work/deploy", "--print"])),
+        "s2"
+    );
+
+    // A new write goes through with the new key.
+    succeeds(&s.vault_piped(&["add", "site2", "--secret-from-stdin"], "s3"));
+
+    // Retiring the old writer leaves everything open, since all vaults are on
+    // the new key now.
+    succeeds(&s.vault(&["writers", "--remove", &old, "--yes"]));
+    assert_eq!(succeeds(&s.vault(&["writers"])).lines().count(), 1);
+    assert_eq!(succeeds(&s.vault(&["copy", "site", "--print"])), "s1");
+    assert_eq!(
+        succeeds(&s.vault(&["copy", "work/deploy", "--print"])),
+        "s2"
+    );
+}
+
+#[test]
+fn rotating_needs_the_current_write_key() {
+    // An agent holding only the identity cannot rotate the write key to one it
+    // controls: rotation unlocks the current write key first.
+    let s = Sandbox::new("rotate-auth");
+    s.init();
+
+    let mut command = Command::new(BIN);
+    command
+        .arg("vault")
+        .arg("--home")
+        .arg(s.home())
+        .arg("--passphrase-file")
+        .arg(s.root.join("pass"))
+        // The identity's passphrase, which is not the write key's.
+        .arg("--write-passphrase-file")
+        .arg(s.root.join("pass"))
+        .args(["writer", "--rotate"])
+        .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+        .env_remove("TXC_VAULT_HOME")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = command
+        .spawn()
+        .expect("txc starts")
+        .wait_with_output()
+        .unwrap();
+    let error = fails(&output);
+    assert!(
+        error.contains("wrong passphrase") || error.contains("write key"),
+        "{error}"
+    );
+    // The writer is unchanged.
+    assert_eq!(succeeds(&s.vault(&["writers"])).lines().count(), 1);
+}
