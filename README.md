@@ -248,6 +248,8 @@ txc vault show visa                # secrets are shown masked
 txc vault copy github              # the password, cleared from the clipboard after 20s
 txc vault copy visa --field cvv
 txc vault move github work         # added it to the wrong vault? move it, secrets and all
+txc vault rm github                # remove one entry
+txc vault delete work              # remove a whole vault, keeping a .deleted recovery copy
 export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 ```
 
