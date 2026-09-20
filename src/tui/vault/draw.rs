@@ -69,11 +69,13 @@ pub fn draw(frame: &mut Frame, screen: &VaultScreen) {
     }
     draw_footer(frame, footer, screen, hint);
 
-    if let Some(dialog) = &screen.dialog {
-        draw_dialog(frame, area, screen, dialog);
-    }
+    // While a background job runs, show only its indicator, not the dialog that
+    // started it, so one window does not sit inside another. The dialog returns,
+    // with its error, if the job fails.
     if let Some(busy) = screen.busy() {
         draw_busy(frame, area, busy);
+    } else if let Some(dialog) = &screen.dialog {
+        draw_dialog(frame, area, screen, dialog);
     }
 }
 
@@ -1089,6 +1091,27 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn a_running_unlock_shows_only_its_own_window_not_the_dialog() {
+        let (_scratch, mut screen) = locked("ui-busy-solo");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        // The unlock job is now running, before it is polled to completion.
+        assert!(screen.busy().is_some());
+
+        let out = render(&screen, 110, 44);
+        assert!(
+            out.contains("Unlocking"),
+            "the busy window is missing: {out}"
+        );
+        assert!(
+            !out.contains("enter to unlock, esc to cancel"),
+            "the dialog is drawn under the busy window: {out}"
+        );
+        settle(&mut screen);
     }
 
     #[test]

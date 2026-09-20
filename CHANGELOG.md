@@ -21,6 +21,9 @@ All notable changes to txc are recorded here. The format follows
 
 - The cursor in the write-passphrase dialog sat in the middle of the field
   label rather than at the start of the input.
+- Unlocking in the interface drew the progress window on top of the dialog that
+  started it, one window inside another. Only the progress window shows while
+  the work runs now.
 
 ## [0.7.1] - 2026-09-19
 
