@@ -69,11 +69,13 @@ pub fn draw(frame: &mut Frame, screen: &VaultScreen) {
     }
     draw_footer(frame, footer, screen, hint);
 
-    if let Some(dialog) = &screen.dialog {
-        draw_dialog(frame, area, screen, dialog);
-    }
+    // While a background job runs, show only its indicator, not the dialog that
+    // started it, so one window does not sit inside another. The dialog returns,
+    // with its error, if the job fails.
     if let Some(busy) = screen.busy() {
         draw_busy(frame, area, busy);
+    } else if let Some(dialog) = &screen.dialog {
+        draw_dialog(frame, area, screen, dialog);
     }
 }
 
@@ -593,7 +595,9 @@ fn draw_dialog(frame: &mut Frame, area: Rect, screen: &VaultScreen, dialog: &Dia
                 lines.push(Line::styled(format!(" {line}"), muted()));
             }
             lines.push(Line::raw(""));
-            lines.push(masked_row("Write passphrase", passphrase, true));
+            // The label is kept short, like the other dialogs, so the fixed
+            // cursor column in place_cursor lands on the input, not the label.
+            lines.push(masked_row("Passphrase", passphrase, true));
             lines.push(Line::raw(""));
             lines.push(note(error.as_deref(), "enter to unlock, esc to cancel"));
             let first_row = lines.len() - 3;
@@ -1067,7 +1071,10 @@ mod tests {
 
     use super::*;
     use crate::tui::vault::REVEAL_FOR;
-    use crate::tui::vault::tests::{add_login, locked, press, press_ctrl, type_text, unlocked};
+    use crate::tui::vault::tests::{
+        add_login, locked, press, press_ctrl, settle, type_text, unlocked,
+    };
+    use crate::vault::test_support::PASSPHRASE;
 
     fn render(screen: &VaultScreen, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
@@ -1084,6 +1091,45 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn a_running_unlock_shows_only_its_own_window_not_the_dialog() {
+        let (_scratch, mut screen) = locked("ui-busy-solo");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        // The unlock job is now running, before it is polled to completion.
+        assert!(screen.busy().is_some());
+
+        let out = render(&screen, 110, 44);
+        assert!(
+            out.contains("Unlocking"),
+            "the busy window is missing: {out}"
+        );
+        assert!(
+            !out.contains("enter to unlock, esc to cancel"),
+            "the dialog is drawn under the busy window: {out}"
+        );
+        settle(&mut screen);
+    }
+
+    #[test]
+    fn the_write_key_dialog_uses_a_short_field_label() {
+        // The masked-row cursor sits at a fixed column that assumes a label of
+        // at most ten characters, so the field label must stay short or the
+        // cursor lands in the middle of it.
+        let (_scratch, mut screen) = locked("ui-write-dialog");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        // The first change opens the write-key dialog.
+        press(&mut screen, KeyCode::Char('a'));
+
+        let out = render(&screen, 110, 44);
+        assert!(out.contains("Unlock the write key"), "{out}");
+        assert!(out.contains(">Passphrase"), "{out}");
     }
 
     #[test]
