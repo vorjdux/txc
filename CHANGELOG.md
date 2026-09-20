@@ -17,6 +17,11 @@ All notable changes to txc are recorded here. The format follows
   is kept for the rest of the session. Locking the vault drops it with the
   identity, so it is asked for again when next needed.
 
+### Fixed
+
+- The cursor in the write-passphrase dialog sat in the middle of the field
+  label rather than at the start of the input.
+
 ## [0.7.1] - 2026-09-19
 
 ### Fixed

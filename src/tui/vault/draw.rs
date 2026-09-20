@@ -593,7 +593,9 @@ fn draw_dialog(frame: &mut Frame, area: Rect, screen: &VaultScreen, dialog: &Dia
                 lines.push(Line::styled(format!(" {line}"), muted()));
             }
             lines.push(Line::raw(""));
-            lines.push(masked_row("Write passphrase", passphrase, true));
+            // The label is kept short, like the other dialogs, so the fixed
+            // cursor column in place_cursor lands on the input, not the label.
+            lines.push(masked_row("Passphrase", passphrase, true));
             lines.push(Line::raw(""));
             lines.push(note(error.as_deref(), "enter to unlock, esc to cancel"));
             let first_row = lines.len() - 3;
@@ -1067,7 +1069,10 @@ mod tests {
 
     use super::*;
     use crate::tui::vault::REVEAL_FOR;
-    use crate::tui::vault::tests::{add_login, locked, press, press_ctrl, type_text, unlocked};
+    use crate::tui::vault::tests::{
+        add_login, locked, press, press_ctrl, settle, type_text, unlocked,
+    };
+    use crate::vault::test_support::PASSPHRASE;
 
     fn render(screen: &VaultScreen, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
@@ -1084,6 +1089,24 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn the_write_key_dialog_uses_a_short_field_label() {
+        // The masked-row cursor sits at a fixed column that assumes a label of
+        // at most ten characters, so the field label must stay short or the
+        // cursor lands in the middle of it.
+        let (_scratch, mut screen) = locked("ui-write-dialog");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        // The first change opens the write-key dialog.
+        press(&mut screen, KeyCode::Char('a'));
+
+        let out = render(&screen, 110, 44);
+        assert!(out.contains("Unlock the write key"), "{out}");
+        assert!(out.contains(">Passphrase"), "{out}");
     }
 
     #[test]
