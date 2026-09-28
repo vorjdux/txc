@@ -59,6 +59,18 @@ impl Name {
         Self(bytes)
     }
 
+    /// The name as bytes.
+    #[must_use]
+    pub const fn to_bytes(self) -> [u8; NAME_BYTES] {
+        self.0
+    }
+
+    /// A name from its bytes.
+    #[must_use]
+    pub const fn from_bytes(bytes: [u8; NAME_BYTES]) -> Self {
+        Self(bytes)
+    }
+
     /// Reads a name, accepting only 64 lowercase hex digits.
     #[must_use]
     pub fn parse(text: &str) -> Option<Self> {

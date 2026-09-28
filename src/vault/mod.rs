@@ -58,6 +58,7 @@ pub mod harden;
 mod home;
 pub mod import;
 mod keyring;
+pub mod local;
 pub mod model;
 pub mod object;
 pub mod pairing;

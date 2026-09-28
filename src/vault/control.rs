@@ -513,6 +513,33 @@ impl Counter {
         self.seen.last().copied().or(self.below)
     }
 
+    /// The counter's encoding, for sealed local state.
+    pub fn write(&self, out: &mut Writer) {
+        out.bool(self.below.is_some());
+        out.u64(self.below.unwrap_or(0));
+        out.count(self.seen.len());
+        for seq in &self.seen {
+            out.u64(*seq);
+        }
+    }
+
+    /// Reads what [`write`](Self::write) wrote.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when it is malformed.
+    pub fn read(input: &mut Reader<'_>) -> Result<Self> {
+        let present = input.bool()?;
+        let below = input.u64()?;
+        let seen = (0..input.count(MAX_ITEMS)?)
+            .map(|_| input.u64())
+            .collect::<Result<_>>()?;
+        Ok(Self {
+            below: present.then_some(below),
+            seen,
+        })
+    }
+
     /// The numbers missing below the highest seen.
     #[must_use]
     pub fn gaps(&self) -> Vec<u64> {

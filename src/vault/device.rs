@@ -19,7 +19,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use age_core::secrecy::ExposeSecret;
 use anyhow::{Context, Result, anyhow, bail, ensure};
+use zeroize::Zeroizing;
 
 use crate::vault::authority::{
     Certificate, Endorsement, Genesis, Issuance, IssuedCertificate, Issuer, Lifetime, Renewal,
@@ -38,6 +40,7 @@ use crate::vault::object::{
 use crate::vault::pairing;
 use crate::vault::pq;
 use crate::vault::store::{Name, Store};
+use crate::vault::wire::{Reader, Writer};
 
 const AGE_MAGIC: &[u8] = b"age-encryption.org/v1\n";
 
@@ -1770,6 +1773,378 @@ impl Device {
     }
 }
 
+// ------------------------------------------------------------ local state --
+
+const STATE_TAG: &[u8] = b"txc/v1/local-state";
+const MAX_STATE_ITEMS: usize = 1_000_000;
+const MAX_TEXT: usize = 4096;
+
+fn write_signed(out: &mut Writer, signed: &Signed) {
+    out.bytes(&signed.payload);
+    out.bytes(&signed.signature);
+}
+
+fn read_signed(input: &mut Reader<'_>) -> Result<Signed> {
+    Ok(Signed {
+        payload: input.bytes()?.to_vec(),
+        signature: input.bytes()?.to_vec(),
+    })
+}
+
+fn write_at(out: &mut Writer, at: &At) {
+    out.fixed(&at.author);
+    out.u64(at.seq);
+    out.fixed(&at.hash);
+}
+
+fn read_at(input: &mut Reader<'_>) -> Result<At> {
+    Ok(At {
+        author: input.fixed()?,
+        seq: input.u64()?,
+        hash: input.fixed()?,
+    })
+}
+
+fn write_ids(out: &mut Writer, ids: &BTreeSet<Id>) {
+    out.count(ids.len());
+    for id in ids {
+        out.fixed(id);
+    }
+}
+
+fn read_ids(input: &mut Reader<'_>) -> Result<BTreeSet<Id>> {
+    (0..input.count(MAX_STATE_ITEMS)?)
+        .map(|_| input.fixed())
+        .collect()
+}
+
+fn write_names(out: &mut Writer, names: &BTreeSet<Name>) {
+    out.count(names.len());
+    for name in names {
+        out.fixed(&name.to_bytes());
+    }
+}
+
+fn read_names(input: &mut Reader<'_>) -> Result<BTreeSet<Name>> {
+    (0..input.count(MAX_STATE_ITEMS)?)
+        .map(|_| Ok(Name::from_bytes(input.fixed()?)))
+        .collect()
+}
+
+fn write_counters(out: &mut Writer, counters: &BTreeMap<Id, Counter>) {
+    out.count(counters.len());
+    for (id, counter) in counters {
+        out.fixed(id);
+        counter.write(out);
+    }
+}
+
+fn read_counters(input: &mut Reader<'_>) -> Result<BTreeMap<Id, Counter>> {
+    (0..input.count(MAX_STATE_ITEMS)?)
+        .map(|_| Ok((input.fixed()?, Counter::read(input)?)))
+        .collect()
+}
+
+fn write_option<T>(out: &mut Writer, value: Option<&T>, write: impl FnOnce(&mut Writer, &T)) {
+    out.bool(value.is_some());
+    if let Some(value) = value {
+        write(out, value);
+    }
+}
+
+fn read_option<T>(
+    input: &mut Reader<'_>,
+    read: impl FnOnce(&mut Reader<'_>) -> Result<T>,
+) -> Result<Option<T>> {
+    if input.bool()? {
+        read(input).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn write_identity(out: &mut Writer, identity: &pq::Identity) {
+    out.bytes(identity.to_string().expose_secret().as_bytes());
+}
+
+fn read_identity(input: &mut Reader<'_>) -> Result<pq::Identity> {
+    let text = Zeroizing::new(input.str(MAX_TEXT)?);
+    text.parse()
+        .map_err(|error: &str| anyhow!("identity: {error}"))
+}
+
+impl Alarm {
+    fn write(&self, out: &mut Writer) {
+        match self {
+            Self::Fork(device) => {
+                out.u8(1);
+                out.fixed(device);
+            }
+            Self::Hijack => out.u8(2),
+            Self::Removed => out.u8(3),
+            Self::Restored => out.u8(4),
+        }
+    }
+
+    fn read(input: &mut Reader<'_>) -> Result<Self> {
+        Ok(match input.u8()? {
+            1 => Self::Fork(input.fixed()?),
+            2 => Self::Hijack,
+            3 => Self::Removed,
+            4 => Self::Restored,
+            other => bail!("unknown alarm {other}"),
+        })
+    }
+}
+
+impl Device {
+    /// Everything this device knows, for sealed local state. It holds the
+    /// sender keys and the pending renewal keys, so it is secret.
+    #[must_use]
+    pub fn encode_state(&self) -> Zeroizing<Vec<u8>> {
+        let mut out = Writer::default();
+        out.fixed(STATE_TAG);
+        out.fixed(&self.me.device);
+        out.fixed(&self.genesis_hash);
+        write_option(&mut out, self.genesis.as_ref(), |out, genesis| {
+            out.bytes(&genesis.encode());
+        });
+        write_option(&mut out, self.pinned_admin.as_ref(), |out, keys| {
+            out.bytes(&keys.encode());
+        });
+        out.count(self.certificates.len());
+        for (certificate, published) in self.certificates.values() {
+            out.bytes(&certificate.encode());
+            write_option(&mut out, published.as_ref(), write_at);
+        }
+        write_ids(&mut out, &self.lone_renewals);
+        write_option(
+            &mut out,
+            self.proposal.as_ref(),
+            |out, (renewal, cosigner)| {
+                out.bytes(&renewal.encode());
+                write_option(out, cosigner.as_ref(), |out, (id, signature)| {
+                    out.fixed(id);
+                    out.bytes(signature);
+                });
+            },
+        );
+        out.count(self.approvals.len());
+        for certificate in self.approvals.values() {
+            out.bytes(&certificate.encode());
+        }
+        out.count(self.facts.len());
+        for (hash, (fact, at)) in &self.facts {
+            out.fixed(hash);
+            out.bytes(&fact.encode());
+            write_at(&mut out, at);
+        }
+        out.count(self.certificate_objects.len());
+        for (id, hash) in &self.certificate_objects {
+            out.fixed(id);
+            out.fixed(hash);
+        }
+        write_option(
+            &mut out,
+            self.renewal.as_ref(),
+            |out, (signing, identity)| {
+                out.fixed(&signing.to_bytes()[..]);
+                write_identity(out, identity);
+            },
+        );
+        out.count(self.held.len());
+        for (hash, signed) in &self.held {
+            out.fixed(hash);
+            write_signed(&mut out, signed);
+        }
+        out.count(self.keys.len());
+        for key in self.keys.values() {
+            out.fixed(&key.writer);
+            out.fixed(&key.certificate);
+            out.fixed(&key.sender.id);
+            out.fixed(&key.sender.secret()[..]);
+        }
+        write_option(&mut out, self.mine.as_ref(), |out, mine| {
+            out.fixed(&mine.key.id);
+            out.fixed(&mine.key.secret()[..]);
+            out.count(mine.recipients.len());
+            for (device, certificate) in &mine.recipients {
+                out.fixed(device);
+                out.fixed(certificate);
+            }
+            out.u64(mine.next);
+        });
+        out.u64(self.seq);
+        out.fixed(&self.prev);
+        out.count(self.heads.len());
+        for (device, (seq, hash)) in &self.heads {
+            out.fixed(device);
+            out.u64(*seq);
+            out.fixed(hash);
+        }
+        out.count(self.positions.len());
+        for ((device, seq), hash) in &self.positions {
+            out.fixed(device);
+            out.u64(*seq);
+            out.fixed(hash);
+        }
+        write_counters(&mut out, &self.key_counters);
+        write_counters(&mut out, &self.control_counters);
+        out.count(self.sent.len());
+        for (device, counter) in &self.sent {
+            out.fixed(device);
+            out.u64(*counter);
+        }
+        write_names(&mut out, &self.done);
+        write_names(&mut out, &self.unreadable);
+        out.count(self.waiting.len());
+        for (name, signed) in &self.waiting {
+            out.fixed(&name.to_bytes());
+            write_signed(&mut out, signed);
+        }
+        out.count(self.content.len());
+        for content in self.content.values() {
+            out.bytes(&content.payload.encode());
+        }
+        out.count(self.checkpoints.len());
+        for (device, (seq, checkpoint)) in &self.checkpoints {
+            out.fixed(device);
+            out.u64(*seq);
+            out.bytes(&checkpoint.encode());
+        }
+        out.count(self.alarms.len());
+        for alarm in &self.alarms {
+            alarm.write(&mut out);
+        }
+        write_ids(&mut out, &self.originated);
+        Zeroizing::new(out.finish())
+    }
+
+    /// Rebuilds a device from its sealed local state and its secrets.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the state is malformed or belongs to another
+    /// device.
+    pub fn decode_state(me: Me, bytes: &[u8]) -> Result<Self> {
+        let mut input = Reader(bytes);
+        ensure!(
+            input.take(STATE_TAG.len())? == STATE_TAG,
+            "not txc local state"
+        );
+        let device: Id = input.fixed()?;
+        ensure!(
+            device == me.device,
+            "the local state belongs to another device"
+        );
+        let mut state = Self::empty(me, input.fixed()?);
+        state.genesis = read_option(&mut input, |input| Genesis::decode(input.bytes()?))?;
+        state.pinned_admin =
+            read_option(&mut input, |input| pairing::Keys::decode(input.bytes()?))?;
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            let certificate = Certificate::decode(input.bytes()?)?;
+            let published = read_option(&mut input, read_at)?;
+            state
+                .certificates
+                .insert(certificate.id, (certificate, published));
+        }
+        state.lone_renewals = read_ids(&mut input)?;
+        state.proposal = read_option(&mut input, |input| {
+            let renewal = Renewal::decode(input.bytes()?)?;
+            let cosigner =
+                read_option(input, |input| Ok((input.fixed()?, input.bytes()?.to_vec())))?;
+            Ok((renewal, cosigner))
+        })?;
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            let certificate = Certificate::decode(input.bytes()?)?;
+            state.approvals.insert(certificate.id, certificate);
+        }
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            let hash = input.fixed()?;
+            let fact = Fact::decode(input.bytes()?)?;
+            state.facts.insert(hash, (fact, read_at(&mut input)?));
+        }
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state
+                .certificate_objects
+                .insert(input.fixed()?, input.fixed()?);
+        }
+        state.renewal = read_option(&mut input, |input| {
+            let signing = SigningKey::from_bytes(&Zeroizing::new(input.fixed()?));
+            Ok((signing, read_identity(input)?))
+        })?;
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state.held.insert(input.fixed()?, read_signed(&mut input)?);
+        }
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            let (writer, certificate, id) = (input.fixed()?, input.fixed()?, input.fixed()?);
+            let sender = SenderKey::from_parts(id, Zeroizing::new(input.fixed()?));
+            state.keys.insert(
+                id,
+                Key {
+                    writer,
+                    certificate,
+                    sender,
+                },
+            );
+        }
+        state.mine = read_option(&mut input, |input| {
+            let id = input.fixed()?;
+            let key = SenderKey::from_parts(id, Zeroizing::new(input.fixed()?));
+            let recipients = (0..input.count(MAX_STATE_ITEMS)?)
+                .map(|_| Ok((input.fixed()?, input.fixed()?)))
+                .collect::<Result<_>>()?;
+            Ok(Mine {
+                key,
+                recipients,
+                next: input.u64()?,
+            })
+        })?;
+        state.seq = input.u64()?;
+        state.prev = input.fixed()?;
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state
+                .heads
+                .insert(input.fixed()?, (input.u64()?, input.fixed()?));
+        }
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state
+                .positions
+                .insert((input.fixed()?, input.u64()?), input.fixed()?);
+        }
+        state.key_counters = read_counters(&mut input)?;
+        state.control_counters = read_counters(&mut input)?;
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state.sent.insert(input.fixed()?, input.u64()?);
+        }
+        state.done = read_names(&mut input)?;
+        state.unreadable = read_names(&mut input)?;
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state
+                .waiting
+                .insert(Name::from_bytes(input.fixed()?), read_signed(&mut input)?);
+        }
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            let payload = Payload::decode(input.bytes()?)?;
+            let hash = payload.hash();
+            state.content.insert(hash, Content { hash, payload });
+        }
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            let device = input.fixed()?;
+            let seq = input.u64()?;
+            state
+                .checkpoints
+                .insert(device, (seq, Checkpoint::decode(input.bytes()?)?));
+        }
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state.alarms.insert(Alarm::read(&mut input)?);
+        }
+        state.originated = read_ids(&mut input)?;
+        input.finish()?;
+        Ok(state)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -2278,5 +2653,49 @@ mod tests {
         admin.sync(&store).unwrap();
         assert!(admin.alarms().contains(&Alarm::Fork(laptop.me().device)));
         assert!(texts(&admin).is_empty());
+    }
+
+    #[test]
+    fn a_device_sealed_and_reopened_carries_on() {
+        use crate::vault::local::{open_state, seal_state};
+
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        laptop
+            .write_content(&store, Kind::Op, b"before".to_vec())
+            .unwrap();
+        admin.sync(&store).unwrap();
+
+        let copy = |me: &Me| Me {
+            device: me.device,
+            signing: SigningKey::from_bytes(&me.signing.to_bytes()),
+            identity: me.identity.clone(),
+            retired: me.retired.clone(),
+            certificate: me.certificate,
+        };
+        let sealed = seal_state(&admin).unwrap();
+        let mut reopened = open_state(&sealed, copy(admin.me())).unwrap();
+        assert_eq!(reopened.encode_state(), admin.encode_state());
+        assert_eq!(texts(&reopened), set(&["before"]));
+
+        // A state sealed by another device, or changed, does not open.
+        assert!(open_state(&sealed, copy(laptop.me())).is_err());
+        let mut changed = sealed;
+        let last = changed.len() - 1;
+        changed[last] ^= 1;
+        assert!(open_state(&changed, copy(admin.me())).is_err());
+
+        laptop
+            .write_content(&store, Kind::Op, b"after".to_vec())
+            .unwrap();
+        assert_eq!(reopened.sync(&store).unwrap(), 1);
+        reopened
+            .write_content(&store, Kind::Op, b"reply".to_vec())
+            .unwrap();
+        laptop.sync(&store).unwrap();
+        assert_eq!(texts(&reopened), set(&["before", "after", "reply"]));
+        assert!(texts(&laptop).contains("reply"));
+        assert!(reopened.alarms().is_empty());
     }
 }
