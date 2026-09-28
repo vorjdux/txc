@@ -54,6 +54,7 @@ mod home;
 pub mod import;
 mod keyring;
 pub mod model;
+pub mod pq;
 pub mod prompt;
 mod recent;
 pub mod session;

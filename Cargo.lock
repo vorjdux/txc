@@ -3176,8 +3176,10 @@ name = "txc"
 version = "0.7.2"
 dependencies = [
  "age",
+ "age-core",
  "anyhow",
  "arboard",
+ "bech32",
  "blake3",
  "bs58",
  "chacha20poly1305",
@@ -3191,10 +3193,13 @@ dependencies = [
  "digest 0.11.3",
  "ed25519-dalek",
  "hmac 0.13.0",
+ "hpke",
  "html-escape",
  "libc",
  "md-5 0.11.0",
+ "ml-kem",
  "rand 0.10.2",
+ "rand 0.8.8",
  "ratatui",
  "regex",
  "rpassword",
@@ -3204,6 +3209,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha1",
  "sha2 0.11.0",
+ "sha3 0.10.9",
  "sha3 0.12.0",
  "textwrap",
  "toml 1.1.4+spec-1.1.0",
@@ -3212,6 +3218,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "windows-sys 0.61.2",
+ "x25519-dalek",
  "zeroize",
 ]
 

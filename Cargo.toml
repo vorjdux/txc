@@ -24,10 +24,19 @@ path = "src/main.rs"
 default = ["vault"]
 # The encrypted vault for passwords, API keys and other secrets. Building
 # without it leaves a binary with no key handling and no clipboard library.
-vault = ["dep:age", "dep:arboard", "dep:chacha20poly1305", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
+vault = ["dep:age", "dep:age-core", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hpke", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
 
 [dependencies]
 age = { version = "0.12", optional = true }
+# age's post-quantum recipient type (mlkem768x25519), composed in
+# src/vault/pq.rs from the same parts, and versions, the age crate uses.
+age-core = { version = "0.12", optional = true }
+bech32 = { version = "0.11", optional = true }
+hpke = { version = "0.12", optional = true, default-features = false, features = ["alloc"] }
+ml-kem = { version = "0.2", optional = true, features = ["deterministic"] }
+rand08 = { package = "rand", version = "0.8", optional = true }
+sha3_10 = { package = "sha3", version = "0.10", optional = true }
+x25519-dalek = { version = "2", optional = true, features = ["static_secrets"] }
 anyhow = "1.0"
 # Only text is ever put on the clipboard, so the image support is left out.
 # On Linux, Wayland is spoken directly rather than only through XWayland.
