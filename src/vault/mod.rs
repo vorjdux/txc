@@ -51,6 +51,7 @@ pub mod control;
 pub mod core;
 mod crypto;
 pub mod deliver;
+pub mod device;
 mod document;
 mod grant;
 pub mod harden;
