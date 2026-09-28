@@ -43,6 +43,7 @@
 //! reading the passphrase, and anything that reads the clipboard during the
 //! seconds a secret is on it.
 
+pub mod authority;
 pub mod clipboard;
 pub mod command;
 pub mod composite;
@@ -64,6 +65,7 @@ pub mod session;
 pub mod store;
 pub mod template;
 mod trust;
+pub mod wire;
 
 #[cfg(debug_assertions)]
 pub use crypto::TEST_WORK_FACTOR_VARIABLE;

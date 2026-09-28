@@ -38,6 +38,7 @@ use zeroize::Zeroizing;
 
 use crate::vault::composite;
 use crate::vault::pq;
+use crate::vault::wire::{Reader, Writer};
 
 /// The only cipher suite: age `mlkem768x25519`, composite ML-DSA-65 +
 /// Ed25519, SHA-384, HKDF-SHA-384 and XChaCha20-Poly1305.
@@ -171,57 +172,6 @@ pub struct Payload {
     pub addressing: Addressing,
     /// The object's own content.
     pub body: Vec<u8>,
-}
-
-struct Writer(Vec<u8>);
-
-impl Writer {
-    fn u8(&mut self, value: u8) {
-        self.0.push(value);
-    }
-    fn u64(&mut self, value: u64) {
-        self.0.extend_from_slice(&value.to_be_bytes());
-    }
-    fn fixed(&mut self, bytes: &[u8]) {
-        self.0.extend_from_slice(bytes);
-    }
-    fn bytes(&mut self, bytes: &[u8]) {
-        self.u64(bytes.len() as u64);
-        self.0.extend_from_slice(bytes);
-    }
-}
-
-struct Reader<'a>(&'a [u8]);
-
-impl<'a> Reader<'a> {
-    fn take(&mut self, count: usize) -> Result<&'a [u8]> {
-        ensure!(self.0.len() >= count, "the object ends early");
-        let (head, rest) = self.0.split_at(count);
-        self.0 = rest;
-        Ok(head)
-    }
-    fn u8(&mut self) -> Result<u8> {
-        Ok(self.take(1)?[0])
-    }
-    fn u64(&mut self) -> Result<u64> {
-        let mut word = [0; 8];
-        word.copy_from_slice(self.take(8)?);
-        Ok(u64::from_be_bytes(word))
-    }
-    fn fixed<const N: usize>(&mut self) -> Result<[u8; N]> {
-        let mut out = [0; N];
-        out.copy_from_slice(self.take(N)?);
-        Ok(out)
-    }
-    fn count(&mut self, limit: usize) -> Result<usize> {
-        let count = usize::try_from(self.u64()?).map_err(|_| anyhow!("a count is too large"))?;
-        ensure!(count <= limit, "a count is larger than any object has");
-        Ok(count)
-    }
-    fn bytes(&mut self) -> Result<&'a [u8]> {
-        let count = self.count(MAX_OBJECT_BYTES)?;
-        self.take(count)
-    }
 }
 
 impl Payload {
