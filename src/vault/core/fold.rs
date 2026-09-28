@@ -239,6 +239,74 @@ mod tests {
         }
     }
 
+    /// Writers that record only their frontier, the live ops they saw, as
+    /// an op's deps: what txc writes, since the full history would grow
+    /// without bound.
+    fn frontier_history(spec: &[(u8, u8, bool)]) -> (History, History) {
+        let mut full = History::new();
+        let mut frontier = History::new();
+        for (id, (pick, value, delete)) in (0_u32..).zip(spec) {
+            // The writer has seen a causally closed prefix of the history.
+            let seen: BTreeSet<u32> = if id == 0 || pick % 3 == 0 {
+                BTreeSet::new()
+            } else {
+                let base = u32::from(*pick) % id;
+                let mut seen = full[&base].deps.clone();
+                seen.insert(base);
+                seen
+            };
+            let dominated: BTreeSet<u32> = seen
+                .iter()
+                .flat_map(|op| full[op].deps.iter().copied())
+                .collect();
+            let live: BTreeSet<u32> = seen.difference(&dominated).copied().collect();
+            let kind = |ops: &History| {
+                if *delete {
+                    Kind::Delete {
+                        old: fold(&seen, ops).values,
+                    }
+                } else {
+                    Kind::Set(*value)
+                }
+            };
+            let time = u64::from(id);
+            full.insert(
+                id,
+                Op {
+                    kind: kind(&full),
+                    deps: seen.clone(),
+                    time,
+                },
+            );
+            frontier.insert(
+                id,
+                Op {
+                    kind: kind(&full),
+                    deps: live,
+                    time,
+                },
+            );
+        }
+        (full, frontier)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(2000))]
+
+        /// Frontier deps fold exactly as full-history deps do, for every
+        /// causally closed set a device can hold.
+        #[test]
+        fn frontier_deps_fold_as_full_history(spec in proptest::collection::vec((any::<u8>(), 0_u8..4, any::<bool>()), 1..12), cut in any::<u8>()) {
+            let (full, frontier) = frontier_history(&spec);
+            let all: BTreeSet<u32> = full.keys().copied().collect();
+            prop_assert_eq!(fold(&all, &full), fold(&all, &frontier));
+            let pivot = u32::from(cut) % u32::try_from(all.len()).unwrap();
+            let mut closed = full[&pivot].deps.clone();
+            closed.insert(pivot);
+            prop_assert_eq!(fold(&closed, &full), fold(&closed, &frontier));
+        }
+    }
+
     #[test]
     fn a_snapshot_whose_state_was_changed_is_refused() {
         let mut ops = History::new();

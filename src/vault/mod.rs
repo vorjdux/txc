@@ -53,6 +53,7 @@ mod crypto;
 pub mod deliver;
 pub mod device;
 mod document;
+pub mod entries;
 mod grant;
 pub mod harden;
 mod home;
