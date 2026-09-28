@@ -1249,6 +1249,36 @@ impl Session {
             return Ok(());
         }
 
+        if synced_command::is_synced(&self.home, vault_name) {
+            let (mut vault, _) = self.synced().open_confined(vault_name)?;
+            let new: Vec<NewEntry> = batch
+                .entries
+                .into_iter()
+                .map(|entry| NewEntry {
+                    name: entry.name,
+                    kind: entry.kind,
+                    plain: entry.plain,
+                    secrets: entry.secrets,
+                    tags: entry.tags,
+                    favourite: entry.favourite,
+                })
+                .collect();
+            let count = crate::vault::synced_model::add_all(&mut vault, &new)?;
+            eprintln!("Imported {count} entries into {vault_name}, as one change.");
+        } else {
+            self.import_classic(vault_name, batch)?;
+        }
+        if sub.get_flag("remove-source") {
+            remove_source(Path::new(path))?;
+            eprintln!(
+                "Overwrote and deleted {path}. Copies may remain on an SSD, in a synced folder or \
+                 in a backup."
+            );
+        }
+        Ok(())
+    }
+
+    fn import_classic(&self, vault_name: &str, batch: crate::vault::import::Batch) -> Result<()> {
         let keyring = self.unlock()?;
         let write_key = self.write_key()?;
         let mut vault = keyring.open(vault_name)?;
@@ -1272,14 +1302,6 @@ impl Session {
         }
         vault.save(&keyring, &write_key)?;
         eprintln!("Imported {count} entries into {vault_name}.");
-
-        if sub.get_flag("remove-source") {
-            remove_source(Path::new(path))?;
-            eprintln!(
-                "Overwrote and deleted {path}. Copies may remain on an SSD, in a synced folder or \
-                 in a backup."
-            );
-        }
         Ok(())
     }
 
@@ -1287,10 +1309,26 @@ impl Session {
     /// confirmation.
     fn export(&self, sub: &ArgMatches) -> Result<()> {
         let plaintext = sub.get_flag("plaintext");
-        let recipients = many(sub, "to")
+        let (mut classic, mut quantum) = (Vec::new(), Vec::new());
+        for text in many(sub, "to") {
+            if text.starts_with("age1pq1") {
+                quantum.push(
+                    text.parse::<crate::vault::pq::Recipient>()
+                        .map_err(|error| anyhow!("{text}: {error}"))?,
+                );
+            } else {
+                classic.push(crypto::parse_recipient(&text)?);
+            }
+        }
+        let recipients: Vec<&dyn age::Recipient> = classic
             .iter()
-            .map(|text| crypto::parse_recipient(text))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|recipient| recipient as &dyn age::Recipient)
+            .chain(
+                quantum
+                    .iter()
+                    .map(|recipient| recipient as &dyn age::Recipient),
+            )
+            .collect();
         ensure!(
             plaintext || !recipients.is_empty(),
             "name who can read the copy with --to age1..., such as a backup key; or use \
@@ -1314,13 +1352,28 @@ impl Session {
             ensure!(confirmed, "nothing was exported");
         }
 
-        let keyring = self.unlock()?;
         let mut names = many(sub, "VAULT");
         if names.is_empty() {
-            names = self.home.vault_names()?;
+            names = self.home.vault_names().unwrap_or_default();
+            names.extend(synced::names(&self.home)?);
         }
+        let needs_identity = names
+            .iter()
+            .any(|name| !synced_command::is_synced(&self.home, name));
+        let keyring = if needs_identity {
+            Some(self.unlock()?)
+        } else {
+            None
+        };
         let mut vaults = Vec::new();
         for name in &names {
+            if synced_command::is_synced(&self.home, name) {
+                vaults.push(synced_command::export_vault(&self.synced(), name)?);
+                continue;
+            }
+            let keyring = keyring
+                .as_ref()
+                .context("the identity is unlocked for this vault")?;
             let opened = keyring.open(name)?;
             let mut entries = Vec::new();
             for entry in opened.vault().entries() {
@@ -1330,7 +1383,7 @@ impl Session {
                         crate::vault::model::Value::Plain(text) => (text.clone(), false),
                         crate::vault::model::Value::Sealed(_) => (
                             opened
-                                .reveal(&keyring, &entry.name, &field.name)?
+                                .reveal(keyring, &entry.name, &field.name)?
                                 .expose_secret()
                                 .to_string(),
                             true,
@@ -1365,7 +1418,7 @@ impl Session {
         let bytes = if plaintext {
             json.to_vec()
         } else {
-            crypto::encrypt(&recipients, &json)?
+            crypto::encrypt_to(&recipients, &json)?
         };
 
         if let Some(path) = output {

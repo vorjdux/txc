@@ -176,7 +176,7 @@ pub(crate) fn encrypt(recipients: &[Recipient], plaintext: &[u8]) -> Result<Vec<
     encrypt_to(&recipients, plaintext)
 }
 
-fn encrypt_to(recipients: &[&dyn age::Recipient], plaintext: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn encrypt_to(recipients: &[&dyn age::Recipient], plaintext: &[u8]) -> Result<Vec<u8>> {
     let encryptor = age::Encryptor::with_recipients(recipients.iter().copied())
         .map_err(|error| anyhow!("cannot encrypt: {error}"))?;
     let mut ciphertext = Vec::with_capacity(plaintext.len() + 1024);

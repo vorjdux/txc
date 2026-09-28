@@ -130,6 +130,52 @@ pub fn add(vault: &mut Synced, new: &NewEntry) -> Result<()> {
     Ok(())
 }
 
+/// Adds several entries as one object, as an import does (rule 18). A name
+/// already in the vault gets the next free number. Returns how many.
+///
+/// # Errors
+///
+/// Returns an error when the write fails.
+pub fn add_all(vault: &mut Synced, new: &[NewEntry]) -> Result<usize> {
+    let entries = vault.entries()?;
+    let mut taken: Vec<String> = entries
+        .list()
+        .into_iter()
+        .flat_map(|view| view.names)
+        .collect();
+    let mut changes = Changes::new(&entries, now());
+    for entry in new {
+        let mut name = entry.name.clone();
+        let mut number = 2_usize;
+        while taken.contains(&name) {
+            name = format!("{} ({number})", entry.name);
+            number = number.saturating_add(1);
+        }
+        taken.push(name.clone());
+        let id = changes.create(&name)?;
+        changes.set_kind(&id, entry.kind.id())?;
+        if !entry.tags.is_empty() {
+            changes.set_tags(&id, &entry.tags)?;
+        }
+        if entry.favourite {
+            changes.set_star(&id, true)?;
+        }
+        for (label, secret) in &entry.secrets {
+            changes.add_field(
+                &id,
+                FieldKind::Secret,
+                label,
+                secret.expose_secret().as_bytes(),
+            )?;
+        }
+        for (label, value) in &entry.plain {
+            changes.add_field(&id, plain_kind(label), label, value.as_bytes())?;
+        }
+    }
+    vault.write(changes)?;
+    Ok(new.len())
+}
+
 /// Changes an entry, all or nothing: the changes are one object.
 ///
 /// # Errors

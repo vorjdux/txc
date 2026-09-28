@@ -63,7 +63,7 @@ impl Context<'_> {
 
     /// Opens and syncs a vault, then confines this process to the txc home
     /// and the vault's objects: no other files, no network, no programs.
-    fn open_confined(&self, name: &str) -> Result<(Synced, Confinement)> {
+    pub(crate) fn open_confined(&self, name: &str) -> Result<(Synced, Confinement)> {
         let vault = self.open(name)?;
         let objects = vault.store().path().to_path_buf();
         let confinement = confine::confine(&[self.home.root(), &objects], &[]);
@@ -751,6 +751,62 @@ pub fn redeem(sealed: &[u8], sub: &ArgMatches) -> Result<()> {
         Err(error) if error.kind() != io::ErrorKind::BrokenPipe => Err(error.into()),
         _ => Ok(()),
     }
+}
+
+// ---------------------------------------------------------------- export --
+
+/// A synced vault as `export` writes it: every entry with every secret,
+/// except operation-only ones, which are never released.
+///
+/// # Errors
+///
+/// Returns an error when the vault does not open or a secret does not.
+pub fn export_vault(context: &Context<'_>, name: &str) -> Result<serde_json::Value> {
+    let (vault, _) = context.open_confined(name)?;
+    let entries = vault.entries()?;
+    let views = entries.list();
+    let mut exported = Vec::new();
+    let mut withheld = Vec::new();
+    for entry in crate::vault::synced_model::entries(&vault)? {
+        let operation_only = views
+            .iter()
+            .find(|view| view.names.contains(&entry.name))
+            .is_some_and(|view| view.sensitivity == Sensitivity::OperationOnly);
+        if operation_only {
+            withheld.push(entry.name.clone());
+            continue;
+        }
+        let mut fields = Vec::new();
+        for field in &entry.fields {
+            let (value, secret) = match &field.value {
+                crate::vault::model::Value::Plain(text) => (text.clone(), false),
+                crate::vault::model::Value::Sealed(_) => (
+                    reveal(&vault, &entry.name, Some(&field.name))?
+                        .expose_secret()
+                        .to_owned(),
+                    true,
+                ),
+            };
+            fields
+                .push(serde_json::json!({ "name": field.name, "value": value, "secret": secret }));
+        }
+        exported.push(serde_json::json!({
+            "name": entry.name,
+            "kind": entry.kind.id(),
+            "fields": fields,
+            "tags": entry.tags,
+            "favourite": entry.favourite,
+            "created": entry.created,
+            "updated": entry.updated,
+        }));
+    }
+    if !withheld.is_empty() {
+        eprintln!(
+            "Left out of the export, as never released: {}.",
+            withheld.join(", ")
+        );
+    }
+    Ok(serde_json::json!({ "name": name, "entries": exported }))
 }
 
 // ---------------------------------------------------------------- breach --

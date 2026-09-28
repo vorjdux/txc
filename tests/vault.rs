@@ -1987,3 +1987,41 @@ fn a_password_in_an_imported_breach_list_is_reported_offline() {
         "{status}"
     );
 }
+
+#[test]
+fn a_synced_vault_imports_in_one_change_and_exports_to_a_post_quantum_key() {
+    use std::io::Read as _;
+
+    let sandbox = Sandbox::new("synced-import-export");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let env = sandbox.root.join("app.env");
+    std::fs::write(&env, "API_TOKEN=tok-1\nDB_PASSWORD=pw-2\n").unwrap();
+    let before = std::fs::read_dir(folder.join("objects")).unwrap().count();
+    succeeds(&sandbox.vault(&["import", env.to_str().unwrap(), "--into", "personal"]));
+    let after = std::fs::read_dir(folder.join("objects")).unwrap().count();
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "API_TOKEN"])),
+        "tok-1"
+    );
+    // One object for the whole import, plus this device's sender key and
+    // checkpoint bookkeeping at most.
+    assert!(after - before <= 3, "{before} -> {after}");
+    succeeds(&sandbox.vault(&["ssh-ca", "infra"]));
+
+    let key = txc::vault::pq::Identity::generate();
+    let exported = sandbox.vault(&["export", "personal", "--to", &key.to_public().to_string()]);
+    succeeds(&exported);
+    let decryptor = age::Decryptor::new(exported.stdout.as_slice()).unwrap();
+    let mut reader = decryptor
+        .decrypt(std::iter::once(&key as &dyn age::Identity))
+        .unwrap();
+    let mut json = String::new();
+    reader.read_to_string(&mut json).unwrap();
+    assert!(json.contains("pw-2"), "{json}");
+    assert!(
+        !json.contains("infra"),
+        "an operation-only entry was exported"
+    );
+    assert!(stderr(&exported).contains("infra"));
+}
