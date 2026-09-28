@@ -74,6 +74,7 @@ pub mod sshca;
 pub mod store;
 pub mod synced;
 pub mod synced_command;
+pub mod synced_model;
 pub mod template;
 mod trust;
 pub mod wire;
