@@ -75,7 +75,12 @@ impl Context<'_> {
             match session::resume(self.home)? {
                 session::Resumed::Open(mut contents) => {
                     if let Some(kek) = contents.synced.remove(name) {
-                        return Synced::open_with(self.home, name, kek);
+                        match Synced::open_with(self.home, name, kek) {
+                            Ok(vault) => return Ok(vault),
+                            Err(error) => {
+                                eprintln!("The session no longer opens {name}: {error:#}");
+                            }
+                        }
                     }
                 }
                 session::Resumed::Ended(reason) => eprintln!("The session has ended: {reason}."),
@@ -84,7 +89,12 @@ impl Context<'_> {
         }
         let passphrase = self.passphrase.ask(PASSPHRASE_PROMPT)?;
         working("Unlocking...", || {
-            Synced::open(self.home, name, &passphrase)
+            Synced::open(
+                self.home,
+                name,
+                &passphrase,
+                &crate::vault::hardware::Terminal,
+            )
         })
     }
 
@@ -418,6 +428,12 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     // What this platform cannot provide is a permanent condition: shown
     // with --all, not on every status (study section 19).
     if sub.get_flag("all") {
+        if vault.hardware()?.is_none() {
+            lines.push(
+                "● yellow  no security key: this device's keys rest on the passphrase and the system keystore → txc vault hardware add"
+                    .to_owned(),
+            );
+        }
         for missing in confinement.missing() {
             lines.push(format!(
                 "● yellow  on this system, {missing}; nothing to do"
@@ -807,6 +823,65 @@ pub fn export_vault(context: &Context<'_>, name: &str) -> Result<serde_json::Val
         );
     }
     Ok(serde_json::json!({ "name": name, "entries": exported }))
+}
+
+// -------------------------------------------------------------- hardware --
+
+/// `txc vault hardware add`: moves this device's second key-at-rest factor
+/// from the system keystore to hardware, through its age plugins, pinned.
+///
+/// # Errors
+///
+/// Returns an error when a plugin is missing, the passphrase is wrong, or
+/// the hardware cannot seal and open the factor.
+pub fn hardware(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let (verb, args) = sub
+        .subcommand()
+        .context("clap requires a hardware subcommand")?;
+    ensure!(verb == "add", "unknown hardware subcommand {verb}");
+    let name = context.which(args.get_one::<String>("vault"))?;
+    let recipient = required(args, "recipient");
+    let identity_file = required(args, "identity-file");
+    let text = Zeroizing::new(
+        std::fs::read_to_string(identity_file)
+            .with_context(|| format!("cannot read {identity_file}"))?,
+    );
+    let identity = text
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("AGE-PLUGIN-"))
+        .with_context(|| format!("{identity_file} holds no plugin identity (AGE-PLUGIN-...)"))?;
+    let path = |name: &str| args.get_one::<String>(name).map(std::path::PathBuf::from);
+    let (recipient_path, identity_path) = (path("recipient-plugin"), path("identity-plugin"));
+    let hardware = crate::vault::hardware::Hardware::set_up(
+        recipient,
+        identity,
+        recipient_path.as_deref(),
+        identity_path.as_deref(),
+    )?;
+    eprintln!(
+        "Pinned {} and {}; txc will run exactly these and refuse them if they change.",
+        hardware.recipient_plugin.path.display(),
+        hardware.identity_plugin.path.display()
+    );
+    // Not confined: this runs the plugins.
+    let mut vault = context.open_quiet(&name)?;
+    let passphrase = context.passphrase.ask(PASSPHRASE_PROMPT)?;
+    eprintln!(
+        "Your hardware may ask for a touch or its PIN, twice: once to seal, once to prove it opens."
+    );
+    vault.use_hardware(&hardware, &passphrase, &crate::vault::hardware::Terminal)?;
+    // A session holds the old key; it no longer opens this vault.
+    let ended = session::end(context.home);
+    eprintln!(
+        "This device's keys for \"{name}\" now need the passphrase and this hardware.{}",
+        if ended {
+            " The session was ended; unlock again with: txc vault unlock"
+        } else {
+            ""
+        }
+    );
+    Ok(())
 }
 
 // ---------------------------------------------------------------- breach --

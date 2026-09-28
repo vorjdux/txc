@@ -636,6 +636,49 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("hardware")
+                .about("Keep this device's keys behind a security key, the Secure Enclave or a TPM")
+                .long_about(
+                    "Keep this device's keys behind a security key, the Secure Enclave or a TPM.\n\n\
+                     The hardware reaches txc through its age plugin, such as age-plugin-yubikey or \
+                     age-plugin-se. Make an identity with that plugin first; txc then seals this \
+                     device's second key factor to it, so unlocking needs the passphrase and the \
+                     hardware. Plugins are pinned by path and hash, and never looked up again.",
+                )
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("add")
+                        .about("Seal this device's second factor to hardware")
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
+                        .arg(
+                            Arg::new("recipient")
+                                .long("recipient")
+                                .value_name("RECIPIENT")
+                                .required(true)
+                                .help("The hardware's public side, such as age1yubikey1... or age1tagpq1..."),
+                        )
+                        .arg(
+                            Arg::new("identity-file")
+                                .long("identity-file")
+                                .value_name("FILE")
+                                .required(true)
+                                .help("The plugin identity file the hardware's plugin wrote (AGE-PLUGIN-...)"),
+                        )
+                        .arg(
+                            Arg::new("recipient-plugin")
+                                .long("recipient-plugin")
+                                .value_name("PATH")
+                                .help("The plugin for the recipient, rather than the one on PATH now"),
+                        )
+                        .arg(
+                            Arg::new("identity-plugin")
+                                .long("identity-plugin")
+                                .value_name("PATH")
+                                .help("The plugin for the identity, rather than the one on PATH now"),
+                        ),
+                ),
+        )
+        .subcommand(
             Command::new("compare")
                 .about("Show digests to compare with another device, to see you share one history")
                 .arg(Arg::new("VAULT").help("The synced vault")),
@@ -1013,6 +1056,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "status" => synced_command::status(&context.synced(), sub),
         "sync" => synced_command::sync(&context.synced(), sub),
         "compare" => synced_command::compare(&context.synced(), sub),
+        "hardware" => synced_command::hardware(&context.synced(), sub),
         "breach" => synced_command::breach(&context.synced(), sub),
         "keyholder" => crate::vault::keyholder::serve(&context.home),
         "ssh-ca" => synced_command::ssh_ca(&context.synced(), sub),
@@ -1573,7 +1617,12 @@ impl Session {
         }
         for name in synced::names(&self.home)? {
             match working(&format!("Unlocking {name}..."), || {
-                Synced::unlock(&self.home, &name, &passphrase)
+                Synced::unlock(
+                    &self.home,
+                    &name,
+                    &passphrase,
+                    &crate::vault::hardware::Terminal,
+                )
             }) {
                 Ok(kek) => {
                     contents.synced.insert(name, kek);
@@ -2946,6 +2995,10 @@ mod tests {
             "ca",
             "user",
             "minutes",
+            "recipient",
+            "identity-file",
+            "recipient-plugin",
+            "identity-plugin",
         ];
         walk(&command(), &valued);
     }

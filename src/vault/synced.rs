@@ -25,6 +25,7 @@ use crate::vault::authority::{
 };
 use crate::vault::device::{Device, Me};
 use crate::vault::entries::{Changes, Entries};
+use crate::vault::hardware::{Hardware, Prompter};
 use crate::vault::home::{self, Home, PRIVATE};
 use crate::vault::local::{self, KdfParams};
 use crate::vault::object::{Hash, Id};
@@ -38,6 +39,8 @@ const FOLDER: &str = "folder";
 const KEYS: &str = "device.key";
 const STATE: &str = "state.age";
 const KIT: &str = "recovery.age";
+const HARDWARE: &str = "hardware";
+const SECOND: &str = "second.age";
 const KEYSTORE_SERVICE: &str = "txc vault";
 const CARD_WORDS: usize = 8;
 const SHEETS: u8 = 3;
@@ -145,6 +148,50 @@ fn second_factor(device: &Id, create: bool) -> Result<Zeroizing<[u8; 32]>> {
         }
         Err(error) => bail!("cannot read the second factor from the keystore: {error}"),
     }
+}
+
+/// Forgets a device's second factor in the OS keystore, once hardware holds
+/// it instead. Best effort: an entry left behind opens nothing new.
+fn forget_second_factor(device: &Id) {
+    let account = hex(device);
+    if let Some(dir) = test_keystore() {
+        std::fs::remove_file(dir.join(&account)).ok();
+        return;
+    }
+    if let Ok(entry) = keyring::Entry::new(KEYSTORE_SERVICE, &account) {
+        entry.delete_credential().ok();
+    }
+}
+
+/// The second factor candidates for a device, the hardware first when it
+/// holds one. The keystore comes second only as a fall-back, for a switch to
+/// hardware that did not finish.
+fn second_factors(
+    dir: &Path,
+    device: &Id,
+    prompter: &dyn Prompter,
+) -> Result<Vec<Zeroizing<[u8; 32]>>> {
+    let mut factors = Vec::new();
+    if home::exists(&dir.join(HARDWARE)) {
+        let hardware = Hardware::decode(&home::read_private(
+            &dir.join(HARDWARE),
+            KEY_LIMIT,
+            PRIVATE,
+        )?)?;
+        let sealed = home::read_private(&dir.join(SECOND), KEY_LIMIT, PRIVATE)?;
+        let opened = hardware.open(&sealed, prompter)?;
+        let factor: [u8; 32] = opened
+            .as_slice()
+            .try_into()
+            .map_err(|_len| anyhow!("the hardware returned a damaged factor"))?;
+        factors.push(Zeroizing::new(factor));
+        if let Ok(fallback) = second_factor(device, false) {
+            factors.push(fallback);
+        }
+    } else {
+        factors.push(second_factor(device, false)?);
+    }
+    Ok(factors)
 }
 
 // ------------------------------------------------------------ recovery kit --
@@ -324,8 +371,13 @@ impl Synced {
     ///
     /// Returns an error when the passphrase or second factor is wrong, or a
     /// file is damaged.
-    pub fn open(home: &Home, name: &str, passphrase: &SecretString) -> Result<Self> {
-        let kek = Self::unlock(home, name, passphrase)?;
+    pub fn open(
+        home: &Home,
+        name: &str,
+        passphrase: &SecretString,
+        prompter: &dyn Prompter,
+    ) -> Result<Self> {
+        let kek = Self::unlock(home, name, passphrase, prompter)?;
         Self::open_with(home, name, kek)
     }
 
@@ -339,6 +391,7 @@ impl Synced {
         home: &Home,
         name: &str,
         passphrase: &SecretString,
+        prompter: &dyn Prompter,
     ) -> Result<Zeroizing<[u8; 32]>> {
         let dir = dir(home, name);
         ensure!(
@@ -346,10 +399,16 @@ impl Synced {
             "no synced vault named \"{name}\" on this device"
         );
         let keys = home::read_private(&dir.join(KEYS), KEY_LIMIT, PRIVATE)?;
-        let second = second_factor(&local::key_file_device(&keys)?, false)?;
-        let kek = local::key_file_kek(&keys, passphrase.expose_secret().as_bytes(), &second)?;
-        local::unlock_keys_with(&keys, &kek)?;
-        Ok(kek)
+        let device = local::key_file_device(&keys)?;
+        let mut last = None;
+        for second in second_factors(&dir, &device, prompter)? {
+            let kek = local::key_file_kek(&keys, passphrase.expose_secret().as_bytes(), &second)?;
+            match local::unlock_keys_with(&keys, &kek) {
+                Ok(_) => return Ok(kek),
+                Err(error) => last = Some(error),
+            }
+        }
+        Err(last.unwrap_or_else(|| anyhow!("no second factor is available")))
     }
 
     /// Opens a synced vault with its key-encryption key, from a session.
@@ -509,6 +568,66 @@ impl Synced {
             now(),
         )?;
         self.save()
+    }
+
+    /// Moves this device's second key-at-rest factor from the OS keystore to
+    /// hardware: a fresh factor sealed to it, proven to open, and the key
+    /// file sealed again under the new key. The current passphrase is asked
+    /// again so it is checked.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the passphrase is wrong or the hardware cannot
+    /// seal and then open the factor.
+    pub fn use_hardware(
+        &mut self,
+        hardware: &Hardware,
+        passphrase: &SecretString,
+        prompter: &dyn Prompter,
+    ) -> Result<()> {
+        let keys = home::read_private(&self.dir.join(KEYS), KEY_LIMIT, PRIVATE)?;
+        let device = self.device.me().device;
+        let current = second_factors(&self.dir, &device, prompter)?;
+        ensure!(
+            current.iter().any(|second| {
+                local::key_file_kek(&keys, passphrase.expose_secret().as_bytes(), second)
+                    .is_ok_and(|kek| *kek == *self.kek)
+            }),
+            "that is not this vault's passphrase"
+        );
+        let mut factor = Zeroizing::new([0_u8; 32]);
+        rand::fill(&mut factor[..]);
+        let sealed = hardware.seal(&factor[..], prompter)?;
+        ensure!(
+            hardware.open(&sealed, prompter)?.as_slice() == &factor[..],
+            "the hardware did not give back what was sealed to it"
+        );
+        let (file, kek) = local::new_key_file(
+            device,
+            passphrase.expose_secret().as_bytes(),
+            &factor,
+            self.file.params,
+        )?;
+        home::write_atomic(&self.dir.join(SECOND), &sealed, None)?;
+        home::write_atomic(&self.dir.join(HARDWARE), &hardware.encode(), None)?;
+        self.file = file;
+        self.kek = kek;
+        self.save()?;
+        forget_second_factor(&device);
+        Ok(())
+    }
+
+    /// The hardware holding this device's second factor, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file is damaged.
+    pub fn hardware(&self) -> Result<Option<Hardware>> {
+        let path = self.dir.join(HARDWARE);
+        if !home::exists(&path) {
+            return Ok(None);
+        }
+        Hardware::decode(&home::read_private(&path, KEY_LIMIT, PRIVATE)?).map(Some)
     }
 
     /// Removes a device from the vault and saves.
@@ -720,7 +839,15 @@ pub(crate) mod tests {
         let mut first =
             Synced::create(&home_a, "work", &folder.0, &passphrase, TEST_PARAMS).unwrap();
         assert_eq!(names(&home_a).unwrap(), vec!["work".to_owned()]);
-        assert!(Synced::open(&home_a, "work", &SecretString::from("wrong".to_owned())).is_err());
+        assert!(
+            Synced::open(
+                &home_a,
+                "work",
+                &SecretString::from("wrong".to_owned()),
+                &crate::vault::hardware::Terminal
+            )
+            .is_err()
+        );
 
         // Pairing is refused until the kit is written down.
         assert!(first.pair().is_err());
@@ -763,7 +890,13 @@ pub(crate) mod tests {
         .unwrap();
         second.sync().unwrap();
 
-        let mut reopened = Synced::open(&home_b, "work", &passphrase).unwrap();
+        let mut reopened = Synced::open(
+            &home_b,
+            "work",
+            &passphrase,
+            &crate::vault::hardware::Terminal,
+        )
+        .unwrap();
         reopened.sync().unwrap();
         let values = reopened
             .entries()
@@ -772,7 +905,13 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(&values[0][..], b"hunter2");
         reopened.checkpoint().unwrap();
-        let mut first = Synced::open(&home_a, "work", &passphrase).unwrap();
+        let mut first = Synced::open(
+            &home_a,
+            "work",
+            &passphrase,
+            &crate::vault::hardware::Terminal,
+        )
+        .unwrap();
         first.sync().unwrap();
         assert_eq!(first.device().members().len(), 2);
     }

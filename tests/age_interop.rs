@@ -263,3 +263,109 @@ fn a_secret_sealed_through_a_pinned_plugin_opens_through_it_and_a_changed_plugin
     assert!(pinned.open(&sealed, &Silent).is_err());
     assert!(pinned.seal(b"x", &Silent).is_err());
 }
+
+#[test]
+fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on() {
+    let Some(dir) = age_dir() else {
+        return eprintln!("TXC_AGE_DIR is not set; skipped");
+    };
+    let scratch = Scratch::new("hardware-vault");
+    let (home, folder, keystore, run_dir) = (
+        scratch.0.join("home"),
+        scratch.0.join("sync"),
+        scratch.0.join("keystore"),
+        scratch.0.join("run"),
+    );
+    for path in [&folder, &keystore, &run_dir] {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let pass = scratch.0.join("pass");
+    std::fs::write(&pass, "correct horse battery staple\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&pass, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    let txc = |args: &[&str], input: &[u8]| -> std::process::Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_txc"))
+            .arg("vault")
+            .arg("--home")
+            .arg(&home)
+            .arg("--passphrase-file")
+            .arg(&pass)
+            .args(args)
+            .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+            .env("TXC_VAULT_TEST_KEYSTORE", &keystore)
+            .env("XDG_RUNTIME_DIR", &run_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(input).unwrap();
+        child.wait_with_output().unwrap()
+    };
+    let ok = |output: std::process::Output| {
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+    ok(txc(&["init", "--folder", folder.to_str().unwrap()], b""));
+    ok(txc(&["add", "mail", "--secret-from-stdin"], b"s3cret"));
+
+    // A pinned copy of the plugin stands in for the hardware's.
+    let plugin = scratch.0.join("age-plugin-pq");
+    std::fs::copy(dir.join("age-plugin-pq"), &plugin).unwrap();
+    let native = pq::Identity::generate();
+    let converted = run(
+        &dir,
+        "age-plugin-pq",
+        &["-identity"],
+        format!("{}\n", native.to_string().expose_secret()).as_bytes(),
+    );
+    let identity_file = scratch.0.join("hardware.key");
+    std::fs::write(&identity_file, converted).unwrap();
+    ok(txc(
+        &[
+            "hardware",
+            "add",
+            "--recipient",
+            &native.to_public().to_string(),
+            "--identity-file",
+            identity_file.to_str().unwrap(),
+            "--recipient-plugin",
+            plugin.to_str().unwrap(),
+            "--identity-plugin",
+            plugin.to_str().unwrap(),
+        ],
+        b"",
+    ));
+    assert_eq!(
+        std::fs::read_dir(&keystore).unwrap().count(),
+        0,
+        "the keystore factor was forgotten"
+    );
+    assert_eq!(ok(txc(&["copy", "--print", "mail"], b"")), "s3cret");
+
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&plugin)
+        .unwrap()
+        .write_all(b"tampered")
+        .unwrap();
+    let refused = txc(&["copy", "--print", "mail"], b"");
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("changed"),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+}

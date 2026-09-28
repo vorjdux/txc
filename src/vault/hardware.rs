@@ -62,6 +62,27 @@ impl Prompter for Terminal {
     }
 }
 
+/// Answers nothing, for a process with no person at a terminal, such as
+/// the keyholder: a key that only needs a touch still works, one that needs
+/// a PIN must be unlocked with `txc vault unlock` first.
+pub struct NoTerminal;
+
+impl Prompter for NoTerminal {
+    fn message(&self, _text: &str) {}
+
+    fn secret(&self, _question: &str) -> Option<SecretString> {
+        None
+    }
+
+    fn public(&self, _question: &str) -> Option<String> {
+        None
+    }
+
+    fn confirm(&self, _question: &str, _yes: &str, _no: Option<&str>) -> Option<bool> {
+        None
+    }
+}
+
 /// A plugin binary, pinned by its absolute path and hash.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pinned {

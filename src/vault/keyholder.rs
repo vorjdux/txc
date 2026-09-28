@@ -122,7 +122,12 @@ fn answer(
     if let Request::Open { name, passphrase } = request {
         ensure!(vault.is_none(), "this keyholder already holds a vault");
         let mut opened = if let Some(passphrase) = passphrase {
-            Synced::open(home, &name, &SecretString::from(passphrase))?
+            Synced::open(
+                home,
+                &name,
+                &SecretString::from(passphrase),
+                &crate::vault::hardware::NoTerminal,
+            )?
         } else {
             let session::Resumed::Open(mut contents) = session::resume(home)? else {
                 bail!("there is no session to open {name} from");

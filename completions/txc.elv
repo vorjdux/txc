@@ -2296,6 +2296,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand breach 'Check passwords against a breach list, offline'
+            cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
@@ -2638,6 +2639,37 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;breach;help;help'= {
         }
+        &'txc;vault;hardware'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+            cand add 'Seal this device''s second factor to hardware'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'txc;vault;hardware;add'= {
+            cand --vault 'The synced vault'
+            cand --recipient 'The hardware''s public side, such as age1yubikey1... or age1tagpq1...'
+            cand --identity-file 'The plugin identity file the hardware''s plugin wrote (AGE-PLUGIN-...)'
+            cand --recipient-plugin 'The plugin for the recipient, rather than the one on PATH now'
+            cand --identity-plugin 'The plugin for the identity, rather than the one on PATH now'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;hardware;help'= {
+            cand add 'Seal this device''s second factor to hardware'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'txc;vault;hardware;help;add'= {
+        }
+        &'txc;vault;hardware;help;help'= {
+        }
         &'txc;vault;compare'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
@@ -2865,6 +2897,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand breach 'Check passwords against a breach list, offline'
+            cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
@@ -2943,6 +2976,11 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;breach;import'= {
         }
         &'txc;vault;help;breach;check'= {
+        }
+        &'txc;vault;help;hardware'= {
+            cand add 'Seal this device''s second factor to hardware'
+        }
+        &'txc;vault;help;hardware;add'= {
         }
         &'txc;vault;help;compare'= {
         }
@@ -3467,6 +3505,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand breach 'Check passwords against a breach list, offline'
+            cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
@@ -3544,6 +3583,11 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;breach;import'= {
         }
         &'txc;help;vault;breach;check'= {
+        }
+        &'txc;help;vault;hardware'= {
+            cand add 'Seal this device''s second factor to hardware'
+        }
+        &'txc;help;vault;hardware;add'= {
         }
         &'txc;help;vault;compare'= {
         }
