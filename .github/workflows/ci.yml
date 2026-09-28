@@ -33,6 +33,29 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+  age-interop:
+    name: Interoperability with Go age
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # txc composes the mlkem768x25519 recipient itself, so the reference
+      # implementation must read what txc writes and the other way round:
+      # keys, files, and a vault control object opened with nothing but age
+      # and the recovery identity. The release is pinned by its hash.
+      - name: Fetch age
+        run: |
+          set -eu
+          curl -sSfL -o age.tar.gz \
+            https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz
+          echo "cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  age.tar.gz" | sha256sum -c -
+          tar xzf age.tar.gz
+          echo "TXC_AGE_DIR=$PWD/age" >> "$GITHUB_ENV"
+      - name: Test against age
+        run: cargo test --locked --test age_interop
+
   lint:
     name: Format and lints
     runs-on: ubuntu-latest
