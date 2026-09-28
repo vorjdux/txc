@@ -70,6 +70,7 @@ pub mod prompt;
 mod recent;
 pub mod session;
 pub mod slip39;
+pub mod sshca;
 pub mod store;
 pub mod synced;
 pub mod synced_command;

@@ -28,6 +28,12 @@ All notable changes to txc are recorded here. The format follows
   chain alongside. `txc vault redeem --vault-id ID` checks it all offline
   against the vault id the runner pins; `--min-version` refuses an outdated
   secret, and a grant decrypted by one runner cannot be passed to another.
+- **An SSH certificate authority in the vault.** `txc vault ssh-ca NAME`
+  makes one whose key is used only inside txc: never shown, copied, granted or
+  put in an environment. `txc vault ssh HOST` signs a fresh Ed25519 key for
+  that connection with a certificate that lives five minutes (`--minutes`, an
+  hour at most) and hands both to `ssh` as in-memory files; `--setup` prints
+  the `TrustedUserCAKeys` line servers need.
 - **`txc vault compare`** shows checkpoint digests to compare between devices,
   so a storage provider showing them different histories is noticed, and
   **`txc vault doctor`** prints a report for bug reports with no secret in it.

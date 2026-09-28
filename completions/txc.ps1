@@ -2439,6 +2439,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
+            [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
@@ -2742,6 +2744,29 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;ssh-ca' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;ssh' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--ca', '--ca', [CompletionResultType]::ParameterName, 'The certificate authority, when there are several')
+            [CompletionResult]::new('--user', '--user', [CompletionResultType]::ParameterName, 'The login the certificate is for (default: yours)')
+            [CompletionResult]::new('--minutes', '--minutes', [CompletionResultType]::ParameterName, 'How long the certificate lives (default: 5)')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--setup', '--setup', [CompletionResultType]::ParameterName, 'Print the line servers need, and the authority''s public key')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;compare' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
@@ -2990,6 +3015,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
+            [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
@@ -3075,6 +3102,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;status' {
+            break
+        }
+        'txc;vault;help;ssh-ca' {
+            break
+        }
+        'txc;vault;help;ssh' {
             break
         }
         'txc;vault;help;compare' {
@@ -3765,6 +3798,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
+            [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
@@ -3849,6 +3884,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;status' {
+            break
+        }
+        'txc;help;vault;ssh-ca' {
+            break
+        }
+        'txc;help;vault;ssh' {
             break
         }
         'txc;help;vault;compare' {

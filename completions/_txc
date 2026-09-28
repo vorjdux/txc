@@ -2921,6 +2921,34 @@ _arguments "${_arguments_options[@]}" : \
 '::VAULT -- The synced vault:_default' \
 && ret=0
 ;;
+(ssh-ca)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':ENTRY -- The entry, in the personal vault unless another is named:_default' \
+&& ret=0
+;;
+(ssh)
+_arguments "${_arguments_options[@]}" : \
+'--vault=[The synced vault]:VAULT:_default' \
+'--ca=[The certificate authority, when there are several]:ENTRY:_default' \
+'--user=[The login the certificate is for (default\: yours)]:LOGIN:_default' \
+'--minutes=[How long the certificate lives (default\: 5)]:N:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--setup[Print the line servers need, and the authority'\''s public key]' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'::HOST -- The host, as ssh takes it:_default' \
+'*::ARGS -- More arguments for ssh:_default' \
+&& ret=0
+;;
 (compare)
 _arguments "${_arguments_options[@]}" : \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
@@ -3318,6 +3346,14 @@ _arguments "${_arguments_options[@]}" : \
 esac
 ;;
 (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(ssh-ca)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(ssh)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4142,6 +4178,14 @@ _arguments "${_arguments_options[@]}" : \
 esac
 ;;
 (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(ssh-ca)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(ssh)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -5536,6 +5580,8 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
 'status:One screen\: what is fine, and what needs you' \
+'ssh-ca:Make an SSH certificate authority whose key never leaves txc' \
+'ssh:Connect with a fresh key and a certificate that lives for minutes' \
 'compare:Show digests to compare with another device, to see you share one history' \
 'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
 'sync:Read what other devices wrote, and note what this one has seen' \
@@ -5733,6 +5779,16 @@ _txc__subcmd__help__subcmd__vault__subcmd__run_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__show_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault show commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__ssh_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__ssh_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault ssh commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__ssh-ca_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__ssh-ca_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault ssh-ca commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__status_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__status_commands() {
@@ -6316,6 +6372,8 @@ _txc__subcmd__vault_commands() {
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
 'status:One screen\: what is fine, and what needs you' \
+'ssh-ca:Make an SSH certificate authority whose key never leaves txc' \
+'ssh:Connect with a fresh key and a certificate that lives for minutes' \
 'compare:Show digests to compare with another device, to see you share one history' \
 'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
 'sync:Read what other devices wrote, and note what this one has seen' \
@@ -6470,6 +6528,8 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
 'status:One screen\: what is fine, and what needs you' \
+'ssh-ca:Make an SSH certificate authority whose key never leaves txc' \
+'ssh:Connect with a fresh key and a certificate that lives for minutes' \
 'compare:Show digests to compare with another device, to see you share one history' \
 'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
 'sync:Read what other devices wrote, and note what this one has seen' \
@@ -6674,6 +6734,16 @@ _txc__subcmd__vault__subcmd__help__subcmd__show_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help show commands' commands "$@"
 }
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__ssh_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__ssh_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help ssh commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__ssh-ca_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__ssh-ca_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help ssh-ca commands' commands "$@"
+}
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__status_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__status_commands() {
     local commands; commands=()
@@ -6831,6 +6901,16 @@ _txc__subcmd__vault__subcmd__run_commands() {
 _txc__subcmd__vault__subcmd__show_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault show commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__ssh_commands] )) ||
+_txc__subcmd__vault__subcmd__ssh_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault ssh commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__ssh-ca_commands] )) ||
+_txc__subcmd__vault__subcmd__ssh-ca_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault ssh-ca commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__status_commands] )) ||
 _txc__subcmd__vault__subcmd__status_commands() {

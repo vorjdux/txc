@@ -575,6 +575,40 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("ssh-ca")
+                .about("Make an SSH certificate authority whose key never leaves txc")
+                .arg(reference()),
+        )
+        .subcommand(
+            Command::new("ssh")
+                .about("Connect with a fresh key and a certificate that lives for minutes")
+                .long_about(
+                    "Connect with a fresh key and a certificate that lives for minutes.\n\n\
+                     txc signs a new key for this connection with the vault's SSH certificate \
+                     authority and hands both to ssh as in-memory files; nothing is written to \
+                     disk and no agent runs. Servers trust the authority once; --setup prints \
+                     how. Anything after -- goes to ssh.",
+                )
+                .arg(Arg::new("HOST").help("The host, as ssh takes it"))
+                .arg(Arg::new("ARGS").num_args(0..).last(true).help("More arguments for ssh"))
+                .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
+                .arg(Arg::new("ca").long("ca").value_name("ENTRY").help("The certificate authority, when there are several"))
+                .arg(Arg::new("user").long("user").value_name("LOGIN").help("The login the certificate is for (default: yours)"))
+                .arg(
+                    Arg::new("minutes")
+                        .long("minutes")
+                        .value_name("N")
+                        .value_parser(value_parser!(u64).range(1..=60))
+                        .help("How long the certificate lives (default: 5)"),
+                )
+                .arg(
+                    Arg::new("setup")
+                        .long("setup")
+                        .action(ArgAction::SetTrue)
+                        .help("Print the line servers need, and the authority's public key"),
+                ),
+        )
+        .subcommand(
             Command::new("compare")
                 .about("Show digests to compare with another device, to see you share one history")
                 .arg(Arg::new("VAULT").help("The synced vault")),
@@ -952,6 +986,8 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "status" => synced_command::status(&context.synced(), sub),
         "sync" => synced_command::sync(&context.synced(), sub),
         "compare" => synced_command::compare(&context.synced(), sub),
+        "ssh-ca" => synced_command::ssh_ca(&context.synced(), sub),
+        "ssh" => synced_command::ssh(&context.synced(), sub),
         "doctor" => synced_command::doctor(&context.synced(), sub),
         "recovery" => synced_command::recovery(&context.synced(), sub),
         "resolve" => synced_command::entry(&context.synced(), "resolve", sub),
@@ -1040,7 +1076,7 @@ fn write_new_private(path: &Path, bytes: &[u8]) -> Result<()> {
 
 /// The exit code to pass on: the child's own, or 128 plus the signal that
 /// ended it, as a shell reports.
-fn exit_code(status: std::process::ExitStatus) -> i32 {
+pub(crate) fn exit_code(status: std::process::ExitStatus) -> i32 {
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt;
@@ -2825,6 +2861,9 @@ mod tests {
             "origin",
             "vault-id",
             "min-version",
+            "ca",
+            "user",
+            "minutes",
         ];
         walk(&command(), &valued);
     }

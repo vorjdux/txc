@@ -24,7 +24,7 @@ path = "src/main.rs"
 default = ["vault"]
 # The encrypted vault for passwords, API keys and other secrets. Building
 # without it leaves a binary with no key handling and no clipboard library.
-vault = ["dep:age", "dep:age-core", "dep:argon2", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hkdf", "dep:hpke", "dep:keyring", "dep:landlock", "dep:seccompiler", "dep:pbkdf2", "dep:ml-dsa", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
+vault = ["dep:age", "dep:age-core", "dep:argon2", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hkdf", "dep:hpke", "dep:keyring", "dep:landlock", "dep:seccompiler", "dep:ssh-key", "dep:pbkdf2", "dep:ml-dsa", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
 
 [dependencies]
 age = { version = "0.12", optional = true }
@@ -35,6 +35,7 @@ argon2 = { version = "0.6", optional = true, default-features = false, features 
 bech32 = { version = "0.11", optional = true }
 hkdf = { version = "0.13", optional = true }
 keyring = { version = "4.2", optional = true }
+ssh-key = { version = "0.6.7", optional = true, default-features = false, features = ["std", "ed25519", "rand_core"] }
 pbkdf2 = { version = "0.13", optional = true, default-features = false, features = ["hmac"] }
 hpke = { version = "0.12", optional = true, default-features = false, features = ["alloc"] }
 ml-kem = { version = "0.2", optional = true, features = ["deterministic"] }

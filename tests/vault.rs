@@ -85,6 +85,7 @@ impl Sandbox {
             // Debug builds keep the synced vaults' second factor here rather
             // than in the OS keystore, which CI runners do not have.
             .env("TXC_VAULT_TEST_KEYSTORE", self.private("keystore"))
+            .env("TXC_VAULT_TEST_SSH", self.root.join("fake-ssh"))
             .env_remove("TXC_VAULT_HOME")
             .stdin(if input.is_some() {
                 Stdio::piped()
@@ -1817,4 +1818,46 @@ fn a_synced_grant_opens_for_its_runner_against_the_pinned_vault_id() {
         "--vault-id",
         &vault_id,
     ]));
+}
+
+#[test]
+#[cfg(unix)]
+fn ssh_gets_a_fresh_key_and_a_short_certificate_from_a_ca_that_never_leaves() {
+    use std::os::unix::fs::PermissionsExt;
+
+    if Command::new("ssh-keygen").arg("-?").output().is_err() {
+        return eprintln!("ssh-keygen is not installed; skipped");
+    }
+    let sandbox = Sandbox::new("synced-ssh");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let setup = succeeds(&sandbox.vault(&["ssh-ca", "infra"]));
+    assert!(setup.starts_with("ssh-ed25519 "), "{setup}");
+    let public = sandbox.root.join("ca.pub");
+    std::fs::write(&public, &setup).unwrap();
+    let fingerprint = String::from_utf8(
+        Command::new("ssh-keygen").arg("-lf").arg(&public).output().unwrap().stdout,
+    )
+    .unwrap();
+    let fingerprint = fingerprint.split_whitespace().nth(1).unwrap().to_owned();
+
+    // The CA key is never released.
+    fails(&sandbox.vault(&["copy", "--print", "infra"]));
+    fails(&sandbox.vault(&["grant", "infra", "--to", "age1pq1x"]));
+    assert!(succeeds(&sandbox.vault(&["show", "infra"])).contains("••••"));
+
+    // A stand-in for ssh that checks what it was given with OpenSSH itself.
+    let fake = sandbox.root.join("fake-ssh");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\nset -e\nkey=\"$2\"\ncert=\"${4#CertificateFile=}\"\n\
+         ssh-keygen -L -f \"$cert\"\nssh-keygen -y -f \"$key\" >/dev/null\necho \"host $7\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let shown = succeeds(&sandbox.vault(&["ssh", "--user", "deploy", "--minutes", "2", "server.example"]));
+    assert!(shown.contains(&format!("Signing CA: ED25519 {fingerprint}")), "{shown}");
+    assert!(shown.contains("deploy"), "{shown}");
+    assert!(shown.contains("Type: ssh-ed25519-cert-v01@openssh.com user certificate"), "{shown}");
+    assert!(shown.contains("host server.example"), "{shown}");
 }

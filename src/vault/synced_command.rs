@@ -30,7 +30,7 @@ use crate::vault::command::{
 use crate::vault::confine::{self, Confinement};
 use crate::vault::control::Checkpoint;
 use crate::vault::device::Alarm;
-use crate::vault::entries::{Changes, EntryView, FieldKind, FieldView, NAME, Slot};
+use crate::vault::entries::{Changes, EntryView, FieldKind, FieldView, NAME, Sensitivity, Slot};
 use crate::vault::grant2;
 use crate::vault::model::{DEFAULT_VAULT, Kind, Reference, check_vault_name};
 use crate::vault::object::Id;
@@ -743,6 +743,165 @@ pub fn redeem(sealed: &[u8], sub: &ArgMatches) -> Result<()> {
     }
 }
 
+// ------------------------------------------------------------------- ssh --
+
+const SSH_CA_KIND: &str = "ssh-ca";
+const SSH_CA_FIELD: &str = "ca-key";
+
+/// `txc vault ssh-ca VAULT/NAME`: makes an SSH certificate authority whose
+/// key never leaves txc.
+///
+/// # Errors
+///
+/// Returns an error when the name is taken or the write fails.
+pub fn ssh_ca(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let reference: Reference = required(sub, "ENTRY").parse()?;
+    let (mut vault, _) = context.open_confined(&reference.vault)?;
+    let entries = vault.entries()?;
+    ensure!(
+        !entries
+            .list()
+            .iter()
+            .any(|view| view.names.contains(&reference.entry)),
+        "there is already an entry named {:?}",
+        reference.entry
+    );
+    let ca = crate::vault::sshca::new_ca()?;
+    let public = crate::vault::sshca::ca_public(&ca)?;
+    let mut changes = Changes::new(&entries, now());
+    let entry = changes.create(&reference.entry)?;
+    changes.set_kind(&entry, SSH_CA_KIND)?;
+    changes.classify(&entry, Sensitivity::OperationOnly)?;
+    changes.add_field(&entry, FieldKind::SshCa, SSH_CA_FIELD, ca.as_bytes())?;
+    vault.write(changes)?;
+    eprintln!("Created the SSH certificate authority {reference}. Its key never leaves txc.");
+    print_setup(&public)
+}
+
+fn print_setup(public: &str) -> Result<()> {
+    eprintln!(
+        "On each server, save this line as /etc/ssh/txc_user_ca.pub and add to sshd_config:\n  \
+         TrustedUserCAKeys /etc/ssh/txc_user_ca.pub"
+    );
+    output(public)
+}
+
+fn find_ca(vault: &Synced, named: Option<&str>) -> Result<(Id, Id)> {
+    let entries = vault.entries()?;
+    let views = entries.list();
+    let view = if let Some(name) = named {
+        find(&views, name)?
+    } else {
+        let cas: Vec<&EntryView> = views
+            .iter()
+            .filter(|view| view.kinds.iter().any(|kind| kind == SSH_CA_KIND))
+            .collect();
+        match cas.as_slice() {
+            [one] => *one,
+            [] => bail!(
+                "there is no SSH certificate authority here; make one with: txc vault ssh-ca NAME"
+            ),
+            _ => bail!("there are several SSH certificate authorities; pick one with --ca"),
+        }
+    };
+    let field = view
+        .fields
+        .iter()
+        .find(|field| field.kind == FieldKind::SshCa)
+        .with_context(|| {
+            format!(
+                "{} is not an SSH certificate authority",
+                view.names.join(" / ")
+            )
+        })?;
+    Ok((view.id, field.id))
+}
+
+/// `txc vault ssh HOST`: signs a fresh key for this connection and runs
+/// `ssh` with it; `--setup` prints what servers need.
+///
+/// # Errors
+///
+/// Returns an error when there is no CA or `ssh` does not start.
+pub fn ssh(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let vault_name = context.which(sub.get_one::<String>("vault"))?;
+    // Not confined: this runs ssh.
+    let vault = context.open(&vault_name)?;
+    let (entry, field) = find_ca(&vault, sub.get_one::<String>("ca").map(String::as_str))?;
+    let entries = vault.entries()?;
+    let values = entries.reveal(&entry, &field, Slot::Value)?;
+    let [ca] = values.as_slice() else {
+        bail!("the CA key has two versions; resolve it first")
+    };
+    let ca = Zeroizing::new(
+        String::from_utf8(ca.to_vec()).map_err(|_utf8| anyhow!("the CA key is damaged"))?,
+    );
+    drop(values);
+    if sub.get_flag("setup") {
+        return print_setup(&crate::vault::sshca::ca_public(&ca)?);
+    }
+    let host = sub
+        .get_one::<String>("HOST")
+        .context("name the host to connect to, or give --setup")?;
+    let principal = match sub.get_one::<String>("user") {
+        Some(user) => user.clone(),
+        None => std::env::var("USER")
+            .or_else(|_unset| std::env::var("USERNAME"))
+            .context("give the login with --user")?,
+    };
+    let minutes = sub
+        .get_one::<u64>("minutes")
+        .copied()
+        .unwrap_or(crate::vault::sshca::DEFAULT_MINUTES);
+    let key_id = format!(
+        "txc {}",
+        data_encoding::HEXLOWER.encode(&vault.device().me().device[..4])
+    );
+    let issued = crate::vault::sshca::issue(&ca, &principal, minutes, now(), &key_id)?;
+    drop(ca);
+    drop(vault);
+
+    let program = ssh_program();
+    let mut command = std::process::Command::new(&program);
+    let key = crate::vault::deliver::Delivery::prepare(
+        &SecretString::from(issued.key.to_string()),
+        &mut command,
+    )?;
+    let certificate = crate::vault::deliver::Delivery::prepare(
+        &SecretString::from(issued.certificate.clone()),
+        &mut command,
+    )?;
+    command
+        .arg("-i")
+        .arg(&key.path)
+        .arg("-o")
+        .arg(format!("CertificateFile={}", certificate.path))
+        .arg("-o")
+        .arg("IdentitiesOnly=yes")
+        .arg(host);
+    if let Some(rest) = sub.get_many::<String>("ARGS") {
+        command.args(rest);
+    }
+    drop(issued);
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("cannot run {program}"))?;
+    drop(command);
+    key.after_spawn();
+    certificate.after_spawn();
+    let status = child.wait()?;
+    std::process::exit(crate::vault::command::exit_code(status));
+}
+
+/// `ssh`, or in a debug build a stand-in the tests name.
+fn ssh_program() -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(program) = std::env::var("TXC_VAULT_TEST_SSH") {
+        return program;
+    }
+    "ssh".to_owned()
+}
+
 // --------------------------------------------------------------- recovery --
 
 /// `txc vault recovery print | check`.
@@ -1074,6 +1233,10 @@ pub fn reveal(vault: &Synced, entry: &str, label: Option<&str>) -> Result<Secret
         .and_then(|wanted| field(view, wanted))
         .or_else(|| view.fields.iter().find(|field| field.kind.is_secret()))
         .ok_or_else(|| anyhow!("{entry} has no field {}", wanted.unwrap_or_default()))?;
+    ensure!(
+        field.kind != FieldKind::SshCa && view.sensitivity != Sensitivity::OperationOnly,
+        "{entry} is used only inside txc and is never released; for an SSH CA use: txc vault ssh"
+    );
     let values = entries.reveal(&view.id, &field.id, Slot::Value)?;
     let [value] = values.as_slice() else {
         bail!(

@@ -429,6 +429,10 @@ the command to run.
   written down, adding a second device is refused.
 - **Removing a device** (`txc vault device remove`) means it reads nothing
   written afterwards: every device changes its keys before it writes again.
+- **SSH without keys on disk**: `txc vault ssh-ca infra` makes a certificate
+  authority whose key never leaves txc, and `txc vault ssh host` connects with
+  a fresh key and a certificate that lives for minutes. `txc vault ssh
+  --setup` prints the line servers need.
 - **Moving an existing vault** is `txc vault migrate personal --folder DIR`;
   the old vault stays as it is.
 
