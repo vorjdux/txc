@@ -45,6 +45,7 @@
 
 pub mod clipboard;
 pub mod command;
+pub mod composite;
 mod crypto;
 pub mod deliver;
 mod document;

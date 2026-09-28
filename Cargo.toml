@@ -24,7 +24,7 @@ path = "src/main.rs"
 default = ["vault"]
 # The encrypted vault for passwords, API keys and other secrets. Building
 # without it leaves a binary with no key handling and no clipboard library.
-vault = ["dep:age", "dep:age-core", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hpke", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
+vault = ["dep:age", "dep:age-core", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hpke", "dep:ml-dsa", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
 
 [dependencies]
 age = { version = "0.12", optional = true }
@@ -34,6 +34,8 @@ age-core = { version = "0.12", optional = true }
 bech32 = { version = "0.11", optional = true }
 hpke = { version = "0.12", optional = true, default-features = false, features = ["alloc"] }
 ml-kem = { version = "0.2", optional = true, features = ["deterministic"] }
+# The post-quantum half of the composite signature (src/vault/composite.rs).
+ml-dsa = { version = "0.1.1", optional = true, default-features = false, features = ["alloc", "rand_core", "zeroize"] }
 rand08 = { package = "rand", version = "0.8", optional = true }
 sha3_10 = { package = "sha3", version = "0.10", optional = true }
 x25519-dalek = { version = "2", optional = true, features = ["static_secrets"] }
