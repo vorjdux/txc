@@ -60,6 +60,7 @@ pub mod grant2;
 pub mod harden;
 mod home;
 pub mod import;
+pub mod keyholder;
 mod keyring;
 pub mod local;
 pub mod model;

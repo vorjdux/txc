@@ -609,6 +609,11 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("keyholder")
+                .about("Hold one synced vault's keys for the interactive screen")
+                .hide(true),
+        )
+        .subcommand(
             Command::new("compare")
                 .about("Show digests to compare with another device, to see you share one history")
                 .arg(Arg::new("VAULT").help("The synced vault")),
@@ -986,6 +991,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "status" => synced_command::status(&context.synced(), sub),
         "sync" => synced_command::sync(&context.synced(), sub),
         "compare" => synced_command::compare(&context.synced(), sub),
+        "keyholder" => crate::vault::keyholder::serve(&context.home),
         "ssh-ca" => synced_command::ssh_ca(&context.synced(), sub),
         "ssh" => synced_command::ssh(&context.synced(), sub),
         "doctor" => synced_command::doctor(&context.synced(), sub),

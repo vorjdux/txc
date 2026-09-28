@@ -2294,6 +2294,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand status 'One screen: what is fine, and what needs you'
             cand ssh-ca 'Make an SSH certificate authority whose key never leaves txc'
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
+            cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
@@ -2590,6 +2591,14 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'txc;vault;keyholder'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
         &'txc;vault;compare'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
@@ -2815,6 +2824,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand status 'One screen: what is fine, and what needs you'
             cand ssh-ca 'Make an SSH certificate authority whose key never leaves txc'
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
+            cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
@@ -2883,6 +2893,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;ssh-ca'= {
         }
         &'txc;vault;help;ssh'= {
+        }
+        &'txc;vault;help;keyholder'= {
         }
         &'txc;vault;help;compare'= {
         }
@@ -3405,6 +3417,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand status 'One screen: what is fine, and what needs you'
             cand ssh-ca 'Make an SSH certificate authority whose key never leaves txc'
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
+            cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
@@ -3472,6 +3485,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;ssh-ca'= {
         }
         &'txc;help;vault;ssh'= {
+        }
+        &'txc;help;vault;keyholder'= {
         }
         &'txc;help;vault;compare'= {
         }

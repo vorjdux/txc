@@ -22,13 +22,13 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::tui::textarea::TextArea;
 use crate::vault::clipboard::{DEFAULT_CLEAR_SECONDS, Held};
+use crate::vault::keyholder::Holder;
 use crate::vault::model::{DEFAULT_VAULT, Entry, Kind, Sensitivity, check_vault_name};
 use crate::vault::prompt::check_new_passphrase;
-use crate::vault::synced::{self, Synced};
+use crate::vault::synced;
 use crate::vault::{
     Change, Home, Inspection, Keyring, NewEntry, NotTrusted, Opened, Use, WriteKey, harden, session,
 };
-use crate::vault::{synced_command, synced_model};
 
 pub use form::{EntryForm, FormAction, SecretInput};
 
@@ -111,7 +111,7 @@ pub struct LoadedVault {
 /// A synced vault as the screen holds it: the vault, and its entries in the
 /// shape the screen draws, with no secret in them.
 pub struct SyncedLoaded {
-    vault: Synced,
+    holder: Holder,
     entries: Vec<Entry>,
 }
 
@@ -138,10 +138,11 @@ impl LoadedVault {
         self.synced.is_some()
     }
 
-    fn synced(name: String, result: Result<Synced, String>) -> Self {
-        let loaded = result.and_then(|vault| {
-            synced_model::entries(&vault)
-                .map(|entries| SyncedLoaded { vault, entries })
+    fn synced(name: String, result: Result<Holder, String>) -> Self {
+        let loaded = result.and_then(|mut holder| {
+            holder
+                .entries()
+                .map(|entries| SyncedLoaded { holder, entries })
                 .map_err(|error| format!("{error:#}"))
         });
         match loaded {
@@ -220,7 +221,7 @@ enum Job {
 enum Unlocked {
     Vaults {
         keyring: Option<Keyring>,
-        synced: Vec<(String, Result<Synced, String>)>,
+        synced: Vec<(String, Result<Holder, String>)>,
     },
     Writer(WriteKey),
 }
@@ -1030,12 +1031,18 @@ impl VaultScreen {
             .map(|field| field.name.clone())
     }
 
-    fn decrypt(&self, vault: usize, entry: &str, field: &str) -> Result<SecretString, String> {
-        let loaded = self.vaults.get(vault).ok_or("the vault is not open")?;
-        if let Some(synced) = &loaded.synced {
-            return synced_command::reveal(&synced.vault, entry, Some(field))
+    fn decrypt(&mut self, vault: usize, entry: &str, field: &str) -> Result<SecretString, String> {
+        if let Some(synced) = self
+            .vaults
+            .get_mut(vault)
+            .and_then(|loaded| loaded.synced.as_mut())
+        {
+            return synced
+                .holder
+                .reveal(entry, field)
                 .map_err(|error| format!("{error:#}"));
         }
+        let loaded = self.vaults.get(vault).ok_or("the vault is not open")?;
         let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
         let opened = loaded.opened.as_ref().ok_or("the vault is not open")?;
         opened
@@ -1162,16 +1169,18 @@ impl VaultScreen {
             .and_then(|loaded| loaded.synced.as_mut())
         {
             let result = match &edit {
-                Edit::Add(new) => synced_model::add(&mut synced.vault, new),
-                Edit::Change(name, change) => synced_model::change(&mut synced.vault, name, change),
-                Edit::Remove(name) => synced_model::remove(&mut synced.vault, name),
+                Edit::Add(new) => synced.holder.add(new),
+                Edit::Change(name, change) => synced.holder.change(name, change),
+                Edit::Remove(name) => synced.holder.remove(name),
                 Edit::Favourite(..) => Err(anyhow::anyhow!(
                     "stars are not available for synced vaults yet"
                 )),
             };
             result.map_err(|error| format!("{error:#}"))?;
-            synced.entries =
-                synced_model::entries(&synced.vault).map_err(|error| format!("{error:#}"))?;
+            synced.entries = synced
+                .holder
+                .entries()
+                .map_err(|error| format!("{error:#}"))?;
             return Ok(());
         }
         let change = |opened: &mut Opened| match edit {
@@ -1274,8 +1283,12 @@ impl VaultScreen {
     // `vault` above always comes from `self.selected()`, which only ever
     // returns a valid index into `self.vaults`.
     #[allow(clippy::indexing_slicing)]
-    fn edit_form(&self) -> Result<EntryForm, String> {
-        let (vault, entry) = self.selected().ok_or("select an entry first")?;
+    fn edit_form(&mut self) -> Result<EntryForm, String> {
+        let (vault, entry) = self
+            .selected()
+            .map(|(vault, entry)| (vault, entry.clone()))
+            .ok_or("select an entry first")?;
+        let entry = &entry;
         let mut notes = Vec::new();
         for field in &entry.fields {
             if entry.sensitivity(&field.name) == Sensitivity::Private && field.is_sealed() {
@@ -1426,13 +1439,14 @@ impl VaultScreen {
                     }
                     _ => None,
                 };
+                // The keyholder reads the session itself: no vault key
+                // reaches this process.
                 let synced = contents
                     .synced
-                    .into_iter()
-                    .map(|(name, kek)| {
-                        let opened = Synced::open_with(&home, &name, kek)
-                            .and_then(|mut vault| vault.sync().map(|_| vault));
-                        (name, opened.map_err(|error| format!("{error:#}")))
+                    .into_keys()
+                    .map(|name| {
+                        let held = hold(&home, &name, None);
+                        (name, held.map_err(|error| format!("{error:#}")))
                     })
                     .collect();
                 self.finish_job(Job::Unlock, Ok(Unlocked::Vaults { keyring, synced }));
@@ -1667,11 +1681,7 @@ impl VaultScreen {
             .get_mut(vault)
             .and_then(|loaded| loaded.synced.as_mut())
         {
-            if let Ok(entries) = synced
-                .vault
-                .sync()
-                .and_then(|_| synced_model::entries(&synced.vault))
-            {
+            if let Ok(entries) = synced.holder.sync().and_then(|()| synced.holder.entries()) {
                 synced.entries = entries;
             }
             return;
@@ -2121,6 +2131,20 @@ impl Drop for VaultScreen {
 /// `txc vault init`, which collects the separate write passphrase; the
 /// interface cannot ask for a second passphrase during creation, so it leaves
 /// that step to the command line.
+/// A synced vault's keyholder: a child process that alone holds its keys,
+/// or in tests, which cannot start the txc binary, the vault in this process.
+fn hold(home: &Home, name: &str, passphrase: Option<&SecretString>) -> anyhow::Result<Holder> {
+    #[cfg(not(test))]
+    {
+        let program = std::env::current_exe()?;
+        Holder::spawn(&program, home, name, passphrase)
+    }
+    #[cfg(test)]
+    {
+        Holder::local(home, name, passphrase)
+    }
+}
+
 /// Unlocks everything a passphrase opens: the identity when there is one,
 /// and each synced vault, read up to date.
 fn unlock_all(home: &Home, passphrase: &SecretString) -> anyhow::Result<Unlocked> {
@@ -2129,12 +2153,11 @@ fn unlock_all(home: &Home, passphrase: &SecretString) -> anyhow::Result<Unlocked
     } else {
         None
     };
-    let synced: Vec<(String, Result<Synced, String>)> = synced::names(home)?
+    let synced: Vec<(String, Result<Holder, String>)> = synced::names(home)?
         .into_iter()
         .map(|name| {
-            let opened = Synced::open(home, &name, passphrase)
-                .and_then(|mut vault| vault.sync().map(|_| vault));
-            (name, opened.map_err(|error| format!("{error:#}")))
+            let held = hold(home, &name, Some(passphrase));
+            (name, held.map_err(|error| format!("{error:#}")))
         })
         .collect();
     if keyring.is_none()

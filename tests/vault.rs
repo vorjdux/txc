@@ -1836,7 +1836,12 @@ fn ssh_gets_a_fresh_key_and_a_short_certificate_from_a_ca_that_never_leaves() {
     let public = sandbox.root.join("ca.pub");
     std::fs::write(&public, &setup).unwrap();
     let fingerprint = String::from_utf8(
-        Command::new("ssh-keygen").arg("-lf").arg(&public).output().unwrap().stdout,
+        Command::new("ssh-keygen")
+            .arg("-lf")
+            .arg(&public)
+            .output()
+            .unwrap()
+            .stdout,
     )
     .unwrap();
     let fingerprint = fingerprint.split_whitespace().nth(1).unwrap().to_owned();
@@ -1855,9 +1860,91 @@ fn ssh_gets_a_fresh_key_and_a_short_certificate_from_a_ca_that_never_leaves() {
     )
     .unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let shown = succeeds(&sandbox.vault(&["ssh", "--user", "deploy", "--minutes", "2", "server.example"]));
-    assert!(shown.contains(&format!("Signing CA: ED25519 {fingerprint}")), "{shown}");
+    let shown = succeeds(&sandbox.vault(&[
+        "ssh",
+        "--user",
+        "deploy",
+        "--minutes",
+        "2",
+        "server.example",
+    ]));
+    assert!(
+        shown.contains(&format!("Signing CA: ED25519 {fingerprint}")),
+        "{shown}"
+    );
     assert!(shown.contains("deploy"), "{shown}");
-    assert!(shown.contains("Type: ssh-ed25519-cert-v01@openssh.com user certificate"), "{shown}");
+    assert!(
+        shown.contains("Type: ssh-ed25519-cert-v01@openssh.com user certificate"),
+        "{shown}"
+    );
     assert!(shown.contains("host server.example"), "{shown}");
+}
+
+#[test]
+fn the_keyholder_process_holds_a_synced_vault_and_releases_one_secret_at_a_time() {
+    use age::secrecy::{ExposeSecret, SecretString};
+    use txc::vault::keyholder::Holder;
+
+    let sandbox = Sandbox::new("keyholder");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+
+    let mut command = Command::new(BIN);
+    command
+        .arg("vault")
+        .arg("--home")
+        .arg(sandbox.home())
+        .arg("keyholder")
+        .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+        .env("XDG_RUNTIME_DIR", sandbox.private("run"))
+        .env("TXC_VAULT_TEST_KEYSTORE", sandbox.private("keystore"));
+    let passphrase = SecretString::from(PASSPHRASE.to_owned());
+    let mut holder = Holder::start(command, "personal", Some(&passphrase)).unwrap();
+
+    let entries = holder.entries().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].plain("username"), Some("octocat"));
+    assert!(!serde_json::to_string(&entries).unwrap().contains("hunter2"));
+    assert_eq!(
+        holder.reveal("github", "password").unwrap().expose_secret(),
+        "hunter2"
+    );
+
+    // On Linux the keyholder has confined itself: seccomp is on.
+    #[cfg(target_os = "linux")]
+    {
+        let pid = holder.process_id().unwrap();
+        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+        assert!(
+            status
+                .lines()
+                .any(|line| line.starts_with("Seccomp:") && line.ends_with('2')),
+            "{status}"
+        );
+    }
+
+    let new = txc::vault::NewEntry {
+        name: "bank".into(),
+        kind: txc::vault::model::Kind::Login,
+        plain: Vec::new(),
+        secrets: vec![("password".into(), SecretString::from("1234".to_owned()))],
+        tags: Vec::new(),
+        favourite: false,
+    };
+    holder.add(&new).unwrap();
+    drop(holder);
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "bank"])),
+        "1234"
+    );
 }
