@@ -575,6 +575,16 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("compare")
+                .about("Show digests to compare with another device, to see you share one history")
+                .arg(Arg::new("VAULT").help("The synced vault")),
+        )
+        .subcommand(
+            Command::new("doctor")
+                .about("Print a diagnostic report for a bug report; it holds no secret and no entry name")
+                .arg(Arg::new("VAULT").help("The synced vault")),
+        )
+        .subcommand(
             Command::new("sync")
                 .about("Read what other devices wrote, and note what this one has seen")
                 .arg(Arg::new("VAULT").help("The synced vault")),
@@ -922,6 +932,8 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "device" => synced_command::device(&context.synced(), sub),
         "status" => synced_command::status(&context.synced(), sub),
         "sync" => synced_command::sync(&context.synced(), sub),
+        "compare" => synced_command::compare(&context.synced(), sub),
+        "doctor" => synced_command::doctor(&context.synced(), sub),
         "recovery" => synced_command::recovery(&context.synced(), sub),
         "resolve" => synced_command::entry(&context.synced(), "resolve", sub),
         "migrate" => {

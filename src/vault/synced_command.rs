@@ -28,6 +28,7 @@ use crate::vault::command::{
     required, table, wait_then_clear, working,
 };
 use crate::vault::confine::{self, Confinement};
+use crate::vault::control::Checkpoint;
 use crate::vault::device::Alarm;
 use crate::vault::entries::{Changes, EntryView, FieldKind, FieldView, NAME, Slot};
 use crate::vault::model::{DEFAULT_VAULT, Kind, Reference, check_vault_name};
@@ -444,6 +445,141 @@ pub fn sync(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     vault.checkpoint()?;
     eprintln!("Synced \"{name}\".");
     Ok(())
+}
+
+// ---------------------------------------------------------- compare, doctor --
+
+/// A checkpoint's short id and the digest of the head set it commits to.
+fn digest_of(checkpoint: &Checkpoint) -> String {
+    use sha2::{Digest, Sha384};
+    let mut hash = Sha384::new();
+    Digest::update(&mut hash, b"txc/v1/compare");
+    for (device, (seq, head)) in &checkpoint.heads {
+        Digest::update(&mut hash, device);
+        Digest::update(&mut hash, seq.to_be_bytes());
+        Digest::update(&mut hash, head);
+    }
+    let digest = hash.finalize();
+    digest
+        .chunks(2)
+        .take(3)
+        .map(|pair| data_encoding::HEXLOWER.encode(pair))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `txc vault compare`: for the latest checkpoint of every device, its id
+/// and a digest of the heads it saw. Two devices showing the same digest for
+/// the same checkpoint id see the same objects; a checkpoint one of them has
+/// not received yet is simply missing from its list, never a mismatch
+/// (rule 15).
+///
+/// # Errors
+///
+/// Returns an error when the vault does not open.
+pub fn compare(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let name = context.which(sub.get_one::<String>("VAULT"))?;
+    let (mut vault, _) = context.open_confined(&name)?;
+    vault.checkpoint()?;
+    let me = vault.device().me().device;
+    let mut latest: BTreeMap<Id, (u64, Id, Checkpoint)> = BTreeMap::new();
+    for content in vault.device().content() {
+        if content.payload.kind != crate::vault::object::Kind::Checkpoint {
+            continue;
+        }
+        let Ok(checkpoint) = Checkpoint::decode(&content.payload.body) else {
+            continue;
+        };
+        let id: Id = content
+            .hash
+            .first_chunk::<16>()
+            .copied()
+            .unwrap_or_default();
+        let newer = latest
+            .get(&content.payload.author)
+            .is_none_or(|(seq, _, _)| content.payload.seq > *seq);
+        if newer {
+            latest.insert(
+                content.payload.author,
+                (content.payload.seq, id, checkpoint),
+            );
+        }
+    }
+    let mut rows = vec![[
+        "Checkpoint".to_owned(),
+        "By".to_owned(),
+        "Digest".to_owned(),
+    ]];
+    for (author, (_, id, checkpoint)) in &latest {
+        let by = data_encoding::HEXLOWER.encode(&author[..4]);
+        rows.push([
+            data_encoding::HEXLOWER.encode(&id[..2]),
+            if *author == me {
+                format!("{by} (this device)")
+            } else {
+                by
+            },
+            digest_of(checkpoint),
+        ]);
+    }
+    output(&table(&rows))?;
+    eprintln!(
+        "Run this on another device: the same checkpoint must show the same digest there. One it has \
+         not received yet is missing from its list, which is not a mismatch."
+    );
+    Ok(())
+}
+
+/// `txc vault doctor`: a diagnostic report with no secret and no entry
+/// name in it, for bug reports.
+///
+/// # Errors
+///
+/// Returns an error when writing the report fails.
+pub fn doctor(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let mut lines = vec![
+        format!("txc {}", env!("CARGO_PKG_VERSION")),
+        format!(
+            "platform: {} {}",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ),
+        format!("suite: {}", crate::vault::object::SUITE),
+        format!("synced vaults: {}", synced::names(context.home)?.len()),
+    ];
+    let named = sub.get_one::<String>("VAULT");
+    if let Ok(name) = context.which(named) {
+        match context.open_confined(&name) {
+            Ok((vault, confinement)) => {
+                let listing = vault.store().list()?;
+                lines.push(format!(
+                    "folder: {} objects, {} in flight, {} names ignored",
+                    listing.names.len(),
+                    listing.in_flight,
+                    listing.ignored
+                ));
+                let device = vault.device();
+                lines.push(format!("devices: {}", device.members().len()));
+                lines.push(format!("alarms: {:?}", device.alarms()));
+                lines.push(format!("gaps: {}", device.gaps().len()));
+                lines.push(format!(
+                    "recovery sheets written down: {}",
+                    !vault.kit_pending()
+                ));
+                let missing = confinement.missing();
+                lines.push(format!(
+                    "confinement: {}",
+                    if missing.is_empty() {
+                        "complete".to_owned()
+                    } else {
+                        missing.join(", ")
+                    }
+                ));
+            }
+            Err(error) => lines.push(format!("the vault did not open: {error:#}")),
+        }
+    }
+    output(&lines.join("\n"))
 }
 
 // --------------------------------------------------------------- recovery --

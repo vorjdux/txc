@@ -2439,6 +2439,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
+            [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, or check one')
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
@@ -2740,6 +2742,24 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;compare' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;doctor' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'txc;vault;sync' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
@@ -2967,6 +2987,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
+            [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, or check one')
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
@@ -3050,6 +3072,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;status' {
+            break
+        }
+        'txc;vault;help;compare' {
+            break
+        }
+        'txc;vault;help;doctor' {
             break
         }
         'txc;vault;help;sync' {
@@ -3734,6 +3762,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
             [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
+            [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, or check one')
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
@@ -3816,6 +3846,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;status' {
+            break
+        }
+        'txc;help;vault;compare' {
+            break
+        }
+        'txc;help;vault;doctor' {
             break
         }
         'txc;help;vault;sync' {

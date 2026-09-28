@@ -1604,6 +1604,13 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
         );
     }
 
+    let report = succeeds(&sandbox.vault(&["doctor"]));
+    assert!(
+        report.contains("devices: 1") && !report.contains("github"),
+        "{report}"
+    );
+    let compared = succeeds(&sandbox.vault(&["compare"]));
+    assert!(compared.contains("(this device)"), "{compared}");
     succeeds(&sandbox.vault(&["rm", "--yes", "github"]));
     fails(&sandbox.vault(&["copy", "--print", "github"]));
     // Pairing waits for the recovery sheets.
@@ -1669,6 +1676,27 @@ fn two_devices_pair_through_pasted_lines_and_a_code_and_share_entries() {
         succeeds(&sandbox.vault_with(&home_a, &pass, &["copy", "--print", "bank"], None)),
         "pin"
     );
+    // Both devices see the same history: every checkpoint both hold shows
+    // the same digest on each.
+    let digests = |home: &Path| -> std::collections::BTreeMap<String, String> {
+        succeeds(&sandbox.vault_with(home, &pass, &["compare"], None))
+            .lines()
+            .skip(1)
+            .map(|line| {
+                let words: Vec<&str> = line.split_whitespace().collect();
+                (words[0].to_owned(), words[words.len() - 3..].join(" "))
+            })
+            .collect()
+    };
+    let (seen_a, seen_b) = (digests(&home_a), digests(&home_b));
+    let shared: Vec<&String> = seen_a
+        .keys()
+        .filter(|id| seen_b.contains_key(*id))
+        .collect();
+    assert!(!shared.is_empty(), "{seen_a:?} {seen_b:?}");
+    for id in shared {
+        assert_eq!(seen_a[id], seen_b[id]);
+    }
     let devices = succeeds(&sandbox.vault_with(&home_a, &pass, &["device", "list"], None));
     assert_eq!(devices.lines().count(), 3, "{devices}");
 }

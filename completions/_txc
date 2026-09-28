@@ -2921,6 +2921,28 @@ _arguments "${_arguments_options[@]}" : \
 '::VAULT -- The synced vault:_default' \
 && ret=0
 ;;
+(compare)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::VAULT -- The synced vault:_default' \
+&& ret=0
+;;
+(doctor)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::VAULT -- The synced vault:_default' \
+&& ret=0
+;;
 (sync)
 _arguments "${_arguments_options[@]}" : \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
@@ -3293,6 +3315,14 @@ _arguments "${_arguments_options[@]}" : \
 esac
 ;;
 (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(compare)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(doctor)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4109,6 +4139,14 @@ _arguments "${_arguments_options[@]}" : \
 esac
 ;;
 (status)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(compare)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(doctor)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -5495,6 +5533,8 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
 'status:One screen\: what is fine, and what needs you' \
+'compare:Show digests to compare with another device, to see you share one history' \
+'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
 'sync:Read what other devices wrote, and note what this one has seen' \
 'recovery:Write down the recovery sheets, or check one' \
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
@@ -5518,6 +5558,11 @@ _txc__subcmd__help__subcmd__vault_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__add_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault add commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__compare_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__compare_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault compare commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__copy_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__copy_commands() {
@@ -5557,6 +5602,11 @@ _txc__subcmd__help__subcmd__vault__subcmd__device__subcmd__list_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__device__subcmd__remove_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault device remove commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__doctor_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__doctor_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault doctor commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__edit_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__edit_commands() {
@@ -6263,6 +6313,8 @@ _txc__subcmd__vault_commands() {
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
 'status:One screen\: what is fine, and what needs you' \
+'compare:Show digests to compare with another device, to see you share one history' \
+'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
 'sync:Read what other devices wrote, and note what this one has seen' \
 'recovery:Write down the recovery sheets, or check one' \
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
@@ -6288,6 +6340,11 @@ _txc__subcmd__vault_commands() {
 _txc__subcmd__vault__subcmd__add_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault add commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__compare_commands] )) ||
+_txc__subcmd__vault__subcmd__compare_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault compare commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__copy_commands] )) ||
 _txc__subcmd__vault__subcmd__copy_commands() {
@@ -6359,6 +6416,11 @@ _txc__subcmd__vault__subcmd__device__subcmd__remove_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault device remove commands' commands "$@"
 }
+(( $+functions[_txc__subcmd__vault__subcmd__doctor_commands] )) ||
+_txc__subcmd__vault__subcmd__doctor_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault doctor commands' commands "$@"
+}
 (( $+functions[_txc__subcmd__vault__subcmd__edit_commands] )) ||
 _txc__subcmd__vault__subcmd__edit_commands() {
     local commands; commands=()
@@ -6405,6 +6467,8 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
 'status:One screen\: what is fine, and what needs you' \
+'compare:Show digests to compare with another device, to see you share one history' \
+'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
 'sync:Read what other devices wrote, and note what this one has seen' \
 'recovery:Write down the recovery sheets, or check one' \
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
@@ -6429,6 +6493,11 @@ _txc__subcmd__vault__subcmd__help_commands() {
 _txc__subcmd__vault__subcmd__help__subcmd__add_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help add commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__compare_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__compare_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help compare commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__copy_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__copy_commands() {
@@ -6468,6 +6537,11 @@ _txc__subcmd__vault__subcmd__help__subcmd__device__subcmd__list_commands() {
 _txc__subcmd__vault__subcmd__help__subcmd__device__subcmd__remove_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help device remove commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__doctor_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__doctor_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help doctor commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__edit_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__edit_commands() {

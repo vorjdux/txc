@@ -2292,6 +2292,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand join 'Join a synced vault from another of your devices'
             cand device 'Add, list and remove the devices of a synced vault'
             cand status 'One screen: what is fine, and what needs you'
+            cand compare 'Show digests to compare with another device, to see you share one history'
+            cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
             cand recovery 'Write down the recovery sheets, or check one'
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
@@ -2565,6 +2567,22 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'txc;vault;compare'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;doctor'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
         &'txc;vault;sync'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
@@ -2769,6 +2787,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand join 'Join a synced vault from another of your devices'
             cand device 'Add, list and remove the devices of a synced vault'
             cand status 'One screen: what is fine, and what needs you'
+            cand compare 'Show digests to compare with another device, to see you share one history'
+            cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
             cand recovery 'Write down the recovery sheets, or check one'
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
@@ -2831,6 +2851,10 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;device;remove'= {
         }
         &'txc;vault;help;status'= {
+        }
+        &'txc;vault;help;compare'= {
+        }
+        &'txc;vault;help;doctor'= {
         }
         &'txc;vault;help;sync'= {
         }
@@ -3347,6 +3371,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand join 'Join a synced vault from another of your devices'
             cand device 'Add, list and remove the devices of a synced vault'
             cand status 'One screen: what is fine, and what needs you'
+            cand compare 'Show digests to compare with another device, to see you share one history'
+            cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand sync 'Read what other devices wrote, and note what this one has seen'
             cand recovery 'Write down the recovery sheets, or check one'
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
@@ -3408,6 +3434,10 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;device;remove'= {
         }
         &'txc;help;vault;status'= {
+        }
+        &'txc;help;vault;compare'= {
+        }
+        &'txc;help;vault;doctor'= {
         }
         &'txc;help;vault;sync'= {
         }
