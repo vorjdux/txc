@@ -24,7 +24,7 @@ path = "src/main.rs"
 default = ["vault"]
 # The encrypted vault for passwords, API keys and other secrets. Building
 # without it leaves a binary with no key handling and no clipboard library.
-vault = ["dep:age", "dep:age-core", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hpke", "dep:ml-dsa", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
+vault = ["dep:age", "dep:age-core", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hkdf", "dep:hpke", "dep:ml-dsa", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
 
 [dependencies]
 age = { version = "0.12", optional = true }
@@ -32,6 +32,7 @@ age = { version = "0.12", optional = true }
 # src/vault/pq.rs from the same parts, and versions, the age crate uses.
 age-core = { version = "0.12", optional = true }
 bech32 = { version = "0.11", optional = true }
+hkdf = { version = "0.13", optional = true }
 hpke = { version = "0.12", optional = true, default-features = false, features = ["alloc"] }
 ml-kem = { version = "0.2", optional = true, features = ["deterministic"] }
 # The post-quantum half of the composite signature (src/vault/composite.rs).
