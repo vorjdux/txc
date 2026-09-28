@@ -22,6 +22,15 @@ All notable changes to txc are recorded here. The format follows
   `txc://VAULT/ENTRY[/FIELD]` goes into the environment; `txc+file://` becomes
   a path to a sealed in-memory file on Linux, a pipe on macOS, or a named pipe
   only you can open on Windows. The exit code is passed on.
+- **`txc vault import`** reads a Bitwarden JSON export, a password CSV as
+  1Password, KeePassXC, Bitwarden, LastPass, Chrome and Firefox write it, or a
+  `.env` file, shows a summary (`--dry-run` stops there), keeps hidden values
+  secret, turns folders into tags, numbers clashing names, and with
+  `--remove-source` overwrites and deletes the export.
+- **`txc vault export`** writes vaults as one age file with a JSON body,
+  encrypted to the keys given with `--to`, so `age -d` alone reads it.
+  `--plaintext` writes unencrypted JSON after a typed confirmation, only to a
+  new file.
 
 ## [0.7.2] - 2026-09-20
 

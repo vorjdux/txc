@@ -369,6 +369,35 @@ on Unix must be readable by you alone. `--home DIR` or `TXC_VAULT_HOME`
 chooses a vault directory other than the default; the environment variable
 must be an absolute path.
 
+### Moving in, and keeping a copy
+
+`txc vault import` brings entries in from another password manager or a
+`.env` file, and shows what it will add before it adds anything:
+
+```sh
+txc vault import bitwarden_export.json --dry-run   # what would come in
+txc vault import passwords.csv --into work --remove-source
+txc vault import app.env                           # each NAME=value becomes a secret
+```
+
+It reads a Bitwarden JSON export (unencrypted), a CSV with a header row as
+1Password, KeePassXC, Bitwarden, LastPass, Chrome and Firefox write it, and
+`.env` files. Hidden values stay secret, folders become tags, and names that
+clash with existing entries are numbered rather than replaced. An export file
+holds every secret in the clear: `--remove-source` overwrites it once and
+deletes it, though an SSD, a synced folder or a backup may still hold a copy.
+
+`txc vault export` writes a copy of your vaults as one age file whose content
+is plain JSON, so it opens with nothing but age, even if txc is long gone:
+
+```sh
+txc vault export --to age1... --output backup.age    # to an offline backup key
+age -d -i backup-key.txt backup.age                  # every entry, as JSON
+```
+
+`--plaintext` writes the JSON unencrypted instead, only to a new file, and
+only after you type a confirmation.
+
 ### Unlocking once
 
 Deriving the key from your passphrase takes about a second on purpose, which

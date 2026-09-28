@@ -1354,3 +1354,110 @@ fn run_names_the_variable_whose_secret_is_missing() {
         stderr(&output)
     );
 }
+
+#[test]
+fn an_export_from_another_manager_is_imported_with_its_secrets() {
+    let sandbox = Sandbox::new("import");
+    sandbox.init();
+    let csv = sandbox.root.join("export.csv");
+    std::fs::write(
+        &csv,
+        "title,url,username,password,notes\nGitHub,https://github.com,octocat,hunter2,2fa\n",
+    )
+    .unwrap();
+    let path = csv.to_str().unwrap();
+
+    let dry = sandbox.vault(&["import", path, "--dry-run"]);
+    assert!(
+        stderr(&dry).contains("1 entries to import"),
+        "{}",
+        stderr(&dry)
+    );
+    assert!(!stdout(&sandbox.vault(&["list", "personal"])).contains("GitHub"));
+
+    succeeds(&sandbox.vault(&["import", path, "--remove-source"]));
+    assert!(!csv.exists(), "the plaintext export is gone");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "GitHub", "--print"])).trim(),
+        "hunter2"
+    );
+    // A second import numbers the clashing name instead of replacing it.
+    std::fs::write(&csv, "title,password\nGitHub,other\n").unwrap();
+    succeeds(&sandbox.vault(&["import", path]));
+    assert!(stdout(&sandbox.vault(&["list", "personal"])).contains("GitHub (2)"));
+}
+
+#[test]
+fn an_env_file_is_imported_as_secrets() {
+    let sandbox = Sandbox::new("import-env");
+    sandbox.init();
+    let env = sandbox.root.join("app.env");
+    std::fs::write(&env, "export OPENAI_API_KEY=sk-test\n").unwrap();
+    succeeds(&sandbox.vault(&["import", env.to_str().unwrap(), "--into", "personal"]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "OPENAI_API_KEY", "--print"])).trim(),
+        "sk-test"
+    );
+}
+
+#[test]
+fn an_export_is_an_age_file_any_age_tool_opens() {
+    use std::io::Read;
+
+    let sandbox = Sandbox::new("export");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
+    let key = age::x25519::Identity::generate();
+    let output = sandbox.root.join("backup.age");
+    succeeds(&sandbox.vault(&[
+        "export",
+        "--to",
+        &key.to_public().to_string(),
+        "--output",
+        output.to_str().unwrap(),
+    ]));
+
+    let encrypted = std::fs::read(&output).unwrap();
+    let decryptor = age::Decryptor::new(&encrypted[..]).unwrap();
+    let mut json = String::new();
+    decryptor
+        .decrypt(std::iter::once(&key as &dyn age::Identity))
+        .unwrap()
+        .read_to_string(&mut json)
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(document["format"], "txc-export");
+    let entry = &document["vaults"][0]["entries"][0];
+    assert_eq!(entry["name"], "github");
+    assert!(
+        entry["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field["value"] == "hunter2" && field["secret"] == true)
+    );
+
+    // An existing file is never replaced.
+    fails(&sandbox.vault(&[
+        "export",
+        "--to",
+        &age::x25519::Identity::generate().to_public().to_string(),
+        "--output",
+        output.to_str().unwrap(),
+    ]));
+}
+
+#[test]
+fn a_plaintext_export_needs_a_person_to_confirm_it() {
+    let sandbox = Sandbox::new("export-plain");
+    sandbox.init();
+    let output = sandbox.root.join("plain.json");
+    let result = sandbox.vault(&[
+        "export",
+        "--plaintext",
+        "--output",
+        output.to_str().unwrap(),
+    ]);
+    fails(&result);
+    assert!(!output.exists());
+}

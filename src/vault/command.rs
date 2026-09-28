@@ -209,6 +209,89 @@ pub fn command() -> Command {
         )
         .subcommand(Command::new("lock").about("End the session that txc vault unlock opened"))
         .subcommand(
+            Command::new("import")
+                .about("Bring in entries from another password manager or a .env file")
+                .long_about(
+                    "Bring in entries from another password manager or a .env file.\n\n\
+                     Understood: a Bitwarden JSON export (unencrypted), a CSV with a header row \
+                     as 1Password, KeePassXC, Bitwarden, LastPass, Chrome and Firefox write, and \
+                     .env files, where each NAME=value becomes a secret named NAME. A summary is \
+                     shown first; --dry-run stops there. Hidden values are kept as secrets, \
+                     folders become tags, and names that clash are numbered.\n\n\
+                     The export file holds every secret in the clear: --remove-source overwrites \
+                     it once and deletes it afterwards. On SSDs, in synced folders and in backups \
+                     copies can remain, so export to a place that is none of those.",
+                )
+                .arg(Arg::new("FILE").required(true).help("The export to read"))
+                .arg(
+                    Arg::new("format")
+                        .long("format")
+                        .value_name("FORMAT")
+                        .value_parser(["bitwarden", "csv", "env"])
+                        .help("The file's format, when the name does not show it"),
+                )
+                .arg(
+                    Arg::new("into")
+                        .long("into")
+                        .value_name("VAULT")
+                        .default_value(DEFAULT_VAULT)
+                        .help("The vault to add the entries to"),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .long("dry-run")
+                        .action(ArgAction::SetTrue)
+                        .help("Show what would be imported, and change nothing"),
+                )
+                .arg(
+                    Arg::new("remove-source")
+                        .long("remove-source")
+                        .action(ArgAction::SetTrue)
+                        .help("Overwrite and delete the export once it is imported"),
+                ),
+        )
+        .subcommand(
+            Command::new("export")
+                .about("Write a copy of vaults as one age file, readable with age -d")
+                .long_about(
+                    "Write a copy of vaults as one age file, readable with age -d.\n\n\
+                     The file is encrypted to the public keys given with --to, such as a backup \
+                     key kept offline, and holds every entry and every secret as JSON. Anyone \
+                     with one of those keys can read it with nothing but age: \
+                     age -d -i key.txt export.age. Every vault is exported unless some are \
+                     named.\n\n\
+                     --plaintext writes the JSON unencrypted instead, and asks you to type a \
+                     confirmation first; keep such a file off synced folders and delete it \
+                     soon.",
+                )
+                .arg(
+                    Arg::new("VAULT")
+                        .num_args(0..)
+                        .help("The vaults to export (default: all)"),
+                )
+                .arg(
+                    Arg::new("to")
+                        .long("to")
+                        .value_name("RECIPIENT")
+                        .action(ArgAction::Append)
+                        .help("An age public key to encrypt the copy to (age1...)"),
+                )
+                .arg(
+                    Arg::new("output")
+                        .long("output")
+                        .short('o')
+                        .value_name("FILE")
+                        .help("Write to this new file rather than to standard output"),
+                )
+                .arg(
+                    Arg::new("plaintext")
+                        .long("plaintext")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with("to")
+                        .help("Write unencrypted JSON, after a typed confirmation"),
+                ),
+        )
+        .subcommand(
             Command::new("run")
                 .about("Run a program with secrets in its environment or as files, never in your shell")
                 .long_about(
@@ -724,6 +807,8 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "init" => context.init(sub),
         "unlock" => context.start_session(sub),
         "run" => context.run_program(sub),
+        "import" => context.import(sub),
+        "export" => context.export(sub),
         "lock" => {
             if session::end(&context.home) {
                 eprintln!("The session is closed.");
@@ -758,6 +843,39 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "redeem" => context.redeem(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
+}
+
+/// Overwrites a file once with zeros, flushes it, and deletes it.
+fn remove_source(path: &Path) -> Result<()> {
+    let length = std::fs::metadata(path)?.len();
+    let mut file = std::fs::OpenOptions::new().write(true).open(path)?;
+    let zeros = vec![0_u8; 64 * 1024];
+    let mut left = length;
+    while left > 0 {
+        let chunk = usize::try_from(left.min(zeros.len() as u64)).unwrap_or(zeros.len());
+        file.write_all(zeros.get(..chunk).unwrap_or(&zeros))?;
+        left = left.saturating_sub(chunk as u64);
+    }
+    file.sync_all()?;
+    drop(file);
+    std::fs::remove_file(path).with_context(|| format!("cannot delete {}", path.display()))
+}
+
+/// Creates a new file readable by its owner alone, refusing to replace one.
+fn write_new_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .with_context(|| format!("cannot create {}; it must not exist yet", path.display()))?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
 }
 
 /// The exit code to pass on: the child's own, or 128 plus the signal that
@@ -828,6 +946,191 @@ impl Session {
     fn unlock_with_passphrase(&self) -> Result<Keyring> {
         let passphrase = self.passphrase.ask(PASSPHRASE_PROMPT)?;
         working("Unlocking...", || Keyring::unlock(&self.home, &passphrase))
+    }
+
+    /// Imports another tool's export into a vault.
+    fn import(&self, sub: &ArgMatches) -> Result<()> {
+        use crate::vault::import::{self, Format};
+
+        let path = required(sub, "FILE");
+        let bytes = std::fs::read(path).with_context(|| format!("cannot read {path}"))?;
+        ensure!(
+            bytes.len() <= 64 * 1024 * 1024,
+            "{path} is larger than any export txc reads"
+        );
+        let text = zeroize::Zeroizing::new(
+            String::from_utf8(bytes).with_context(|| format!("{path} is not UTF-8 text"))?,
+        );
+        let format = sub
+            .get_one::<String>("format")
+            .and_then(|id| Format::from_id(id))
+            .unwrap_or_else(|| Format::detect(path, &text));
+        let batch = import::read(format, &text).with_context(|| format!("cannot read {path}"))?;
+        drop(text);
+
+        let vault_name = required(sub, "into");
+        check_vault_name(vault_name)?;
+        let mut kinds: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+        for entry in &batch.entries {
+            let count = kinds.entry(entry.kind.label()).or_insert(0);
+            *count = count.saturating_add(1);
+        }
+        let summary: Vec<String> = kinds
+            .iter()
+            .map(|(label, count)| format!("{count} {}", label.to_lowercase()))
+            .collect();
+        eprintln!(
+            "{} entries to import into {vault_name}: {}.",
+            batch.entries.len(),
+            if summary.is_empty() {
+                "none".to_string()
+            } else {
+                summary.join(", ")
+            }
+        );
+        for (reason, count) in &batch.skipped {
+            eprintln!("Left out {count}: {reason}.");
+        }
+        if sub.get_flag("dry-run") || batch.entries.is_empty() {
+            return Ok(());
+        }
+
+        let keyring = self.unlock()?;
+        let write_key = self.write_key()?;
+        let mut vault = keyring.open(vault_name)?;
+        let count = batch.entries.len();
+        for entry in batch.entries {
+            // A name already in the vault gets the next free number.
+            let mut name = entry.name.clone();
+            let mut number = 2_usize;
+            while vault.vault().entry(&name).is_some() {
+                name = format!("{} ({number})", entry.name);
+                number = number.saturating_add(1);
+            }
+            vault.add(NewEntry {
+                name,
+                kind: entry.kind,
+                plain: entry.plain,
+                secrets: entry.secrets,
+                tags: entry.tags,
+                favourite: entry.favourite,
+            })?;
+        }
+        vault.save(&keyring, &write_key)?;
+        eprintln!("Imported {count} entries into {vault_name}.");
+
+        if sub.get_flag("remove-source") {
+            remove_source(Path::new(path))?;
+            eprintln!(
+                "Overwrote and deleted {path}. Copies may remain on an SSD, in a synced folder or \
+                 in a backup."
+            );
+        }
+        Ok(())
+    }
+
+    /// Writes a copy of vaults as one age file, or as JSON after a typed
+    /// confirmation.
+    fn export(&self, sub: &ArgMatches) -> Result<()> {
+        let plaintext = sub.get_flag("plaintext");
+        let recipients = many(sub, "to")
+            .iter()
+            .map(|text| crypto::parse_recipient(text))
+            .collect::<Result<Vec<_>>>()?;
+        ensure!(
+            plaintext || !recipients.is_empty(),
+            "name who can read the copy with --to age1..., such as a backup key; or use \
+             --plaintext, which asks for a typed confirmation"
+        );
+        let output = sub.get_one::<String>("output");
+        ensure!(
+            output.is_some() || !io::stdout().is_terminal(),
+            "an export will not be written to the terminal; use --output FILE or a pipe"
+        );
+        if plaintext {
+            ensure!(
+                output.is_some(),
+                "a plaintext export needs --output FILE, so it never passes through a pipe"
+            );
+            let confirmed = prompt::confirm_value(
+                "Every secret will be written unencrypted. Type 'export plaintext' to go on:",
+                "export plaintext",
+                "a plaintext export needs a person to confirm it; encrypt it with --to instead",
+            )?;
+            ensure!(confirmed, "nothing was exported");
+        }
+
+        let keyring = self.unlock()?;
+        let mut names = many(sub, "VAULT");
+        if names.is_empty() {
+            names = self.home.vault_names()?;
+        }
+        let mut vaults = Vec::new();
+        for name in &names {
+            let opened = keyring.open(name)?;
+            let mut entries = Vec::new();
+            for entry in opened.vault().entries() {
+                let mut fields = Vec::new();
+                for field in &entry.fields {
+                    let (value, secret) = match &field.value {
+                        crate::vault::model::Value::Plain(text) => (text.clone(), false),
+                        crate::vault::model::Value::Sealed(_) => (
+                            opened
+                                .reveal(&keyring, &entry.name, &field.name)?
+                                .expose_secret()
+                                .to_string(),
+                            true,
+                        ),
+                    };
+                    fields.push(serde_json::json!({
+                        "name": field.name,
+                        "value": value,
+                        "secret": secret,
+                    }));
+                }
+                entries.push(serde_json::json!({
+                    "name": entry.name,
+                    "kind": entry.kind.id(),
+                    "fields": fields,
+                    "tags": entry.tags,
+                    "favourite": entry.favourite,
+                    "created": entry.created,
+                    "updated": entry.updated,
+                }));
+            }
+            vaults.push(serde_json::json!({ "name": name, "entries": entries }));
+        }
+        let document = serde_json::json!({
+            "format": "txc-export",
+            "version": 1,
+            "exported": crate::vault::document::now(),
+            "vaults": vaults,
+        });
+        let json = zeroize::Zeroizing::new(serde_json::to_vec_pretty(&document)?);
+        drop(document);
+        let bytes = if plaintext {
+            json.to_vec()
+        } else {
+            crypto::encrypt(&recipients, &json)?
+        };
+
+        if let Some(path) = output {
+            write_new_private(Path::new(path), &bytes)?;
+            eprintln!(
+                "Exported {} vaults to {path}.{}",
+                names.len(),
+                if plaintext {
+                    " It is unencrypted: keep it off synced folders and delete it soon."
+                } else {
+                    " Read it with: age -d -i <key> <file>"
+                }
+            );
+        } else {
+            let mut stdout = io::stdout().lock();
+            stdout.write_all(&bytes)?;
+            stdout.flush()?;
+        }
+        Ok(())
     }
 
     /// Runs a program with the secrets its template names.
@@ -2275,6 +2578,9 @@ mod tests {
             "max",
             "env-file",
             "set",
+            "format",
+            "into",
+            "output",
         ];
         walk(&command(), &valued);
     }
