@@ -325,16 +325,42 @@ impl Synced {
     /// Returns an error when the passphrase or second factor is wrong, or a
     /// file is damaged.
     pub fn open(home: &Home, name: &str, passphrase: &SecretString) -> Result<Self> {
+        let kek = Self::unlock(home, name, passphrase)?;
+        Self::open_with(home, name, kek)
+    }
+
+    /// The key-encryption key of a synced vault from the passphrase and the
+    /// second factor, for a session to hold.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the passphrase or second factor is wrong.
+    pub fn unlock(
+        home: &Home,
+        name: &str,
+        passphrase: &SecretString,
+    ) -> Result<Zeroizing<[u8; 32]>> {
         let dir = dir(home, name);
         ensure!(
             home::exists(&dir.join(KEYS)),
             "no synced vault named \"{name}\" on this device"
         );
         let keys = home::read_private(&dir.join(KEYS), KEY_LIMIT, PRIVATE)?;
-        let device_id = local::key_file_device(&keys)?;
-        let second = second_factor(&device_id, false)?;
-        let (me, file, kek) =
-            local::unlock_keys(&keys, passphrase.expose_secret().as_bytes(), &second)?;
+        let second = second_factor(&local::key_file_device(&keys)?, false)?;
+        let kek = local::key_file_kek(&keys, passphrase.expose_secret().as_bytes(), &second)?;
+        local::unlock_keys_with(&keys, &kek)?;
+        Ok(kek)
+    }
+
+    /// Opens a synced vault with its key-encryption key, from a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is wrong or a file is damaged.
+    pub fn open_with(home: &Home, name: &str, kek: Zeroizing<[u8; 32]>) -> Result<Self> {
+        let dir = dir(home, name);
+        let keys = home::read_private(&dir.join(KEYS), KEY_LIMIT, PRIVATE)?;
+        let (me, file) = local::unlock_keys_with(&keys, &kek)?;
         let state = home::read_private(&dir.join(STATE), local::MAX_STATE_BYTES, PRIVATE)?;
         let device = local::open_state(&state, me)
             .context("this device's local state does not open; pair it again")?;

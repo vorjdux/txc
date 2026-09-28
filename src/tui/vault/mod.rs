@@ -1317,7 +1317,10 @@ impl VaultScreen {
             return false;
         }
         match session::resume(home) {
-            Ok(session::Resumed::Open(identity)) => {
+            Ok(session::Resumed::Open(session::Contents {
+                identity: Some(identity),
+                ..
+            })) => {
                 let result = Keyring::from_session(home, identity)
                     .map(Unlocked::Identity)
                     .map_err(|error| format!("{error:#}"));
@@ -1333,7 +1336,7 @@ impl VaultScreen {
                 self.status = format!("the session has ended: {reason}");
                 false
             }
-            Ok(session::Resumed::None) | Err(_) => false,
+            Ok(session::Resumed::Open(_) | session::Resumed::None) | Err(_) => false,
         }
     }
 

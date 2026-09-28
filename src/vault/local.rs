@@ -310,18 +310,15 @@ pub fn key_file_device(bytes: &[u8]) -> Result<Id> {
     input.fixed()
 }
 
-/// Opens a device's keys with both factors, returning the key file's
-/// header and KEK too, for sealing them again later.
-///
-/// # Errors
-///
-/// Returns an error when either factor is wrong, the file was changed, or
-/// its parameters are below the floor.
-pub fn unlock_keys(
-    bytes: &[u8],
-    passphrase: &[u8],
-    second: &[u8; 32],
-) -> Result<(Me, KeyFile, Zeroizing<[u8; 32]>)> {
+/// A key file split into its parts.
+struct Parsed<'a> {
+    header: &'a [u8],
+    sealed: &'a [u8],
+    file: KeyFile,
+    nonce: [u8; 24],
+}
+
+fn parse_key_file(bytes: &[u8]) -> Result<Parsed<'_>> {
     let mut outer = Reader(bytes);
     let header = outer.bytes()?;
     let sealed = outer.bytes()?;
@@ -352,9 +349,48 @@ pub fn unlock_keys(
     let salt: [u8; 16] = input.fixed()?;
     let nonce: [u8; 24] = input.fixed()?;
     input.finish()?;
-    let kek = kek(&device, passphrase, &salt, params, second)?;
+    Ok(Parsed {
+        header,
+        sealed,
+        file: KeyFile {
+            device,
+            key_version,
+            params,
+            salt,
+        },
+        nonce,
+    })
+}
+
+/// The key file's KEK from both factors, for a session to hold.
+///
+/// # Errors
+///
+/// Returns an error when the file is malformed or its parameters are below
+/// the floor.
+pub fn key_file_kek(
+    bytes: &[u8],
+    passphrase: &[u8],
+    second: &[u8; 32],
+) -> Result<Zeroizing<[u8; 32]>> {
+    let Parsed { file, .. } = parse_key_file(bytes)?;
+    kek(&file.device, passphrase, &file.salt, file.params, second)
+}
+
+/// Opens a device's keys with a KEK already derived, as a session holds it.
+///
+/// # Errors
+///
+/// Returns an error when the KEK is wrong or the file was changed.
+pub fn unlock_keys_with(bytes: &[u8], kek: &[u8; 32]) -> Result<(Me, KeyFile)> {
+    let Parsed {
+        header,
+        sealed,
+        file,
+        nonce,
+    } = parse_key_file(bytes)?;
     let plain = Zeroizing::new(
-        XChaCha20Poly1305::new_from_slice(&kek[..])
+        XChaCha20Poly1305::new_from_slice(kek)
             .map_err(|_length| anyhow!("bad key-encryption key"))?
             .decrypt(
                 XNonce::from_slice(&nonce),
@@ -367,17 +403,24 @@ pub fn unlock_keys(
                 anyhow!("wrong passphrase or second factor, or the key file was changed")
             })?,
     );
-    let me = decode_me(device, &plain)?;
-    Ok((
-        me,
-        KeyFile {
-            device,
-            key_version,
-            params,
-            salt,
-        },
-        kek,
-    ))
+    Ok((decode_me(file.device, &plain)?, file))
+}
+
+/// Opens a device's keys with both factors, returning the key file's
+/// header and KEK too, for sealing them again later.
+///
+/// # Errors
+///
+/// Returns an error when either factor is wrong, the file was changed, or
+/// its parameters are below the floor.
+pub fn unlock_keys(
+    bytes: &[u8],
+    passphrase: &[u8],
+    second: &[u8; 32],
+) -> Result<(Me, KeyFile, Zeroizing<[u8; 32]>)> {
+    let kek = key_file_kek(bytes, passphrase, second)?;
+    let (me, file) = unlock_keys_with(bytes, &kek)?;
+    Ok((me, file, kek))
 }
 
 /// Opens a device's keys with both factors.

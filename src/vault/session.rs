@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use age::secrecy::ExposeSecret;
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use zeroize::Zeroizing;
@@ -51,7 +51,7 @@ pub const DEFAULT_MAX: Duration = Duration::from_secs(8 * 60 * 60);
 /// The longest a session may be asked to last.
 pub const LONGEST_MAX: Duration = Duration::from_secs(24 * 60 * 60);
 
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 const HEADER_LEN: usize = 1 + 8 * 5;
 const NONCE_LEN: usize = 24;
 const BLOB_LIMIT: usize = 64 * 1024;
@@ -59,10 +59,67 @@ const BLOB_LIMIT: usize = 64 * 1024;
 /// suspend is seconds at the least.
 const SLEEP_SLACK_MS: u64 = 3_000;
 
+/// What a session holds: the identity of today's vaults, and the
+/// key-encryption key of each synced vault the passphrase opened.
+#[derive(Default)]
+pub struct Contents {
+    /// The identity, when this home has one.
+    pub identity: Option<Identity>,
+    /// Each synced vault's key-encryption key, by name.
+    pub synced: std::collections::BTreeMap<String, Zeroizing<[u8; 32]>>,
+}
+
+impl Contents {
+    /// One line per item: `identity AGE-SECRET-KEY-...` and
+    /// `synced NAME HEX`; names never hold spaces or line breaks.
+    fn encode(&self) -> Zeroizing<String> {
+        let mut text = Zeroizing::new(String::new());
+        if let Some(identity) = &self.identity {
+            text.push_str("identity ");
+            text.push_str(identity.to_string().expose_secret());
+            text.push('\n');
+        }
+        for (name, kek) in &self.synced {
+            text.push_str("synced ");
+            text.push_str(name);
+            text.push(' ');
+            text.push_str(&data_encoding::HEXLOWER.encode(&kek[..]));
+            text.push('\n');
+        }
+        text
+    }
+
+    fn decode(text: &str) -> Result<Self> {
+        let mut contents = Self::default();
+        for line in text.lines() {
+            match line.split_once(' ') {
+                Some(("identity", identity)) => {
+                    contents.identity = Some(crypto::parse_identity(identity)?);
+                }
+                Some(("synced", rest)) => {
+                    let (name, hex) = rest
+                        .split_once(' ')
+                        .context("the session file is damaged")?;
+                    let bytes = Zeroizing::new(
+                        data_encoding::HEXLOWER
+                            .decode(hex.as_bytes())
+                            .map_err(|_| anyhow!("the session file is damaged"))?,
+                    );
+                    let kek = <[u8; 32]>::try_from(bytes.as_slice())
+                        .map_err(|_| anyhow!("the session file is damaged"))?;
+                    contents.synced.insert(name.to_owned(), Zeroizing::new(kek));
+                }
+                _ => bail!("the session file is damaged"),
+            }
+        }
+        Ok(contents)
+    }
+}
+
 /// What `resume` found.
 pub enum Resumed {
-    /// The session is open: here is the identity.
-    Open(Identity),
+    /// The session is open: here is what it holds.
+    Open(Contents),
     /// There was a session, and it ended for this reason.
     Ended(&'static str),
     /// There is no session.
@@ -152,7 +209,7 @@ fn paths(id: &str) -> Result<(PathBuf, PathBuf)> {
 /// # Errors
 ///
 /// Returns an error when this system offers no place to keep a session key.
-pub fn start(home: &Home, identity: &Identity, idle: Duration, max: Duration) -> Result<Opened> {
+pub fn start(home: &Home, contents: &Contents, idle: Duration, max: Duration) -> Result<Opened> {
     ensure!(
         !idle.is_zero() && !max.is_zero(),
         "a session must last some time"
@@ -180,14 +237,14 @@ pub fn start(home: &Home, identity: &Identity, idle: Duration, max: Duration) ->
     let embedded = platform::seal_key(&id, &key, idle)?;
     let mut nonce = [0; NONCE_LEN];
     rand::fill(&mut nonce[..]);
-    let secret = identity.to_string();
+    let secret = contents.encode();
     let aad = [&header[..], id.as_bytes()].concat();
     let sealed = XChaCha20Poly1305::new_from_slice(&key[..])
         .map_err(|_| anyhow!("the session key has the wrong length"))?
         .encrypt(
             XNonce::from_slice(&nonce),
             Payload {
-                msg: secret.expose_secret().as_bytes(),
+                msg: secret.as_bytes(),
                 aad: &aad,
             },
         )
@@ -276,11 +333,11 @@ pub fn resume(home: &Home) -> Result<Resumed> {
         return Ok(end_with(&id, "it does not open with its key"));
     };
     let plain = Zeroizing::new(plain);
-    let text = std::str::from_utf8(&plain).context("the session holds no identity")?;
-    let identity = crypto::parse_identity(text)?;
+    let text = std::str::from_utf8(&plain).context("the session file is damaged")?;
+    let contents = Contents::decode(text)?;
 
     home::write_atomic(&used_path, &now.to_be_bytes(), None)?;
-    Ok(Resumed::Open(identity))
+    Ok(Resumed::Open(contents))
 }
 
 fn end_with(id: &str, reason: &'static str) -> Resumed {
@@ -754,17 +811,46 @@ mod tests {
     #[test]
     fn a_session_must_last_some_time_and_not_for_ever() {
         let scratch = crate::vault::test_support::Scratch::new("session-limits");
-        let identity = crypto::new_identity();
+        let contents = Contents {
+            identity: Some(crypto::new_identity()),
+            ..Contents::default()
+        };
         let home = Home::at(&scratch.0);
-        assert!(start(&home, &identity, Duration::ZERO, DEFAULT_MAX).is_err());
+        assert!(start(&home, &contents, Duration::ZERO, DEFAULT_MAX).is_err());
         assert!(
             start(
                 &home,
-                &identity,
+                &contents,
                 DEFAULT_IDLE,
                 LONGEST_MAX + Duration::from_secs(1)
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn contents_round_trip() {
+        let mut contents = Contents {
+            identity: Some(crypto::new_identity()),
+            ..Contents::default()
+        };
+        contents
+            .synced
+            .insert("work".to_owned(), Zeroizing::new([7; 32]));
+        contents
+            .synced
+            .insert("home".to_owned(), Zeroizing::new([9; 32]));
+        let read = Contents::decode(&contents.encode()).unwrap();
+        assert_eq!(
+            read.identity
+                .map(|identity| identity.to_string().expose_secret().to_owned()),
+            contents
+                .identity
+                .map(|identity| identity.to_string().expose_secret().to_owned())
+        );
+        assert_eq!(read.synced.len(), 2);
+        assert_eq!(*read.synced["work"], [7; 32]);
+        assert!(Contents::decode("nonsense line").is_err());
+        assert!(Contents::decode("").unwrap().identity.is_none());
     }
 }

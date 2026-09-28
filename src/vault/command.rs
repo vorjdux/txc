@@ -26,6 +26,7 @@ use crate::vault::model::{
 };
 use crate::vault::prompt::{self, Passphrase};
 use crate::vault::recent::ago;
+use crate::vault::synced::{self, Synced};
 use crate::vault::{Change, Home, Keyring, NewEntry, Opened, Standing, harden, session};
 
 /// What a sealed value is shown as. Always the same, so it gives away nothing
@@ -931,13 +932,16 @@ impl Session {
     fn unlock(&self) -> Result<Keyring> {
         if self.resume {
             match session::resume(&self.home)? {
-                session::Resumed::Open(identity) => {
+                session::Resumed::Open(session::Contents {
+                    identity: Some(identity),
+                    ..
+                }) => {
                     return Keyring::from_session(&self.home, identity);
                 }
                 session::Resumed::Ended(reason) => {
                     eprintln!("The session has ended: {reason}.");
                 }
-                session::Resumed::None => {}
+                session::Resumed::Open(_) | session::Resumed::None => {}
             }
         }
         self.unlock_with_passphrase()
@@ -1234,10 +1238,29 @@ impl Session {
     fn start_session(&self, sub: &ArgMatches) -> Result<()> {
         let minutes = *sub.get_one::<u64>("idle").unwrap_or(&15);
         let hours = *sub.get_one::<u64>("max").unwrap_or(&8);
-        let keyring = self.unlock_with_passphrase()?;
+        let passphrase = self.passphrase.ask(PASSPHRASE_PROMPT)?;
+        let mut contents = session::Contents::default();
+        if self.home.has_identity() {
+            let keyring = working("Unlocking...", || Keyring::unlock(&self.home, &passphrase))?;
+            contents.identity = Some(keyring.identity().clone());
+        }
+        for name in synced::names(&self.home)? {
+            match working(&format!("Unlocking {name}..."), || {
+                Synced::unlock(&self.home, &name, &passphrase)
+            }) {
+                Ok(kek) => {
+                    contents.synced.insert(name, kek);
+                }
+                Err(error) => eprintln!("The synced vault {name} stays locked: {error:#}"),
+            }
+        }
+        ensure!(
+            contents.identity.is_some() || !contents.synced.is_empty(),
+            "there is nothing to unlock here; start with: txc vault init"
+        );
         let opened = session::start(
             &self.home,
-            keyring.identity(),
+            &contents,
             std::time::Duration::from_secs(minutes.saturating_mul(60)),
             std::time::Duration::from_secs(hours.saturating_mul(3600)),
         )?;

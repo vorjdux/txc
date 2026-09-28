@@ -49,6 +49,14 @@ pub const SENSITIVITY: Id = {
     id
 };
 
+/// The register holding what an entry is ("login", "card"), which decides
+/// its main secret.
+pub const KIND: Id = {
+    let mut id = [0; 16];
+    id[15] = 2;
+    id
+};
+
 /// What a field holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FieldKind {
@@ -390,6 +398,8 @@ pub struct Field {
 pub struct EntryView {
     /// The entry's id.
     pub id: Id,
+    /// What it is, when set; more than one is a conflict.
+    pub kinds: Vec<String>,
     /// Its names, sanitised for display; more than one is a name conflict.
     pub names: Vec<String>,
     /// Its sensitivity class; the highest wins when concurrent.
@@ -1061,7 +1071,11 @@ impl Entries {
                 registers.range((entry, [0; 16], Slot::Value)..=(entry, [0xff; 16], Slot::Label))
             {
                 conflict |= field.state.conflict;
-                if *slot != Slot::Value || *field_id == NAME || *field_id == SENSITIVITY {
+                if *slot != Slot::Value
+                    || *field_id == NAME
+                    || *field_id == SENSITIVITY
+                    || *field_id == KIND
+                {
                     continue;
                 }
                 if field.state.values.is_empty() {
@@ -1098,8 +1112,19 @@ impl Entries {
                     conflict: field.state.conflict,
                 });
             }
+            let kinds = registers
+                .get(&(entry, KIND, Slot::Value))
+                .map_or_else(Vec::new, |field| {
+                    field
+                        .state
+                        .values
+                        .iter()
+                        .map(|value| text(&value.bytes))
+                        .collect()
+                });
             views.push(EntryView {
                 id: entry,
+                kinds,
                 names,
                 sensitivity,
                 fields,
@@ -1233,6 +1258,19 @@ impl<'a> Changes<'a> {
             (*entry, NAME, Slot::Value),
             FieldKind::Name,
             name.as_bytes(),
+        )
+    }
+
+    /// Sets what an entry is.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the kind already changed in this batch.
+    pub fn set_kind(&mut self, entry: &Id, kind: &str) -> Result<()> {
+        self.set(
+            (*entry, KIND, Slot::Value),
+            FieldKind::Name,
+            kind.as_bytes(),
         )
     }
 
