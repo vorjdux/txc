@@ -58,6 +58,7 @@ pub mod import;
 mod keyring;
 pub mod model;
 pub mod object;
+pub mod pairing;
 pub mod pq;
 pub mod prompt;
 mod recent;
