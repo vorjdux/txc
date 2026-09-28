@@ -209,6 +209,50 @@ pub fn command() -> Command {
         )
         .subcommand(Command::new("lock").about("End the session that txc vault unlock opened"))
         .subcommand(
+            Command::new("run")
+                .about("Run a program with secrets in its environment or as files, never in your shell")
+                .long_about(
+                    "Run a program with secrets in its environment or as files, never in your \
+                     shell.\n\n\
+                     References come from a template, .env.txc in the current directory unless \
+                     --env-file names others, and from --set. A template reads like a .env file \
+                     and is safe to commit, because it holds references, not secrets:\n\n  \
+                     DATABASE_URL=txc://work/db\n  \
+                     DATABASE_PASSWORD=txc://work/db/password\n  \
+                     TLS_KEY=txc+file://work/tls/key\n  \
+                     LOG_LEVEL=debug\n\n\
+                     txc://VAULT/ENTRY puts the entry's main secret, or with /FIELD a named \
+                     field, in the program's environment. txc+file:// gives the program a path \
+                     to open instead, for programs that read keys and certificates from files: a \
+                     sealed in-memory file on Linux, a pipe on macOS, a named pipe only you can \
+                     open on Windows. Nothing is written to disk, nothing reaches this shell, and \
+                     the program's exit code is passed on.",
+                )
+                .arg(
+                    Arg::new("env-file")
+                        .long("env-file")
+                        .value_name("FILE")
+                        .action(ArgAction::Append)
+                        .help("A template of references (default: .env.txc here, if it exists)"),
+                )
+                .arg(
+                    Arg::new("set")
+                        .long("set")
+                        .value_name("NAME=txc://VAULT/ENTRY")
+                        .action(ArgAction::Append)
+                        .help("One more variable; only references are accepted, never values"),
+                )
+                .arg(
+                    Arg::new("COMMAND")
+                        .required(true)
+                        .num_args(1..)
+                        .trailing_var_arg(true)
+                        .allow_hyphen_values(true)
+                        .value_name("COMMAND")
+                        .help("The program and its arguments, after --"),
+                ),
+        )
+        .subcommand(
             Command::new("identity")
                 .about("Print your public key, for encrypting a vault to you elsewhere"),
         )
@@ -679,6 +723,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
     match name {
         "init" => context.init(sub),
         "unlock" => context.start_session(sub),
+        "run" => context.run_program(sub),
         "lock" => {
             if session::end(&context.home) {
                 eprintln!("The session is closed.");
@@ -713,6 +758,19 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "redeem" => context.redeem(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
+}
+
+/// The exit code to pass on: the child's own, or 128 plus the signal that
+/// ended it, as a shell reports.
+fn exit_code(status: std::process::ExitStatus) -> i32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return 128_i32.saturating_add(signal);
+        }
+    }
+    status.code().unwrap_or(1)
 }
 
 /// Runs slow work with a line on the terminal saying what is happening.
@@ -770,6 +828,103 @@ impl Session {
     fn unlock_with_passphrase(&self) -> Result<Keyring> {
         let passphrase = self.passphrase.ask(PASSPHRASE_PROMPT)?;
         working("Unlocking...", || Keyring::unlock(&self.home, &passphrase))
+    }
+
+    /// Runs a program with the secrets its template names.
+    fn run_program(&self, sub: &ArgMatches) -> Result<()> {
+        use crate::vault::deliver::Delivery;
+        use crate::vault::template::{self, Delivery as How, Value};
+
+        let mut files = many(sub, "env-file");
+        if files.is_empty() && Path::new(".env.txc").is_file() {
+            files.push(".env.txc".to_string());
+        }
+        let mut variables: template::Template = Vec::new();
+        let mut set = |name: String, value: Value| {
+            variables.retain(|(existing, _)| *existing != name);
+            variables.push((name, value));
+        };
+        for file in &files {
+            let text =
+                std::fs::read_to_string(file).with_context(|| format!("cannot read {file}"))?;
+            for (name, value) in template::parse(&text).with_context(|| file.clone())? {
+                set(name, value);
+            }
+        }
+        for setting in many(sub, "set") {
+            let (name, reference) = template::parse_setting(&setting)?;
+            set(name, Value::Secret(reference));
+        }
+
+        let words: Vec<&String> = sub
+            .get_many::<String>("COMMAND")
+            .context("a command is required")?
+            .collect();
+        let (program, args) = words.split_first().context("a command is required")?;
+        let mut command = std::process::Command::new(program);
+        command.args(args);
+
+        let mut deliveries = Vec::new();
+        let needs_secrets = variables
+            .iter()
+            .any(|(_, value)| matches!(value, Value::Secret(_)));
+        let keyring = if needs_secrets {
+            Some(self.unlock()?)
+        } else {
+            None
+        };
+        let mut opened: std::collections::BTreeMap<String, Opened> =
+            std::collections::BTreeMap::new();
+        for (name, value) in &variables {
+            let reference = match value {
+                Value::Plain(plain) => {
+                    command.env(name, plain);
+                    continue;
+                }
+                Value::Secret(reference) => reference,
+            };
+            let keyring = keyring
+                .as_ref()
+                .context("the vault is unlocked for secrets")?;
+            if !opened.contains_key(&reference.vault) {
+                opened.insert(reference.vault.clone(), keyring.open(&reference.vault)?);
+            }
+            let vault = opened
+                .get(&reference.vault)
+                .context("the vault was just opened")?;
+            let entry = vault.entry(&reference.entry)?;
+            let field = reference
+                .field
+                .clone()
+                .unwrap_or_else(|| entry.kind.primary().to_string());
+            let entry_name = entry.name.clone();
+            let secret = vault
+                .reveal(keyring, &entry_name, &field)
+                .with_context(|| format!("{name}={reference}"))?;
+            match reference.delivery {
+                How::Environment => {
+                    command.env(name, secret.expose_secret());
+                }
+                How::File => {
+                    let delivery = Delivery::prepare(&secret, &mut command)?;
+                    command.env(name, &delivery.path);
+                    deliveries.push(delivery);
+                }
+            }
+        }
+        // Nothing but the child's copies stay in memory while it runs.
+        drop(opened);
+        drop(keyring);
+
+        let mut child = command
+            .spawn()
+            .with_context(|| format!("cannot run {program}"))?;
+        drop(command);
+        for delivery in deliveries {
+            delivery.after_spawn();
+        }
+        let status = child.wait()?;
+        std::process::exit(exit_code(status));
     }
 
     /// Unlocks with the passphrase and opens a session.
@@ -2118,6 +2273,8 @@ mod tests {
             "identity",
             "idle",
             "max",
+            "env-file",
+            "set",
         ];
         walk(&command(), &valued);
     }

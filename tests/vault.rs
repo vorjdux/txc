@@ -1254,3 +1254,103 @@ fn a_session_never_holds_the_write_key() {
     sandbox.passphrase_file("write-pass", "not the write passphrase");
     fails(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
 }
+
+/// Runs `txc vault run` from inside a project directory with its template.
+#[cfg(unix)]
+fn run_in(sandbox: &Sandbox, template: &str, args: &[&str]) -> Output {
+    let project = sandbox.private("project");
+    std::fs::write(project.join(".env.txc"), template).unwrap();
+    let mut command = Command::new(BIN);
+    command
+        .current_dir(&project)
+        .arg("vault")
+        .arg("--home")
+        .arg(sandbox.home())
+        .arg("--passphrase-file")
+        .arg(sandbox.root.join("pass"))
+        .arg("run")
+        .args(args)
+        .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+        .env("XDG_RUNTIME_DIR", sandbox.private("run"))
+        .env("TMPDIR", sandbox.private("tmp"))
+        .env_remove("TXC_VAULT_HOME")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    finish(command.spawn().expect("txc starts"), args)
+}
+
+#[cfg(unix)]
+#[test]
+fn run_puts_secrets_in_the_programs_environment_and_nowhere_else() {
+    let sandbox = Sandbox::new("run-env");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "db", "--secret-from-stdin"], "s3cret\n"));
+    let output = run_in(
+        &sandbox,
+        "# safe to commit\nDB=txc://personal/db\nLEVEL=debug\n",
+        &["--", "sh", "-c", "printf '%s|%s' \"$DB\" \"$LEVEL\""],
+    );
+    assert_eq!(succeeds(&output), "s3cret|debug");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_hands_a_secret_as_a_file_that_is_not_on_disk() {
+    let sandbox = Sandbox::new("run-file");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "tls", "--secret-from-stdin"], "PRIVATE KEY\n"));
+    let output = run_in(
+        &sandbox,
+        "KEY=txc+file://personal/tls\n",
+        &[
+            "--",
+            "sh",
+            "-c",
+            "case \"$KEY\" in /dev/fd/*) cat \"$KEY\";; *) echo not-a-descriptor;; esac",
+        ],
+    );
+    assert_eq!(succeeds(&output), "PRIVATE KEY");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_passes_on_the_programs_exit_code() {
+    let sandbox = Sandbox::new("run-exit");
+    sandbox.init();
+    // A template with no secret needs no unlock at all.
+    let output = run_in(&sandbox, "LEVEL=debug\n", &["--", "sh", "-c", "exit 7"]);
+    assert_eq!(output.status.code(), Some(7));
+}
+
+#[cfg(unix)]
+#[test]
+fn run_refuses_a_value_on_the_command_line() {
+    let sandbox = Sandbox::new("run-set");
+    sandbox.init();
+    let output = run_in(&sandbox, "", &["--set", "DB=hunter2", "--", "true"]);
+    assert!(
+        stderr(&output).contains("only references"),
+        "{}",
+        stderr(&output)
+    );
+    fails(&output);
+}
+
+#[cfg(unix)]
+#[test]
+fn run_names_the_variable_whose_secret_is_missing() {
+    let sandbox = Sandbox::new("run-missing");
+    sandbox.init();
+    let output = run_in(
+        &sandbox,
+        "DB=txc://personal/nothing-here\n",
+        &["--", "true"],
+    );
+    fails(&output);
+    assert!(
+        stderr(&output).contains("nothing-here"),
+        "{}",
+        stderr(&output)
+    );
+}

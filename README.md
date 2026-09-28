@@ -505,6 +505,44 @@ key is lost or you retire a device, `txc vault writer --rotate` makes a fresh
 key and re-signs every vault, keeping the old key pinned until you retire it
 with `txc vault writers --remove`, so nothing stops opening in between.
 
+### Secrets straight into a program
+
+`txc vault run` starts a program with the secrets it needs, and nothing else
+sees them: not your shell, not its history, not the disk. The references live
+in a `.env.txc` file that reads like any `.env` and is safe to commit, because
+it holds references, never values:
+
+```sh
+# .env.txc
+DATABASE_URL=txc://work/db
+DATABASE_PASSWORD=txc://work/db/password
+TLS_KEY=txc+file://work/tls/key
+LOG_LEVEL=debug
+```
+
+```sh
+txc vault run -- ./server --port 8080
+txc vault run --env-file deploy.env.txc -- terraform apply
+txc vault run --set OPENAI_API_KEY=txc://work/openai -- python agent.py
+```
+
+- `txc://VAULT/ENTRY` puts the entry's main secret in the program's
+  environment; `txc://VAULT/ENTRY/FIELD` a named field. Entry names with
+  spaces or other characters are percent-encoded.
+- `txc+file://` gives the program a path to open instead, for keys and
+  certificates read from files: a sealed in-memory file on Linux (`/dev/fd/N`,
+  mode 0600, that nothing can change once written), a pipe on macOS (read
+  once), and a named pipe only you can open on Windows. Nothing is written to
+  disk.
+- Lines without a reference pass through as ordinary settings. `--set` takes
+  only references, so a secret can never end up in your shell history.
+- The program's exit code is passed on. With a session open
+  (`txc vault unlock`), no passphrase is asked for.
+
+The program itself holds the secrets while it runs, as it must, and other
+programs running as you can read a process's environment; prefer
+`txc+file://` for anything long-lived.
+
 ### Giving one secret to a script
 
 An agent or a CI job usually needs one secret, not your whole vault. The

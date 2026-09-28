@@ -16,6 +16,12 @@ All notable changes to txc are recorded here. The format follows
   (`--idle`), 8 hours at most (`--max`), when the computer sleeps, or when
   locked. It never holds the write key. `--no-session` ignores an open
   session.
+- **`txc vault run`** starts a program with secrets in its environment or as
+  files, never in the shell. References come from a `.env.txc` template, safe
+  to commit, and from `--set`, which accepts only references.
+  `txc://VAULT/ENTRY[/FIELD]` goes into the environment; `txc+file://` becomes
+  a path to a sealed in-memory file on Linux, a pipe on macOS, or a named pipe
+  only you can open on Windows. The exit code is passed on.
 
 ## [0.7.2] - 2026-09-20
 

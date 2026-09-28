@@ -46,6 +46,7 @@
 pub mod clipboard;
 pub mod command;
 mod crypto;
+pub mod deliver;
 mod document;
 mod grant;
 pub mod harden;
@@ -55,6 +56,7 @@ pub mod model;
 pub mod prompt;
 mod recent;
 pub mod session;
+pub mod template;
 mod trust;
 
 #[cfg(debug_assertions)]
