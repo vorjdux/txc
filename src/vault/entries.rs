@@ -57,6 +57,20 @@ pub const KIND: Id = {
     id
 };
 
+/// The register holding an entry's tags, one per line.
+pub const TAGS: Id = {
+    let mut id = [0; 16];
+    id[15] = 3;
+    id
+};
+
+/// The register holding whether an entry is starred.
+pub const STAR: Id = {
+    let mut id = [0; 16];
+    id[15] = 4;
+    id
+};
+
 /// What a field holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FieldKind {
@@ -398,6 +412,10 @@ pub struct Field {
 pub struct EntryView {
     /// The entry's id.
     pub id: Id,
+    /// Its tags.
+    pub tags: Vec<String>,
+    /// Whether it is starred.
+    pub starred: bool,
     /// What it is, when set; more than one is a conflict.
     pub kinds: Vec<String>,
     /// Its names, sanitised for display; more than one is a name conflict.
@@ -1087,6 +1105,8 @@ impl Entries {
                     || *field_id == NAME
                     || *field_id == SENSITIVITY
                     || *field_id == KIND
+                    || *field_id == TAGS
+                    || *field_id == STAR
                 {
                     continue;
                 }
@@ -1134,8 +1154,33 @@ impl Entries {
                         .map(|value| text(&value.bytes))
                         .collect()
                 });
+            // Concurrent tag sets are all shown; a concurrent star wins.
+            let mut tags: Vec<String> =
+                registers
+                    .get(&(entry, TAGS, Slot::Value))
+                    .map_or_else(Vec::new, |field| {
+                        field
+                            .state
+                            .values
+                            .iter()
+                            .flat_map(|value| {
+                                String::from_utf8_lossy(&value.bytes)
+                                    .lines()
+                                    .map(displayable)
+                                    .collect::<Vec<_>>()
+                            })
+                            .filter(|tag| !tag.is_empty())
+                            .collect()
+                    });
+            tags.sort();
+            tags.dedup();
+            let starred = registers
+                .get(&(entry, STAR, Slot::Value))
+                .is_some_and(|field| field.state.values.iter().any(|value| value.bytes == [1]));
             views.push(EntryView {
                 id: entry,
+                tags,
+                starred,
                 kinds,
                 names,
                 sensitivity,
@@ -1270,6 +1315,36 @@ impl<'a> Changes<'a> {
             (*entry, NAME, Slot::Value),
             FieldKind::Name,
             name.as_bytes(),
+        )
+    }
+
+    /// Sets an entry's tags.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the tags already changed in this batch.
+    pub fn set_tags(&mut self, entry: &Id, tags: &[String]) -> Result<()> {
+        ensure!(
+            tags.iter().all(|tag| !tag.contains('\n')),
+            "a tag is one line"
+        );
+        self.set(
+            (*entry, TAGS, Slot::Value),
+            FieldKind::Name,
+            tags.join("\n").as_bytes(),
+        )
+    }
+
+    /// Stars or unstars an entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the star already changed in this batch.
+    pub fn set_star(&mut self, entry: &Id, starred: bool) -> Result<()> {
+        self.set(
+            (*entry, STAR, Slot::Value),
+            FieldKind::Name,
+            &[u8::from(starred)],
         )
     }
 

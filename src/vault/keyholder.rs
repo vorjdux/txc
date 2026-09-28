@@ -47,6 +47,8 @@ enum Request {
         kind: String,
         plain: Vec<(String, String)>,
         secrets: Vec<(String, String)>,
+        tags: Vec<String>,
+        favourite: bool,
     },
     Change {
         name: String,
@@ -54,6 +56,9 @@ enum Request {
         plain: Vec<(String, String)>,
         secrets: Vec<(String, String)>,
         remove: Vec<String>,
+        tag: Vec<String>,
+        untag: Vec<String>,
+        favourite: Option<bool>,
     },
     Remove {
         name: String,
@@ -153,6 +158,8 @@ fn answer(
             kind,
             plain,
             secrets,
+            tags,
+            favourite,
         } => {
             let kind = Kind::from_id(&kind).context("an unknown kind")?;
             let new = NewEntry {
@@ -160,8 +167,8 @@ fn answer(
                 kind,
                 plain,
                 secrets: secret_pairs(secrets),
-                tags: Vec::new(),
-                favourite: false,
+                tags,
+                favourite,
             };
             synced_model::add(vault, &new)?;
             Response::Done
@@ -172,13 +179,18 @@ fn answer(
             plain,
             secrets,
             remove,
+            tag,
+            untag,
+            favourite,
         } => {
             let change = Change {
                 rename,
                 plain,
                 secrets: secret_pairs(secrets),
                 remove,
-                ..Change::default()
+                tag,
+                untag,
+                favourite,
             };
             synced_model::change(vault, &name, &change)?;
             Response::Done
@@ -395,15 +407,13 @@ impl Holder {
     ///
     /// Returns an error when the keyholder refuses.
     pub fn add(&mut self, new: &NewEntry) -> Result<()> {
-        ensure!(
-            new.tags.is_empty() && !new.favourite,
-            "tags and stars are not available for synced vaults yet"
-        );
         self.done(Request::Add {
             name: new.name.clone(),
             kind: new.kind.id().to_owned(),
             plain: new.plain.clone(),
             secrets: revealed_pairs(&new.secrets),
+            tags: new.tags.clone(),
+            favourite: new.favourite,
         })
     }
 
@@ -413,16 +423,15 @@ impl Holder {
     ///
     /// Returns an error when the keyholder refuses.
     pub fn change(&mut self, name: &str, change: &Change) -> Result<()> {
-        ensure!(
-            change.tag.is_empty() && change.untag.is_empty() && change.favourite.is_none(),
-            "tags and stars are not available for synced vaults yet"
-        );
         self.done(Request::Change {
             name: name.to_owned(),
             rename: change.rename.clone(),
             plain: change.plain.clone(),
             secrets: revealed_pairs(&change.secrets),
             remove: change.remove.clone(),
+            tag: change.tag.clone(),
+            untag: change.untag.clone(),
+            favourite: change.favourite,
         })
     }
 

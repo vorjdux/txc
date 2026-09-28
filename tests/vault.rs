@@ -1576,6 +1576,12 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
     assert!(succeeds(&sandbox.vault(&["list"])).contains("github"));
 
     succeeds(&sandbox.vault(&["edit", "github", "--username", "hubot"]));
+    succeeds(&sandbox.vault(&["edit", "github", "--tag", "work"]));
+    succeeds(&sandbox.vault(&["favourite", "github"]));
+    let shown = succeeds(&sandbox.vault(&["show", "github"]));
+    assert!(shown.contains("work") && shown.contains("★"), "{shown}");
+    assert!(succeeds(&sandbox.vault(&["list", "personal", "--favourites"])).contains("github"));
+    assert!(!succeeds(&sandbox.vault(&["list", "personal", "--tag", "home"])).contains("github"));
     assert!(succeeds(&sandbox.vault(&["show", "github"])).contains("hubot"));
     if cfg!(unix) {
         let ran = succeeds(&sandbox.vault(&[

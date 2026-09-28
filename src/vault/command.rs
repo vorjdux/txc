@@ -1024,7 +1024,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
             let keyring = context.unlock()?;
             synced_command::migrate(&context.synced(), &keyring, sub)
         }
-        "list" | "add" | "show" | "copy" | "edit" | "rm" | "grant"
+        "list" | "add" | "show" | "copy" | "edit" | "rm" | "grant" | "favourite"
             if context.names_synced(name, sub) =>
         {
             synced_command::entry(&context.synced(), name, sub)
@@ -2683,7 +2683,7 @@ fn many(sub: &ArgMatches, name: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn checked_tags(sub: &ArgMatches, name: &str) -> Result<Vec<String>> {
+pub(crate) fn checked_tags(sub: &ArgMatches, name: &str) -> Result<Vec<String>> {
     let tags = many(sub, name);
     for tag in &tags {
         check_tag(tag)?;

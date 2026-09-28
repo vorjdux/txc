@@ -1172,9 +1172,13 @@ impl VaultScreen {
                 Edit::Add(new) => synced.holder.add(new),
                 Edit::Change(name, change) => synced.holder.change(name, change),
                 Edit::Remove(name) => synced.holder.remove(name),
-                Edit::Favourite(..) => Err(anyhow::anyhow!(
-                    "stars are not available for synced vaults yet"
-                )),
+                Edit::Favourite(name, favourite) => synced.holder.change(
+                    name,
+                    &Change {
+                        favourite: Some(*favourite),
+                        ..Change::default()
+                    },
+                ),
             };
             result.map_err(|error| format!("{error:#}"))?;
             synced.entries = synced

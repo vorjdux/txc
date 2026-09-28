@@ -24,8 +24,8 @@ use zeroize::Zeroizing;
 use crate::vault::authority::Role;
 use crate::vault::clipboard;
 use crate::vault::command::{
-    MASK, check_sensitivities, checked_field_names, main_secret, main_spec, output, plain_fields,
-    required, table, wait_then_clear, working,
+    MASK, check_sensitivities, checked_field_names, checked_tags, main_secret, main_spec, output,
+    plain_fields, required, table, wait_then_clear, working,
 };
 use crate::vault::confine::{self, Confinement};
 use crate::vault::control::Checkpoint;
@@ -1133,10 +1133,20 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             let (vault, _) = context.open_confined(&name)?;
             let mut rows = vec![["Name".to_owned(), "Kind".to_owned(), String::new()]];
             let mut views = vault.entries()?.list();
-            views.sort_by(|a, b| a.names.cmp(&b.names));
+            views.sort_by(|a, b| (!a.starred, &a.names).cmp(&(!b.starred, &b.names)));
+            let tag = sub.get_one::<String>("tag");
+            let favourites = sub.get_flag("favourites");
             for view in views {
+                if (favourites && !view.starred) || tag.is_some_and(|tag| !view.tags.contains(tag))
+                {
+                    continue;
+                }
                 rows.push([
-                    view.names.join(" / "),
+                    format!(
+                        "{}{}",
+                        if view.starred { "★ " } else { "" },
+                        view.names.join(" / ")
+                    ),
                     kind_of(&view).map_or_else(String::new, |kind| kind.label().to_owned()),
                     if view.conflict {
                         "two versions".to_owned()
@@ -1159,6 +1169,12 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             ];
             if let Some(kind) = kind_of(view) {
                 rows.push(["Kind".to_owned(), kind.label().to_owned()]);
+            }
+            if view.starred {
+                rows.push(["Favourite".to_owned(), "★".to_owned()]);
+            }
+            if !view.tags.is_empty() {
+                rows.push(["Tags".to_owned(), view.tags.join(", ")]);
             }
             for field in &view.fields {
                 let shown = field
@@ -1195,6 +1211,22 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             Ok(())
         }
         "resolve" => resolve(context, sub),
+        "favourite" => {
+            let reference: Reference = required(sub, "ENTRY").parse()?;
+            let (mut vault, _) = context.open_confined(&reference.vault)?;
+            let entries = vault.entries()?;
+            let views = entries.list();
+            let id = find(&views, &reference.entry)?.id;
+            let starred = !sub.get_flag("remove");
+            let mut changes = Changes::new(&entries, now());
+            changes.set_star(&id, starred)?;
+            vault.write(changes)?;
+            eprintln!(
+                "{} {reference}.",
+                if starred { "Starred" } else { "Unstarred" }
+            );
+            Ok(())
+        }
         "grant" => grant(context, sub),
         other => bail!("{other} is not available for synced vaults yet"),
     }
@@ -1206,10 +1238,7 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let plain = plain_fields(sub)?;
     let secret_fields = checked_field_names(sub, "secret-field")?;
     check_sensitivities(kind, &plain, &secret_fields)?;
-    ensure!(
-        sub.get_many::<String>("tag").is_none() && !sub.get_flag("favourite"),
-        "tags and favourites are not available for synced vaults yet"
-    );
+    let tags = checked_tags(sub, "tag")?;
     let primary = main_spec(kind);
     let (mut vault, _) = context.open_confined(&reference.vault)?;
     let entries = vault.entries()?;
@@ -1226,6 +1255,12 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let mut changes = Changes::new(&entries, now());
     let entry = changes.create(&reference.entry)?;
     changes.set_kind(&entry, kind.id())?;
+    if !tags.is_empty() {
+        changes.set_tags(&entry, &tags)?;
+    }
+    if sub.get_flag("favourite") {
+        changes.set_star(&entry, true)?;
+    }
     changes.add_field(
         &entry,
         FieldKind::Secret,
@@ -1344,12 +1379,11 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let new_main = ["set-secret", "generate", "secret-from-stdin"]
         .iter()
         .any(|flag| sub.get_flag(flag));
-    ensure!(
-        sub.get_many::<String>("tag").is_none() && sub.get_many::<String>("untag").is_none(),
-        "tags are not available for synced vaults yet"
-    );
+    let (tag, untag) = (checked_tags(sub, "tag")?, checked_tags(sub, "untag")?);
     ensure!(
         new_main
+            || !tag.is_empty()
+            || !untag.is_empty()
             || rename.is_some()
             || !plain.is_empty()
             || !secret_fields.is_empty()
@@ -1365,6 +1399,18 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let mut changes = Changes::new(&entries, now());
     if let Some(name) = rename {
         changes.rename(&view.id, name)?;
+    }
+    if !tag.is_empty() || !untag.is_empty() {
+        let mut tags: Vec<String> = view
+            .tags
+            .iter()
+            .filter(|existing| !untag.contains(existing))
+            .cloned()
+            .collect();
+        tags.extend(tag.into_iter().filter(|new| !view.tags.contains(new)));
+        tags.sort();
+        tags.dedup();
+        changes.set_tags(&view.id, &tags)?;
     }
     let set = |changes: &mut Changes<'_>,
                label: &str,

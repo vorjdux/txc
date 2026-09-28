@@ -64,8 +64,8 @@ pub fn entries(vault: &Synced) -> Result<Vec<Entry>> {
             name: view.names.first().cloned().unwrap_or_default(),
             kind,
             fields,
-            tags: Vec::new(),
-            favourite: false,
+            tags: view.tags.clone(),
+            favourite: view.starred,
             created: stamp(times.iter().min().copied()),
             updated: stamp(times.iter().max().copied()),
         });
@@ -97,10 +97,6 @@ fn field<'a>(view: &'a EntryView, label: &str) -> Option<&'a FieldView> {
 /// Returns an error when the name is taken, tags or a star are asked for,
 /// or the write fails.
 pub fn add(vault: &mut Synced, new: &NewEntry) -> Result<()> {
-    ensure!(
-        new.tags.is_empty() && !new.favourite,
-        "tags and stars are not available for synced vaults yet"
-    );
     let entries = vault.entries()?;
     ensure!(
         !entries
@@ -113,6 +109,12 @@ pub fn add(vault: &mut Synced, new: &NewEntry) -> Result<()> {
     let mut changes = Changes::new(&entries, now());
     let entry = changes.create(&new.name)?;
     changes.set_kind(&entry, new.kind.id())?;
+    if !new.tags.is_empty() {
+        changes.set_tags(&entry, &new.tags)?;
+    }
+    if new.favourite {
+        changes.set_star(&entry, true)?;
+    }
     for (label, secret) in &new.secrets {
         changes.add_field(
             &entry,
@@ -135,16 +137,30 @@ pub fn add(vault: &mut Synced, new: &NewEntry) -> Result<()> {
 /// Returns an error when the entry or a field to remove does not exist,
 /// tags or a star are asked for, or the write fails.
 pub fn change(vault: &mut Synced, name: &str, change: &Change) -> Result<()> {
-    ensure!(
-        change.tag.is_empty() && change.untag.is_empty() && change.favourite.is_none(),
-        "tags and stars are not available for synced vaults yet"
-    );
     let entries = vault.entries()?;
     let views = entries.list();
     let view = find(&views, name)?;
     let mut changes = Changes::new(&entries, now());
     if let Some(new_name) = &change.rename {
         changes.rename(&view.id, new_name)?;
+    }
+    if !change.tag.is_empty() || !change.untag.is_empty() {
+        let mut tags: Vec<String> = view
+            .tags
+            .iter()
+            .filter(|tag| !change.untag.contains(tag))
+            .cloned()
+            .collect();
+        for tag in &change.tag {
+            if !tags.contains(tag) {
+                tags.push(tag.clone());
+            }
+        }
+        tags.sort();
+        changes.set_tags(&view.id, &tags)?;
+    }
+    if let Some(starred) = change.favourite {
+        changes.set_star(&view.id, starred)?;
     }
     let set =
         |changes: &mut Changes<'_>, label: &str, kind: FieldKind, value: &[u8]| -> Result<()> {
@@ -232,17 +248,29 @@ mod tests {
         let listed = entries(&vault).unwrap();
         assert_eq!(listed[0].name, "gitlab");
         assert!(listed[0].plain("username").is_none());
-        assert!(
-            change(
-                &mut vault,
-                "gitlab",
-                &Change {
-                    tag: vec!["x".into()],
-                    ..Change::default()
-                }
-            )
-            .is_err()
-        );
+        change(
+            &mut vault,
+            "gitlab",
+            &Change {
+                tag: vec!["work".into(), "git".into()],
+                favourite: Some(true),
+                ..Change::default()
+            },
+        )
+        .unwrap();
+        let listed = entries(&vault).unwrap();
+        assert_eq!(listed[0].tags, vec!["git".to_owned(), "work".to_owned()]);
+        assert!(listed[0].favourite);
+        change(
+            &mut vault,
+            "gitlab",
+            &Change {
+                untag: vec!["git".into()],
+                ..Change::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(entries(&vault).unwrap()[0].tags, vec!["work".to_owned()]);
 
         remove(&mut vault, "gitlab").unwrap();
         assert!(entries(&vault).unwrap().is_empty());
