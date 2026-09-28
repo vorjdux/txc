@@ -67,6 +67,7 @@ pub mod pq;
 pub mod prompt;
 mod recent;
 pub mod session;
+pub mod slip39;
 pub mod store;
 pub mod template;
 mod trust;
