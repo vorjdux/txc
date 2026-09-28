@@ -2560,6 +2560,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --all 'Also show what this system cannot protect, which needs nothing from you'
             cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
             cand -h 'Print help'
             cand --help 'Print help'

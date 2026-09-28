@@ -566,7 +566,13 @@ pub fn command() -> Command {
         .subcommand(
             Command::new("status")
                 .about("One screen: what is fine, and what needs you")
-                .arg(Arg::new("VAULT").help("The synced vault")),
+                .arg(Arg::new("VAULT").help("The synced vault"))
+                .arg(
+                    Arg::new("all")
+                        .long("all")
+                        .action(ArgAction::SetTrue)
+                        .help("Also show what this system cannot protect, which needs nothing from you"),
+                ),
         )
         .subcommand(
             Command::new("sync")

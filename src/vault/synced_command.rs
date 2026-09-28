@@ -27,6 +27,7 @@ use crate::vault::command::{
     MASK, check_sensitivities, checked_field_names, main_secret, main_spec, output, plain_fields,
     required, table, wait_then_clear, working,
 };
+use crate::vault::confine::{self, Confinement};
 use crate::vault::device::Alarm;
 use crate::vault::entries::{Changes, EntryView, FieldKind, FieldView, NAME, Slot};
 use crate::vault::model::{DEFAULT_VAULT, Kind, Reference, check_vault_name};
@@ -56,6 +57,15 @@ impl Context<'_> {
         let mut vault = self.open_quiet(name)?;
         working("Syncing...", || vault.sync())?;
         Ok(vault)
+    }
+
+    /// Opens and syncs a vault, then confines this process to the txc home
+    /// and the vault's objects: no other files, no network, no programs.
+    fn open_confined(&self, name: &str) -> Result<(Synced, Confinement)> {
+        let vault = self.open(name)?;
+        let objects = vault.store().path().to_path_buf();
+        let confinement = confine::confine(&[self.home.root(), &objects], &[]);
+        Ok((vault, confinement))
     }
 
     fn open_quiet(&self, name: &str) -> Result<Synced> {
@@ -253,7 +263,7 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         .subcommand()
         .context("clap requires a device subcommand")?;
     let name = context.which(args.get_one::<String>("vault"))?;
-    let mut vault = context.open(&name)?;
+    let (mut vault, _) = context.open_confined(&name)?;
     match verb {
         "add" => {
             let role = match args.get_one::<String>("role").map(String::as_str) {
@@ -363,7 +373,7 @@ fn list_devices(vault: &Synced) -> Result<()> {
 /// Returns an error when the vault does not open.
 pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let name = context.which(sub.get_one::<String>("VAULT"))?;
-    let mut vault = context.open(&name)?;
+    let (mut vault, confinement) = context.open_confined(&name)?;
     vault.checkpoint()?;
     let mut lines = Vec::new();
     let device = vault.device();
@@ -403,6 +413,15 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             "● yellow  {name}/{entry} has two versions      → txc vault resolve {name}/{entry}"
         ));
     }
+    // What this platform cannot provide is a permanent condition: shown
+    // with --all, not on every status (study section 19).
+    if sub.get_flag("all") {
+        for missing in confinement.missing() {
+            lines.push(format!(
+                "● yellow  on this system, {missing}; nothing to do"
+            ));
+        }
+    }
     let members = device.members().len();
     lines.insert(
         0,
@@ -421,7 +440,7 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
 /// Returns an error when the vault does not open.
 pub fn sync(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let name = context.which(sub.get_one::<String>("VAULT"))?;
-    let mut vault = context.open(&name)?;
+    let (mut vault, _) = context.open_confined(&name)?;
     vault.checkpoint()?;
     eprintln!("Synced \"{name}\".");
     Ok(())
@@ -570,7 +589,7 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
     match verb {
         "list" => {
             let name = context.which(sub.get_one::<String>("VAULT"))?;
-            let vault = context.open(&name)?;
+            let (vault, _) = context.open_confined(&name)?;
             let mut rows = vec![["Name".to_owned(), "Kind".to_owned(), String::new()]];
             let mut views = vault.entries()?.list();
             views.sort_by(|a, b| a.names.cmp(&b.names));
@@ -590,7 +609,7 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
         "add" => add(context, sub),
         "show" => {
             let reference: Reference = required(sub, "ENTRY").parse()?;
-            let vault = context.open(&reference.vault)?;
+            let (vault, _) = context.open_confined(&reference.vault)?;
             let views = vault.entries()?.list();
             let view = find(&views, &reference.entry)?;
             let mut rows = vec![
@@ -618,7 +637,7 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
         "edit" => edit(context, sub),
         "rm" => {
             let reference: Reference = required(sub, "ENTRY").parse()?;
-            let mut vault = context.open(&reference.vault)?;
+            let (mut vault, _) = context.open_confined(&reference.vault)?;
             let entries = vault.entries()?;
             let views = entries.list();
             let id = find(&views, &reference.entry)?.id;
@@ -650,7 +669,7 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         "tags and favourites are not available for synced vaults yet"
     );
     let primary = main_spec(kind);
-    let mut vault = context.open(&reference.vault)?;
+    let (mut vault, _) = context.open_confined(&reference.vault)?;
     let entries = vault.entries()?;
     ensure!(
         !entries
@@ -713,7 +732,7 @@ fn copy(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
              --print to use the clipboard"
         );
     }
-    let vault = context.open(&reference.vault)?;
+    let (vault, _) = context.open_confined(&reference.vault)?;
     let secret = reveal(
         &vault,
         &reference.entry,
@@ -791,7 +810,7 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             || !removed.is_empty(),
         "nothing to change; see: txc vault edit --help"
     );
-    let mut vault = context.open(&reference.vault)?;
+    let (mut vault, _) = context.open_confined(&reference.vault)?;
     let entries = vault.entries()?;
     let views = entries.list();
     let view = find(&views, &reference.entry)?;
@@ -849,7 +868,7 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
 /// and with `--field` and `--keep` keeps one.
 fn resolve(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let reference: Reference = required(sub, "ENTRY").parse()?;
-    let mut vault = context.open(&reference.vault)?;
+    let (mut vault, _) = context.open_confined(&reference.vault)?;
     let entries = vault.entries()?;
     let views = entries.list();
     let view = find(&views, &reference.entry)?;

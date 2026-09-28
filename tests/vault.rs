@@ -1547,6 +1547,11 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
         "{status}"
     );
     assert_eq!(status.lines().count(), 2, "{status}");
+    if cfg!(target_os = "linux") {
+        // Landlock and seccomp are both in place here, so --all adds nothing.
+        let all = succeeds(&sandbox.vault(&["status", "--all"]));
+        assert_eq!(all.lines().count(), 2, "{all}");
+    }
 
     succeeds(&sandbox.vault_piped(
         &[
