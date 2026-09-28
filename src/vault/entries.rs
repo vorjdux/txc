@@ -154,13 +154,16 @@ impl Sensitivity {
     }
 }
 
-/// Which of a field's two registers: its value, or a rotation in progress.
+/// Which of a field's registers: its value, a rotation in progress, or its
+/// name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Slot {
     /// The current value.
     Value,
     /// A new value written before a remote change, until commit or abort.
     Pending,
+    /// The field's name, as people refer to it: "password", "cvv".
+    Label,
 }
 
 /// One register: an entry, a field of it, and a slot.
@@ -272,6 +275,7 @@ const fn slot_code(slot: Slot) -> u8 {
     match slot {
         Slot::Value => 0,
         Slot::Pending => 1,
+        Slot::Label => 2,
     }
 }
 
@@ -303,6 +307,7 @@ fn read_op(input: &mut Reader<'_>) -> Result<FieldOp> {
     let slot = match input.u8()? {
         0 => Slot::Value,
         1 => Slot::Pending,
+        2 => Slot::Label,
         other => bail!("unknown slot {other}"),
     };
     let kind = FieldKind::from_code(
@@ -400,6 +405,8 @@ pub struct EntryView {
 pub struct FieldView {
     /// The field's id.
     pub id: Id,
+    /// Its name, sanitised; concurrent names are joined with " / ".
+    pub label: String,
     /// What it holds.
     pub kind: FieldKind,
     /// Its values sanitised for display, or `None` for a secret kind.
@@ -1051,10 +1058,10 @@ impl Entries {
             let mut conflict = false;
             let mut fields = Vec::new();
             for ((_, field_id, slot), field) in
-                registers.range((entry, [0; 16], Slot::Value)..=(entry, [0xff; 16], Slot::Pending))
+                registers.range((entry, [0; 16], Slot::Value)..=(entry, [0xff; 16], Slot::Label))
             {
                 conflict |= field.state.conflict;
-                if *slot == Slot::Pending || *field_id == NAME || *field_id == SENSITIVITY {
+                if *slot != Slot::Value || *field_id == NAME || *field_id == SENSITIVITY {
                     continue;
                 }
                 if field.state.values.is_empty() {
@@ -1063,8 +1070,21 @@ impl Entries {
                 let pending = registers
                     .get(&(entry, *field_id, Slot::Pending))
                     .is_some_and(|pending| !pending.state.values.is_empty());
+                let label = registers
+                    .get(&(entry, *field_id, Slot::Label))
+                    .map(|label| {
+                        label
+                            .state
+                            .values
+                            .iter()
+                            .map(|value| text(&value.bytes))
+                            .collect::<Vec<_>>()
+                            .join(" / ")
+                    })
+                    .unwrap_or_default();
                 fields.push(FieldView {
                     id: *field_id,
+                    label,
                     kind: field.kind,
                     shown: (!field.kind.is_secret()).then(|| {
                         field
@@ -1229,15 +1249,39 @@ impl<'a> Changes<'a> {
         )
     }
 
-    /// Adds a field and returns its new random id.
+    /// Adds a named field and returns its new random id.
     ///
     /// # Errors
     ///
     /// Returns an error when sealing fails.
-    pub fn add_field(&mut self, entry: &Id, kind: FieldKind, value: &[u8]) -> Result<Id> {
+    pub fn add_field(
+        &mut self,
+        entry: &Id,
+        kind: FieldKind,
+        label: &str,
+        value: &[u8],
+    ) -> Result<Id> {
         let field = new_id();
+        self.set(
+            (*entry, field, Slot::Label),
+            FieldKind::Name,
+            label.as_bytes(),
+        )?;
         self.set((*entry, field, Slot::Value), kind, value)?;
         Ok(field)
+    }
+
+    /// Renames a field.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the field's name already changed in this batch.
+    pub fn rename_field(&mut self, entry: &Id, field: &Id, label: &str) -> Result<()> {
+        self.set(
+            (*entry, *field, Slot::Label),
+            FieldKind::Name,
+            label.as_bytes(),
+        )
     }
 
     /// Sets a field's value.
@@ -1262,7 +1306,15 @@ impl<'a> Changes<'a> {
     ///
     /// Returns an error when the field does not exist.
     pub fn delete_field(&mut self, entry: &Id, field: &Id) -> Result<()> {
-        self.delete((*entry, *field, Slot::Value))
+        self.delete((*entry, *field, Slot::Value))?;
+        if self
+            .entries
+            .registers()
+            .contains_key(&(*entry, *field, Slot::Label))
+        {
+            self.delete((*entry, *field, Slot::Label))?;
+        }
+        Ok(())
     }
 
     /// Deletes an entry: its name, so it leaves every listing, and every
@@ -1410,10 +1462,10 @@ mod tests {
         let mut changes = Changes::new(&entries, NOW);
         let github = changes.create("github").unwrap();
         let user = changes
-            .add_field(&github, FieldKind::Username, b"octocat")
+            .add_field(&github, FieldKind::Username, "username", b"octocat")
             .unwrap();
         let password = changes
-            .add_field(&github, FieldKind::Secret, b"hunter2")
+            .add_field(&github, FieldKind::Secret, "secret", b"hunter2")
             .unwrap();
         changes.write(&mut admin, &store).unwrap();
 
@@ -1429,6 +1481,13 @@ mod tests {
             .collect();
         assert_eq!(fields[&user].shown, Some(vec!["octocat".to_owned()]));
         assert_eq!(fields[&password].shown, None);
+        assert_eq!(
+            (
+                fields[&user].label.as_str(),
+                fields[&password].label.as_str()
+            ),
+            ("username", "secret")
+        );
         assert_eq!(reveal_one(&laptop, &github, &password), "hunter2");
     }
 
@@ -1439,7 +1498,7 @@ mod tests {
         let mut changes = Changes::new(&entries, NOW);
         let entry = changes.create("db").unwrap();
         let password = changes
-            .add_field(&entry, FieldKind::Secret, b"one")
+            .add_field(&entry, FieldKind::Secret, "secret", b"one")
             .unwrap();
         changes.write(&mut admin, &store).unwrap();
         laptop.sync(&store).unwrap();
@@ -1485,7 +1544,7 @@ mod tests {
         let mut changes = Changes::new(&entries, NOW);
         let entry = changes.create("old").unwrap();
         changes
-            .add_field(&entry, FieldKind::Secret, b"kept")
+            .add_field(&entry, FieldKind::Secret, "secret", b"kept")
             .unwrap();
         changes.write(&mut admin, &store).unwrap();
 
@@ -1519,7 +1578,7 @@ mod tests {
         let mut changes = Changes::new(&entries, NOW);
         let entry = changes.create("api").unwrap();
         let token = changes
-            .add_field(&entry, FieldKind::Secret, b"old")
+            .add_field(&entry, FieldKind::Secret, "secret", b"old")
             .unwrap();
         changes.write(&mut admin, &store).unwrap();
 
@@ -1635,7 +1694,7 @@ mod tests {
         let mut changes = Changes::new(&entries, NOW);
         let entry = changes.create("mail").unwrap();
         let password = changes
-            .add_field(&entry, FieldKind::Secret, b"first")
+            .add_field(&entry, FieldKind::Secret, "secret", b"first")
             .unwrap();
         changes.write(&mut admin, &store).unwrap();
         laptop.sync(&store).unwrap();

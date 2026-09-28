@@ -69,6 +69,7 @@ mod recent;
 pub mod session;
 pub mod slip39;
 pub mod store;
+pub mod synced;
 pub mod template;
 mod trust;
 pub mod wire;

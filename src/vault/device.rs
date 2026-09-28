@@ -286,6 +286,12 @@ impl Device {
         self.genesis_hash
     }
 
+    /// The vault's genesis, once read.
+    #[must_use]
+    pub const fn genesis(&self) -> Option<&Genesis> {
+        self.genesis.as_ref()
+    }
+
     /// The admin this device paired with, whose join snapshot it trusts.
     #[must_use]
     pub fn paired_admin(&self) -> Option<Id> {

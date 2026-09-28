@@ -605,6 +605,23 @@ pub fn combine(mnemonics: &[&str], passphrase: &str) -> Result<Zeroizing<Vec<u8>
     ))
 }
 
+/// Random words from the SLIP-39 list, for the recovery card: lowercase
+/// letters only, so the card is already in canonical form. Each word is ten
+/// bits.
+#[must_use]
+pub fn random_words(count: usize) -> Vec<&'static str> {
+    (0..count)
+        .map(|_| {
+            let mut bytes = [0_u8; 2];
+            rand::fill(&mut bytes[..]);
+            WORDS
+                .get(usize::from(u16::from_be_bytes(bytes) & 1023))
+                .copied()
+                .unwrap_or("academic")
+        })
+        .collect()
+}
+
 /// The share value on one sheet, the input its root key is derived from
 /// (study section 5).
 ///

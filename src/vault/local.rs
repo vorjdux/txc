@@ -201,26 +201,65 @@ fn key_header(
     out.finish()
 }
 
-/// Seals a device's keys with both factors. The header, holding the device
-/// id, key version and suite, is the associated data.
+/// What a key file's header records, so its keys can be sealed again with
+/// the same key-encryption key when they change (at pairing and renewal),
+/// without asking for the passphrase again.
+#[derive(Clone, Copy, Debug)]
+pub struct KeyFile {
+    /// The device the file is for, the HKDF salt of the KEK.
+    pub device: Id,
+    /// Counts re-keyings of the file.
+    pub key_version: u64,
+    /// The Argon2id parameters.
+    pub params: KdfParams,
+    /// The Argon2id salt.
+    pub salt: [u8; 16],
+}
+
+/// Starts a key file for a device: a fresh salt and its KEK from both
+/// factors.
 ///
 /// # Errors
 ///
 /// Returns an error when the parameters are below the floor.
-pub fn seal_keys(
-    me: &Me,
+pub fn new_key_file(
+    device: Id,
     passphrase: &[u8],
     second: &[u8; 32],
     params: KdfParams,
-    key_version: u64,
-) -> Result<Vec<u8>> {
+) -> Result<(KeyFile, Zeroizing<[u8; 32]>)> {
     let mut salt = [0; 16];
     rand::fill(&mut salt[..]);
+    let kek = kek(&device, passphrase, &salt, params, second)?;
+    Ok((
+        KeyFile {
+            device,
+            key_version: 1,
+            params,
+            salt,
+        },
+        kek,
+    ))
+}
+
+/// Seals a device's keys under a key file's KEK. The header, holding the
+/// device id, key version and suite, is the associated data.
+///
+/// # Errors
+///
+/// Returns an error when the keys are another device's.
+pub fn seal_keys_with(me: &Me, file: &KeyFile, kek: &[u8; 32]) -> Result<Vec<u8>> {
+    ensure!(me.device == file.device, "the keys are another device's");
     let mut nonce = [0; 24];
     rand::fill(&mut nonce[..]);
-    let kek = kek(&me.device, passphrase, &salt, params, second)?;
-    let header = key_header(&me.device, key_version, params, &salt, &nonce);
-    let sealed = XChaCha20Poly1305::new_from_slice(&kek[..])
+    let header = key_header(
+        &file.device,
+        file.key_version,
+        file.params,
+        &file.salt,
+        &nonce,
+    );
+    let sealed = XChaCha20Poly1305::new_from_slice(kek)
         .map_err(|_length| anyhow!("bad key-encryption key"))?
         .encrypt(
             XNonce::from_slice(&nonce),
@@ -236,13 +275,53 @@ pub fn seal_keys(
     Ok(out.finish())
 }
 
-/// Opens a device's keys with both factors.
+/// Seals a device's keys with both factors.
+///
+/// # Errors
+///
+/// Returns an error when the parameters are below the floor.
+pub fn seal_keys(
+    me: &Me,
+    passphrase: &[u8],
+    second: &[u8; 32],
+    params: KdfParams,
+    key_version: u64,
+) -> Result<Vec<u8>> {
+    let (mut file, kek) = new_key_file(me.device, passphrase, second, params)?;
+    file.key_version = key_version;
+    seal_keys_with(me, &file, &kek)
+}
+
+/// The device a key file is for, from its header, to find its second
+/// factor before opening it.
+///
+/// # Errors
+///
+/// Returns an error when the file is not a txc key file.
+pub fn key_file_device(bytes: &[u8]) -> Result<Id> {
+    let mut outer = Reader(bytes);
+    let mut input = Reader(outer.bytes()?);
+    ensure!(
+        input.take(KEY_TAG.len())? == KEY_TAG,
+        "not a txc device key file"
+    );
+    input.u8()?;
+    input.u8()?;
+    input.fixed()
+}
+
+/// Opens a device's keys with both factors, returning the key file's
+/// header and KEK too, for sealing them again later.
 ///
 /// # Errors
 ///
 /// Returns an error when either factor is wrong, the file was changed, or
 /// its parameters are below the floor.
-pub fn open_keys(bytes: &[u8], passphrase: &[u8], second: &[u8; 32]) -> Result<Me> {
+pub fn unlock_keys(
+    bytes: &[u8],
+    passphrase: &[u8],
+    second: &[u8; 32],
+) -> Result<(Me, KeyFile, Zeroizing<[u8; 32]>)> {
     let mut outer = Reader(bytes);
     let header = outer.bytes()?;
     let sealed = outer.bytes()?;
@@ -261,7 +340,7 @@ pub fn open_keys(bytes: &[u8], passphrase: &[u8], second: &[u8; 32]) -> Result<M
         "a device key file of an unknown suite"
     );
     let device: Id = input.fixed()?;
-    let _key_version = input.u64()?;
+    let key_version = input.u64()?;
     let small = |value: u64| {
         u32::try_from(value).map_err(|_value| anyhow!("Argon2id parameters out of range"))
     };
@@ -288,7 +367,27 @@ pub fn open_keys(bytes: &[u8], passphrase: &[u8], second: &[u8; 32]) -> Result<M
                 anyhow!("wrong passphrase or second factor, or the key file was changed")
             })?,
     );
-    decode_me(device, &plain)
+    let me = decode_me(device, &plain)?;
+    Ok((
+        me,
+        KeyFile {
+            device,
+            key_version,
+            params,
+            salt,
+        },
+        kek,
+    ))
+}
+
+/// Opens a device's keys with both factors.
+///
+/// # Errors
+///
+/// Returns an error when either factor is wrong, the file was changed, or
+/// its parameters are below the floor.
+pub fn open_keys(bytes: &[u8], passphrase: &[u8], second: &[u8; 32]) -> Result<Me> {
+    unlock_keys(bytes, passphrase, second).map(|(me, _, _)| me)
 }
 
 /// Seals a device's local state: signed with its key, encrypted to its own
