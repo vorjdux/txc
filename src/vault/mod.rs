@@ -47,6 +47,7 @@ pub mod authority;
 pub mod clipboard;
 pub mod command;
 pub mod composite;
+pub mod control;
 pub mod core;
 mod crypto;
 pub mod deliver;

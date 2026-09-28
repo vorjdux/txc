@@ -558,29 +558,6 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
             == 0
 }
 
-/// A sender key as the body of a sender-key object.
-#[must_use]
-pub fn sender_key_body(key: &SenderKey) -> Zeroizing<Vec<u8>> {
-    let mut body = Zeroizing::new(Vec::with_capacity(48));
-    body.extend_from_slice(&key.id);
-    body.extend_from_slice(key.secret().as_ref());
-    body
-}
-
-/// Reads a sender key from a sender-key object's body.
-///
-/// # Errors
-///
-/// Returns an error when the body is not a sender key.
-pub fn sender_key_from_body(body: &[u8]) -> Result<SenderKey> {
-    ensure!(body.len() == 48, "a sender key is 48 bytes");
-    let mut id = [0; 16];
-    id.copy_from_slice(&body[..16]);
-    let mut key = Zeroizing::new([0; 32]);
-    key.copy_from_slice(&body[16..]);
-    Ok(SenderKey::from_parts(id, key))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -698,13 +675,5 @@ mod tests {
             first[..NONCE_BYTES + TAG_BYTES],
             second[..NONCE_BYTES + TAG_BYTES]
         );
-    }
-
-    #[test]
-    fn a_sender_key_round_trips_through_its_body() {
-        let key = SenderKey::generate();
-        let read = sender_key_from_body(&sender_key_body(&key)).unwrap();
-        assert_eq!((read.id, **read.secret()), (key.id, **key.secret()));
-        assert!(sender_key_from_body(&[0; 47]).is_err());
     }
 }
