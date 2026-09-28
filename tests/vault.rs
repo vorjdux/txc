@@ -78,6 +78,10 @@ impl Sandbox {
             .args(args)
             // Debug builds read this, so identities are made in milliseconds.
             .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+            // Where each platform keeps session files: private to this test.
+            .env("XDG_RUNTIME_DIR", self.private("run"))
+            .env("TMPDIR", self.private("tmp"))
+            .env("LOCALAPPDATA", self.private("local"))
             .env_remove("TXC_VAULT_HOME")
             .stdin(if input.is_some() {
                 Stdio::piped()
@@ -100,6 +104,45 @@ impl Sandbox {
 
     fn init(&self) {
         succeeds(&self.vault(&["init"]));
+    }
+
+    /// A directory only this user can open, created on first use.
+    fn private(&self, name: &str) -> PathBuf {
+        let dir = self.root.join(name);
+        if !dir.exists() {
+            std::fs::create_dir_all(&dir).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+        }
+        dir
+    }
+
+    /// Opens a session, or returns false when this machine cannot keep one
+    /// (a container without a kernel keyring, for instance).
+    fn unlock(&self, args: &[&str]) -> bool {
+        let mut all = vec!["unlock"];
+        all.extend_from_slice(args);
+        let output = self.vault(&all);
+        if output.status.success() {
+            return true;
+        }
+        let error = stderr(&output);
+        assert!(
+            error.contains("keyring") || error.contains("Keychain") || error.contains("DPAPI"),
+            "unlock failed for another reason: {error}"
+        );
+        eprintln!("skipping: this machine cannot keep a session ({error})");
+        false
+    }
+
+    /// Runs a command with a wrong passphrase, so it can only succeed through
+    /// an open session.
+    fn vault_without_passphrase(&self, args: &[&str]) -> Output {
+        let wrong = self.passphrase_file("wrong", "not the passphrase at all");
+        self.vault_with(&self.home(), &wrong, args, None)
     }
 }
 
@@ -1154,4 +1197,60 @@ fn rotating_needs_the_current_write_key() {
     );
     // The writer is unchanged.
     assert_eq!(succeeds(&s.vault(&["writers"])).lines().count(), 1);
+}
+
+#[test]
+fn a_session_opens_the_vault_without_the_passphrase() {
+    let sandbox = Sandbox::new("session");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
+    if !sandbox.unlock(&[]) {
+        return;
+    }
+
+    let copied = succeeds(&sandbox.vault_without_passphrase(&["copy", "github", "--print"]));
+    assert_eq!(copied.trim(), "hunter2");
+
+    // --no-session asks for the passphrase, and the wrong one fails.
+    fails(&sandbox.vault_without_passphrase(&["--no-session", "copy", "github", "--print"]));
+
+    assert!(stderr(&sandbox.vault(&["lock"])).contains("closed"));
+    fails(&sandbox.vault_without_passphrase(&["copy", "github", "--print"]));
+    assert!(stderr(&sandbox.vault(&["lock"])).contains("no open session"));
+}
+
+#[test]
+fn an_idle_session_ends() {
+    let sandbox = Sandbox::new("session-idle");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
+    if !sandbox.unlock(&["--idle", "1"]) {
+        return;
+    }
+    // Pretend the last use was long ago.
+    let used: Vec<PathBuf> = ["run", "tmp", "local"]
+        .iter()
+        .flat_map(|dir| every_file(&sandbox.root.join(dir)))
+        .map(|(path, _)| path)
+        .filter(|path| path.extension().is_some_and(|ext| ext == "used"))
+        .collect();
+    assert_eq!(used.len(), 1, "one session in this sandbox");
+    std::fs::write(&used[0], 0_u64.to_be_bytes()).unwrap();
+
+    let output = sandbox.vault_without_passphrase(&["copy", "github", "--print"]);
+    fails(&output);
+    assert!(stderr(&output).contains("idle"), "{}", stderr(&output));
+}
+
+#[test]
+fn a_session_never_holds_the_write_key() {
+    let sandbox = Sandbox::new("session-write");
+    sandbox.init();
+    if !sandbox.unlock(&[]) {
+        return;
+    }
+    // The session opens the identity, but a change still needs the write
+    // passphrase, and this one is wrong.
+    sandbox.passphrase_file("write-pass", "not the write passphrase");
+    fails(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
 }

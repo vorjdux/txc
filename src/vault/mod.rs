@@ -54,6 +54,7 @@ mod keyring;
 pub mod model;
 pub mod prompt;
 mod recent;
+pub mod session;
 mod trust;
 
 #[cfg(debug_assertions)]

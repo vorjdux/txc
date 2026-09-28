@@ -6,6 +6,17 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Sessions.** `txc vault unlock` asks for the passphrase once and keeps the
+  vaults open across commands; `txc vault lock` ends it. The unlocked identity
+  is sealed under a random session key kept where only this login can reach
+  it: the kernel session keyring on Linux, the Keychain on macOS, DPAPI bound
+  to the logon session on Windows. A session ends after 15 minutes without use
+  (`--idle`), 8 hours at most (`--max`), when the computer sleeps, or when
+  locked. It never holds the write key. `--no-session` ignores an open
+  session.
+
 ## [0.7.2] - 2026-09-20
 
 ### Changed

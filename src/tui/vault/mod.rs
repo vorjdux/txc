@@ -25,7 +25,7 @@ use crate::vault::clipboard::{DEFAULT_CLEAR_SECONDS, Held};
 use crate::vault::model::{DEFAULT_VAULT, Entry, Kind, Sensitivity, check_vault_name};
 use crate::vault::prompt::check_new_passphrase;
 use crate::vault::{
-    Change, Home, Inspection, Keyring, NewEntry, NotTrusted, Opened, Use, WriteKey, harden,
+    Change, Home, Inspection, Keyring, NewEntry, NotTrusted, Opened, Use, WriteKey, harden, session,
 };
 
 pub use form::{EntryForm, FormAction, SecretInput};
@@ -1289,6 +1289,9 @@ impl VaultScreen {
         if self.home.is_err() {
             return;
         }
+        if self.resume_session() {
+            return;
+        }
         self.dialog = Some(if self.has_identity() {
             Dialog::Unlock {
                 passphrase: SecretInput::default(),
@@ -1302,6 +1305,36 @@ impl VaultScreen {
                 error: None,
             }
         });
+    }
+
+    /// Opens the vaults from a session `txc vault unlock` left open, so the
+    /// interface does not ask for the passphrase again. Returns whether it did.
+    fn resume_session(&mut self) -> bool {
+        let Ok(home) = self.home.as_ref() else {
+            return false;
+        };
+        if !home.has_identity() {
+            return false;
+        }
+        match session::resume(home) {
+            Ok(session::Resumed::Open(identity)) => {
+                let result = Keyring::from_session(home, identity)
+                    .map(Unlocked::Identity)
+                    .map_err(|error| format!("{error:#}"));
+                self.finish_job(Job::Unlock, result);
+                if self.keyring.is_some() {
+                    self.status =
+                        "opened from the session; lock it with: txc vault lock".to_string();
+                    return true;
+                }
+                false
+            }
+            Ok(session::Resumed::Ended(reason)) => {
+                self.status = format!("the session has ended: {reason}");
+                false
+            }
+            Ok(session::Resumed::None) | Err(_) => false,
+        }
     }
 
     fn trust_dialog(&self) -> Result<Dialog, String> {

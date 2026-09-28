@@ -369,6 +369,34 @@ on Unix must be readable by you alone. `--home DIR` or `TXC_VAULT_HOME`
 chooses a vault directory other than the default; the environment variable
 must be an absolute path.
 
+### Unlocking once
+
+Deriving the key from your passphrase takes about a second on purpose, which
+is right for a guesser and tiresome for you. `txc vault unlock` pays it once
+and keeps the vaults open for a while, across commands:
+
+```sh
+txc vault unlock                   # asks for the passphrase once
+txc vault copy github              # no passphrase now
+txc vault show work/openai
+txc vault lock                     # ends it early
+```
+
+Nothing listens and nothing keeps running. The unlocked identity is sealed
+under a random session key, and that key is kept where only your login can
+reach it: the kernel session keyring on Linux (so cron jobs and other SSH
+logins cannot use it), the Keychain on macOS, and DPAPI on Windows, bound to
+your logon session. The session ends after 15 minutes without use
+(`--idle MINUTES`), after 8 hours at most (`--max HOURS`), when the computer
+sleeps, or with `txc vault lock`. It never holds the write key, so changing a
+vault still asks for the write passphrase. `--no-session` asks for the
+passphrase even while a session is open.
+
+On Linux a session needs `XDG_RUNTIME_DIR`, the per-login directory kept in
+memory, which every desktop and SSH login sets. A sleep is noticed the next
+time txc runs, not at the moment it happens, so a session that was open when
+the lid closed ends at the first command after it opens.
+
 ### How it is protected
 
 Everything is built from [age](https://age-encryption.org), a small, openly

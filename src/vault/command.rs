@@ -26,7 +26,7 @@ use crate::vault::model::{
 };
 use crate::vault::prompt::{self, Passphrase};
 use crate::vault::recent::ago;
-use crate::vault::{Change, Home, Keyring, NewEntry, Opened, Standing, harden};
+use crate::vault::{Change, Home, Keyring, NewEntry, Opened, Standing, harden, session};
 
 /// What a sealed value is shown as. Always the same, so it gives away nothing
 /// about the length of the secret.
@@ -132,6 +132,13 @@ pub fn command() -> Command {
         .arg_required_else_help(true)
         .infer_subcommands(false)
         .arg(
+            Arg::new("no-session")
+                .long("no-session")
+                .global(true)
+                .action(ArgAction::SetTrue)
+                .help("Ask for the passphrase even when a session is open (see: txc vault unlock)"),
+        )
+        .arg(
             Arg::new("home")
                 .long("home")
                 .value_name("DIR")
@@ -172,6 +179,35 @@ pub fn command() -> Command {
                         .help("Create only an identity and an empty writers list, for an unattended reader"),
                 ),
         )
+        .subcommand(
+            Command::new("unlock")
+                .about("Unlock once and keep the vaults open for a while, across commands")
+                .long_about(
+                    "Unlock once and keep the vaults open for a while, across commands.\n\n\
+                     The identity is sealed under a random session key kept where only this \
+                     login can reach it: the kernel keyring on Linux, the Keychain on macOS, \
+                     DPAPI on Windows. The session ends after it has been idle, at its time \
+                     limit, when the computer sleeps, or with: txc vault lock. It never holds \
+                     the write key, so changing a vault still asks for the write passphrase.",
+                )
+                .arg(
+                    Arg::new("idle")
+                        .long("idle")
+                        .value_name("MINUTES")
+                        .value_parser(clap::value_parser!(u64).range(1..=1440))
+                        .default_value("15")
+                        .help("End the session after this many minutes without use"),
+                )
+                .arg(
+                    Arg::new("max")
+                        .long("max")
+                        .value_name("HOURS")
+                        .value_parser(clap::value_parser!(u64).range(1..=24))
+                        .default_value("8")
+                        .help("End the session after this many hours whatever happens"),
+                ),
+        )
+        .subcommand(Command::new("lock").about("End the session that txc vault unlock opened"))
         .subcommand(
             Command::new("identity")
                 .about("Print your public key, for encrypting a vault to you elsewhere"),
@@ -634,6 +670,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         home,
         passphrase,
         write_passphrase,
+        resume: !matches.get_flag("no-session"),
     };
 
     let Some((name, sub)) = matches.subcommand() else {
@@ -641,6 +678,15 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
     };
     match name {
         "init" => context.init(sub),
+        "unlock" => context.start_session(sub),
+        "lock" => {
+            if session::end(&context.home) {
+                eprintln!("The session is closed.");
+            } else {
+                eprintln!("There was no open session.");
+            }
+            Ok(())
+        }
         "identity" => {
             let keyring = context.unlock()?;
             output(&keyring.public_key())
@@ -700,12 +746,50 @@ struct Session {
     home: Home,
     passphrase: Passphrase,
     write_passphrase: Passphrase,
+    resume: bool,
 }
 
 impl Session {
+    /// Unlocks the identity: from the open session when there is one, from the
+    /// passphrase otherwise.
     fn unlock(&self) -> Result<Keyring> {
+        if self.resume {
+            match session::resume(&self.home)? {
+                session::Resumed::Open(identity) => {
+                    return Keyring::from_session(&self.home, identity);
+                }
+                session::Resumed::Ended(reason) => {
+                    eprintln!("The session has ended: {reason}.");
+                }
+                session::Resumed::None => {}
+            }
+        }
+        self.unlock_with_passphrase()
+    }
+
+    fn unlock_with_passphrase(&self) -> Result<Keyring> {
         let passphrase = self.passphrase.ask(PASSPHRASE_PROMPT)?;
         working("Unlocking...", || Keyring::unlock(&self.home, &passphrase))
+    }
+
+    /// Unlocks with the passphrase and opens a session.
+    fn start_session(&self, sub: &ArgMatches) -> Result<()> {
+        let minutes = *sub.get_one::<u64>("idle").unwrap_or(&15);
+        let hours = *sub.get_one::<u64>("max").unwrap_or(&8);
+        let keyring = self.unlock_with_passphrase()?;
+        let opened = session::start(
+            &self.home,
+            keyring.identity(),
+            std::time::Duration::from_secs(minutes.saturating_mul(60)),
+            std::time::Duration::from_secs(hours.saturating_mul(3600)),
+        )?;
+        eprintln!(
+            "Unlocked. The session ends after {} minutes without use, after {} hours at most, \
+             when the computer sleeps, or with: txc vault lock",
+            opened.idle.as_secs() / 60,
+            opened.max.as_secs() / 3600
+        );
+        Ok(())
     }
 
     /// Unlocks the write key, asking for its own passphrase. A reader-only home
@@ -2032,6 +2116,8 @@ mod tests {
             "to",
             "expires",
             "identity",
+            "idle",
+            "max",
         ];
         walk(&command(), &valued);
     }
