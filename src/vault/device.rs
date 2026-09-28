@@ -292,6 +292,27 @@ impl Device {
         self.genesis.as_ref()
     }
 
+    /// The signed genesis, as its object carries it.
+    #[must_use]
+    pub fn signed_genesis(&self) -> Option<SignedGenesis> {
+        self.held
+            .values()
+            .filter_map(|signed| Payload::decode(&signed.payload).ok())
+            .find(|payload| payload.kind == Kind::Genesis)
+            .and_then(|payload| SignedGenesis::decode(&payload.body).ok())
+    }
+
+    /// A certificate with what authorises it, as its object carries it.
+    #[must_use]
+    pub fn issued_certificate(&self, id: &Id) -> Option<IssuedCertificate> {
+        self.held
+            .values()
+            .filter_map(|signed| Payload::decode(&signed.payload).ok())
+            .filter(|payload| payload.kind == Kind::Certificate)
+            .filter_map(|payload| IssuedCertificate::decode(&payload.body).ok())
+            .find(|issued| issued.certificate.id == *id)
+    }
+
     /// The admin this device paired with, whose join snapshot it trusts.
     #[must_use]
     pub fn paired_admin(&self) -> Option<Id> {

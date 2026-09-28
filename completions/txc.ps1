@@ -2949,6 +2949,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Grant this field rather than the main secret')
             [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'Seal to this age public key, the host''s own key')
             [CompletionResult]::new('--expires', '--expires', [CompletionResultType]::ParameterName, 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement')
+            [CompletionResult]::new('--origin', '--origin', [CompletionResultType]::ParameterName, 'Where it may be used, signed into a grant from a synced vault')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
@@ -2960,6 +2961,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;vault;redeem' {
             [CompletionResult]::new('--identity', '--identity', [CompletionResultType]::ParameterName, 'The host''s age secret key file, unless the grant bundles one')
+            [CompletionResult]::new('--vault-id', '--vault-id', [CompletionResultType]::ParameterName, 'For a grant from a synced vault: the vault id this runner trusts')
+            [CompletionResult]::new('--min-version', '--min-version', [CompletionResultType]::ParameterName, 'For a grant from a synced vault: refuse older versions of the secret')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')

@@ -829,6 +829,12 @@ pub fn command() -> Command {
                         .long("expires")
                         .value_name("DURATION")
                         .help("How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement"),
+                )
+                .arg(
+                    Arg::new("origin")
+                        .long("origin")
+                        .value_name("TEXT")
+                        .help("Where it may be used, signed into a grant from a synced vault"),
                 ),
         )
         .subcommand(
@@ -840,6 +846,19 @@ pub fn command() -> Command {
                         .long("identity")
                         .value_name("PATH")
                         .help("The host's age secret key file, unless the grant bundles one"),
+                )
+                .arg(
+                    Arg::new("vault-id")
+                        .long("vault-id")
+                        .value_name("ID")
+                        .help("For a grant from a synced vault: the vault id this runner trusts"),
+                )
+                .arg(
+                    Arg::new("min-version")
+                        .long("min-version")
+                        .value_name("VERSION")
+                        .value_parser(value_parser!(u64))
+                        .help("For a grant from a synced vault: refuse older versions of the secret"),
                 ),
         )
 }
@@ -940,7 +959,9 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
             let keyring = context.unlock()?;
             synced_command::migrate(&context.synced(), &keyring, sub)
         }
-        "list" | "add" | "show" | "copy" | "edit" | "rm" if context.names_synced(name, sub) => {
+        "list" | "add" | "show" | "copy" | "edit" | "rm" | "grant"
+            if context.names_synced(name, sub) =>
+        {
             synced_command::entry(&context.synced(), name, sub)
         }
         "init" => context.init(sub),
@@ -2377,8 +2398,12 @@ impl Session {
              export KEY=\"$(txc vault redeem deploy.grant --identity host.key)\""
         );
         let file = required(sub, "FILE");
-        let text = std::fs::read_to_string(file)
-            .with_context(|| format!("cannot read the grant {file}"))?;
+        let bytes = std::fs::read(file).with_context(|| format!("cannot read the grant {file}"))?;
+        if bytes.starts_with(b"age-encryption.org/v1") {
+            return synced_command::redeem(&bytes, sub);
+        }
+        let text =
+            String::from_utf8(bytes).map_err(|_utf8| anyhow!("the grant {file} is damaged"))?;
         let grant = Grant::from_json(&text)?;
         let secret = if let Some(path) = sub.get_one::<String>("identity") {
             let key = std::fs::read_to_string(path)
@@ -2797,6 +2822,9 @@ mod tests {
             "vault",
             "role",
             "keep",
+            "origin",
+            "vault-id",
+            "min-version",
         ];
         walk(&command(), &valued);
     }

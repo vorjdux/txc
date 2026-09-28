@@ -22,6 +22,20 @@ All notable changes to txc are recorded here. The format follows
   a vault into a synced one and leaves the original untouched; `run`, `copy`,
   `show`, `list`, `add`, `edit` and `rm` work on synced vaults by name, and
   `txc vault unlock` covers them too.
+- **Grants from synced vaults** are sealed to the runner's own post-quantum
+  key (`age-keygen -pq`) and signed by the issuing device, with the runner,
+  entry, version, origin and expiry inside the signature and the certificate
+  chain alongside. `txc vault redeem --vault-id ID` checks it all offline
+  against the vault id the runner pins; `--min-version` refuses an outdated
+  secret, and a grant decrypted by one runner cannot be passed to another.
+- **`txc vault compare`** shows checkpoint digests to compare between devices,
+  so a storage provider showing them different histories is noticed, and
+  **`txc vault doctor`** prints a report for bug reports with no secret in it.
+- **Confinement.** While a synced vault is open, txc limits itself to its own
+  files and the vault's folder and cannot open network sockets or start
+  programs: Landlock and seccomp on Linux, a sandbox profile on macOS, and no
+  child processes on Windows. `txc vault status --all` lists what a system
+  cannot provide.
 - **Sessions.** `txc vault unlock` asks for the passphrase once and keeps the
   vaults open across commands; `txc vault lock` ends it. The unlocked identity
   is sealed under a random session key kept where only this login can reach

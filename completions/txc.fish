@@ -1623,6 +1623,7 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l field -d 'Grant this field rather than the main secret' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l to -d 'Seal to this age public key, the host\'s own key' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l expires -d 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l origin -d 'Where it may be used, signed into a grant from a synced vault' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l write-passphrase-file -d 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.' -r
@@ -1630,6 +1631,8 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -l no-session -d 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from grant" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from redeem" -l identity -d 'The host\'s age secret key file, unless the grant bundles one' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from redeem" -l vault-id -d 'For a grant from a synced vault: the vault id this runner trusts' -r
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from redeem" -l min-version -d 'For a grant from a synced vault: refuse older versions of the secret' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from redeem" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from redeem" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from redeem" -l write-passphrase-file -d 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.' -r

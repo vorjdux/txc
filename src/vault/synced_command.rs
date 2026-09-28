@@ -31,6 +31,7 @@ use crate::vault::confine::{self, Confinement};
 use crate::vault::control::Checkpoint;
 use crate::vault::device::Alarm;
 use crate::vault::entries::{Changes, EntryView, FieldKind, FieldView, NAME, Slot};
+use crate::vault::grant2;
 use crate::vault::model::{DEFAULT_VAULT, Kind, Reference, check_vault_name};
 use crate::vault::object::Id;
 use crate::vault::pairing::Paired;
@@ -582,6 +583,166 @@ pub fn doctor(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     output(&lines.join("\n"))
 }
 
+// ------------------------------------------------------------------ grants --
+
+/// The certificates a certificate's verification needs, in order, ending
+/// with it: its issuing admin, what it renews, and its co-signer.
+fn chain_for(
+    device: &crate::vault::device::Device,
+    id: &Id,
+    chain: &mut Vec<crate::vault::authority::IssuedCertificate>,
+) -> Result<()> {
+    use crate::vault::authority::{Issuance, Issuer};
+    if chain.iter().any(|issued| issued.certificate.id == *id) {
+        return Ok(());
+    }
+    let issued = device
+        .issued_certificate(id)
+        .with_context(|| "a certificate of the chain is missing")?;
+    let mut needs = Vec::new();
+    if let Issuer::Admin(admin) = issued.certificate.issuer {
+        needs.push(admin);
+    }
+    needs.extend(issued.certificate.renews);
+    if let Issuance::SelfRenewal {
+        cosigner: Some((cosigner, _)),
+        ..
+    } = &issued.issuance
+    {
+        needs.push(*cosigner);
+    }
+    for need in needs {
+        chain_for(device, &need, chain)?;
+    }
+    chain.push(issued);
+    Ok(())
+}
+
+/// `txc vault grant VAULT/ENTRY --to age1pq1...` on a synced vault: grant
+/// v2, signed by this device and sealed to the runner.
+///
+/// # Errors
+///
+/// Returns an error when the entry, the key or the expiry is wrong.
+pub fn grant(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    ensure!(
+        !io::stdout().is_terminal(),
+        "a grant is written to a file or a pipe; redirect it, as: txc vault grant <entry> --to age1pq1... > deploy.grant"
+    );
+    let reference: Reference = required(sub, "ENTRY").parse()?;
+    let runner = sub
+        .get_one::<String>("to")
+        .context("a grant from a synced vault is sealed to the runner's own key: --to age1pq1... (make one with age-keygen -pq)")?;
+    ensure!(
+        !sub.get_flag("to-file"),
+        "a grant from a synced vault is always sealed to the runner's own key"
+    );
+    let expires_spec = sub
+        .get_one::<String>("expires")
+        .map_or("1d", String::as_str);
+    let expires =
+        chrono::DateTime::parse_from_rfc3339(&crate::vault::grant::expiry_from(expires_spec)?)
+            .ok()
+            .and_then(|at| u64::try_from(at.timestamp()).ok())
+            .context("the expiry does not parse")?;
+    let origin = sub.get_one::<String>("origin").cloned().unwrap_or_default();
+
+    let (vault, _) = context.open_confined(&reference.vault)?;
+    let entries = vault.entries()?;
+    let views = entries.list();
+    let view = find(&views, &reference.entry)?;
+    let wanted = sub
+        .get_one::<String>("field")
+        .cloned()
+        .or_else(|| kind_of(view).map(|kind| main_spec(kind).name.to_owned()));
+    let field = wanted
+        .as_deref()
+        .and_then(|wanted| field(view, wanted))
+        .or_else(|| view.fields.iter().find(|field| field.kind.is_secret()))
+        .context("the entry has no such field")?;
+    let secret = reveal(&vault, &reference.entry, Some(&field.label))?;
+    let device = vault.device();
+    let certificate = device
+        .me()
+        .certificate
+        .context("this device has no certificate yet")?;
+    let mut chain = Vec::new();
+    chain_for(device, &certificate, &mut chain)?;
+    let genesis = device
+        .signed_genesis()
+        .context("this device has not read the vault's genesis")?;
+    let statement = grant2::Statement {
+        genesis: device.genesis_hash(),
+        runner: runner.clone(),
+        entry: reference.entry.clone(),
+        field: field.label.clone(),
+        version: entries.written_at(&view.id, &field.id).unwrap_or(0),
+        origin,
+        issued: now(),
+        expires,
+        issuer: certificate,
+        secret: Zeroizing::new(secret.expose_secret().as_bytes().to_vec()),
+    };
+    drop(secret);
+    let sealed = grant2::issue(&statement, &device.me().signing, &genesis, &chain)?;
+    io::stdout().lock().write_all(&sealed)?;
+    eprintln!(
+        "A grant is a snapshot and cannot be revoked: rotate the secret to revoke access. It is valid \
+         for this runner only, until it expires. The runner redeems it with:\n  \
+         txc vault redeem <file> --identity <its key file> --vault-id {}\n\
+         and may add --min-version {} to refuse older versions of this secret.",
+        grant2::vault_id(&device.genesis_hash()),
+        statement.version
+    );
+    Ok(())
+}
+
+/// `txc vault redeem` for a grant v2: checks it against the pinned vault id
+/// and prints the secret to a pipe.
+///
+/// # Errors
+///
+/// Returns an error when any check fails.
+pub fn redeem(sealed: &[u8], sub: &ArgMatches) -> Result<()> {
+    let key_path = sub
+        .get_one::<String>("identity")
+        .context("give the runner's key with --identity <path>")?;
+    let vault_id = sub.get_one::<String>("vault-id").context(
+        "give the vault id this runner trusts with --vault-id, as the grant's issuer printed it",
+    )?;
+    let text = Zeroizing::new(
+        std::fs::read_to_string(key_path)
+            .with_context(|| format!("cannot read the key {key_path}"))?,
+    );
+    let identity: crate::vault::pq::Identity = text
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("AGE-SECRET-KEY-PQ-"))
+        .context("the key file holds no post-quantum age key")?
+        .parse()
+        .map_err(|error: &str| anyhow!("the key: {error}"))?;
+    let vault = grant2::parse_vault_id(vault_id)?;
+    let min_version = sub.get_one::<u64>("min-version").copied().unwrap_or(0);
+    let statement = grant2::redeem(
+        sealed,
+        &identity,
+        &grant2::Expect {
+            vault: &vault,
+            now: now(),
+            min_version,
+        },
+    )?;
+    let secret = grant2::secret_text(&statement)?;
+    let mut stdout = io::stdout().lock();
+    match stdout
+        .write_all(secret.expose_secret().as_bytes())
+        .and_then(|()| stdout.flush())
+    {
+        Err(error) if error.kind() != io::ErrorKind::BrokenPipe => Err(error.into()),
+        _ => Ok(()),
+    }
+}
+
 // --------------------------------------------------------------- recovery --
 
 /// `txc vault recovery print | check`.
@@ -790,6 +951,7 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             Ok(())
         }
         "resolve" => resolve(context, sub),
+        "grant" => grant(context, sub),
         other => bail!("{other} is not available for synced vaults yet"),
     }
 }

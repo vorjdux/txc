@@ -2751,6 +2751,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --field 'Grant this field rather than the main secret'
             cand --to 'Seal to this age public key, the host''s own key'
             cand --expires 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement'
+            cand --origin 'Where it may be used, signed into a grant from a synced vault'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2761,6 +2762,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;redeem'= {
             cand --identity 'The host''s age secret key file, unless the grant bundles one'
+            cand --vault-id 'For a grant from a synced vault: the vault id this runner trusts'
+            cand --min-version 'For a grant from a synced vault: refuse older versions of the secret'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'

@@ -1742,3 +1742,79 @@ fn a_vault_migrates_into_a_synced_vault_and_the_old_one_stays() {
         1
     );
 }
+
+#[test]
+fn a_synced_grant_opens_for_its_runner_against_the_pinned_vault_id() {
+    use age::secrecy::ExposeSecret;
+
+    let sandbox = Sandbox::new("synced-grant");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &["add", "deploy", "--kind", "api-key", "--secret-from-stdin"],
+        "tok-123",
+    ));
+
+    let runner = txc::vault::pq::Identity::generate();
+    let key = sandbox.root.join("runner.key");
+    std::fs::write(&key, format!("{}\n", runner.to_string().expose_secret())).unwrap();
+    let issued = sandbox.vault(&[
+        "grant",
+        "deploy",
+        "--to",
+        &runner.to_public().to_string(),
+        "--origin",
+        "ci",
+    ]);
+    succeeds(&issued);
+    let grant = sandbox.root.join("deploy.grant");
+    std::fs::write(&grant, &issued.stdout).unwrap();
+    let said = stderr(&issued);
+    let vault_id = said
+        .split_whitespace()
+        .skip_while(|word| *word != "--vault-id")
+        .nth(1)
+        .unwrap()
+        .to_owned();
+    let (grant, key) = (grant.to_str().unwrap(), key.to_str().unwrap());
+
+    let redeemed = sandbox.vault(&["redeem", grant, "--identity", key, "--vault-id", &vault_id]);
+    assert_eq!(succeeds(&redeemed), "tok-123");
+    fails(&sandbox.vault(&[
+        "redeem",
+        grant,
+        "--identity",
+        key,
+        "--vault-id",
+        &"0".repeat(96),
+    ]));
+    fails(&sandbox.vault(&[
+        "redeem",
+        grant,
+        "--identity",
+        key,
+        "--vault-id",
+        &vault_id,
+        "--min-version",
+        "99999999999",
+    ]));
+    let other = sandbox.root.join("other.key");
+    std::fs::write(
+        &other,
+        format!(
+            "{}\n",
+            txc::vault::pq::Identity::generate()
+                .to_string()
+                .expose_secret()
+        ),
+    )
+    .unwrap();
+    fails(&sandbox.vault(&[
+        "redeem",
+        grant,
+        "--identity",
+        other.to_str().unwrap(),
+        "--vault-id",
+        &vault_id,
+    ]));
+}

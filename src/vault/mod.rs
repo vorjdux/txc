@@ -56,6 +56,7 @@ pub mod device;
 mod document;
 pub mod entries;
 mod grant;
+pub mod grant2;
 pub mod harden;
 mod home;
 pub mod import;

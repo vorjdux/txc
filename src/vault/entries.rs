@@ -865,6 +865,18 @@ impl Entries {
             .unwrap_or_default()
     }
 
+    /// When a field's current value was written: the latest time among its
+    /// live ops. It serves as the entry version a grant carries.
+    #[must_use]
+    pub fn written_at(&self, entry: &Id, field: &Id) -> Option<u64> {
+        let register = (*entry, *field, Slot::Value);
+        self.live(&register)
+            .iter()
+            .filter_map(|id| self.ops.get(id))
+            .map(|(op, _)| op.time)
+            .max()
+    }
+
     /// The snapshots this device verified, for its checkpoint.
     #[must_use]
     pub fn verified(&self) -> BTreeSet<Hash> {

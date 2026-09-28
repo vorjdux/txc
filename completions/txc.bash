@@ -9349,7 +9349,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__grant)
-            opts="-h --field --to --to-file --expires --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --field --to --to-file --expires --origin --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -9364,6 +9364,10 @@ _txc() {
                     return 0
                     ;;
                 --expires)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --origin)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -10461,13 +10465,21 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__redeem)
-            opts="-h --identity --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --identity --vault-id --min-version --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 --identity)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --vault-id)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --min-version)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
