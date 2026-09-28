@@ -70,9 +70,28 @@ pub const FLOOR: KdfParams = KdfParams {
 
 const CEILING_KIB: u32 = 1024 * 1024;
 
+/// A small floor for the end-to-end tests of debug builds, which run the
+/// binary many times; release builds never read the variable.
+const TEST_FLOOR: KdfParams = KdfParams {
+    memory_kib: 64,
+    passes: 3,
+    lanes: 1,
+};
+
+/// The floor in force: the compiled one, or in a debug build asked for it
+/// by the tests' work-factor variable, a small one.
+fn floor() -> KdfParams {
+    #[cfg(debug_assertions)]
+    if std::env::var_os(crate::vault::crypto::TEST_WORK_FACTOR_VARIABLE).is_some() {
+        return TEST_FLOOR;
+    }
+    FLOOR
+}
+
 impl KdfParams {
-    const fn at_floor(self) -> bool {
-        self.memory_kib >= FLOOR.memory_kib && self.passes >= FLOOR.passes && self.lanes >= 1
+    fn at_floor(self) -> bool {
+        let floor = floor();
+        self.memory_kib >= floor.memory_kib && self.passes >= floor.passes && self.lanes >= 1
     }
 
     fn argon2(self) -> Result<Argon2<'static>> {
@@ -89,7 +108,10 @@ impl KdfParams {
 ///
 /// Returns an error when a trial derivation fails.
 pub fn calibrate(target: Duration) -> Result<KdfParams> {
-    let mut params = FLOOR;
+    let mut params = floor();
+    if params == TEST_FLOOR {
+        return Ok(params);
+    }
     loop {
         let started = Instant::now();
         argon2id(b"calibration", &[0; 16], params)?;

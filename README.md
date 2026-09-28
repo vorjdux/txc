@@ -398,6 +398,40 @@ age -d -i backup-key.txt backup.age                  # every entry, as JSON
 `--plaintext` writes the JSON unencrypted instead, only to a new file, and
 only after you type a confirmation.
 
+### Sharing a vault between your devices
+
+A synced vault lives in a folder your sync tool already keeps in step
+(Dropbox, iCloud Drive, OneDrive, Syncthing): the folder holds only encrypted
+objects with random names, so the provider sees no names, no authors and no
+edits. Each device has its own keys; nothing secret ever travels through the
+folder in a form a removed device can read.
+
+```sh
+txc vault init --folder ~/Dropbox/txc            # this device, first admin
+txc vault recovery print                         # three sheets and a card, once
+txc vault device add                             # on this device...
+txc vault join --folder ~/Dropbox/txc            # ...and on the new one
+```
+
+Pairing shows a line to paste into the other device, twice, and a six-digit
+code on each screen; you type the code the other screen shows. After that the
+everyday verbs (`add`, `list`, `show`, `copy`, `edit`, `rm`, `run`) work on
+the synced vault by name, as on any other. Two devices editing the same entry
+at once keep both versions until you pick one with `txc vault resolve`.
+`txc vault status` is one screen: green, or a line saying what needs you and
+the command to run.
+
+- **Keys at rest** need both your passphrase and a second secret held by the
+  system keystore (Secret Service, the Keychain, or the Windows Credential
+  Manager), so a copied disk alone opens nothing.
+- **Recovery** is three sheets and a card: any two sheets and the card
+  recover every secret and every right, with any SLIP-39 tool. Until they are
+  written down, adding a second device is refused.
+- **Removing a device** (`txc vault device remove`) means it reads nothing
+  written afterwards: every device changes its keys before it writes again.
+- **Moving an existing vault** is `txc vault migrate personal --folder DIR`;
+  the old vault stays as it is.
+
 ### Unlocking once
 
 Deriving the key from your passphrase takes about a second on purpose, which

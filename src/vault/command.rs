@@ -27,6 +27,7 @@ use crate::vault::model::{
 use crate::vault::prompt::{self, Passphrase};
 use crate::vault::recent::ago;
 use crate::vault::synced::{self, Synced};
+use crate::vault::synced_command;
 use crate::vault::{Change, Home, Keyring, NewEntry, Opened, Standing, harden, session};
 
 /// What a sealed value is shown as. Always the same, so it gives away nothing
@@ -177,7 +178,21 @@ pub fn command() -> Command {
                     Arg::new("reader-only")
                         .long("reader-only")
                         .action(ArgAction::SetTrue)
+                        .conflicts_with("folder")
                         .help("Create only an identity and an empty writers list, for an unattended reader"),
+                )
+                .arg(
+                    Arg::new("folder")
+                        .long("folder")
+                        .value_name("DIR")
+                        .help("Create a synced vault in this sync folder, to share between your devices"),
+                )
+                .arg(
+                    Arg::new("name")
+                        .long("name")
+                        .value_name("VAULT")
+                        .requires("folder")
+                        .help("The synced vault's name (default: personal)"),
                 ),
         )
         .subcommand(
@@ -507,6 +522,94 @@ pub fn command() -> Command {
             .arg(many("untag", "TAG", "Remove a tag")),
         )
         .subcommand(
+            Command::new("join")
+                .about("Join a synced vault from another of your devices")
+                .long_about(
+                    "Join a synced vault from another of your devices.\n\n\
+                     On a device that can add devices, run txc vault device add; each side then \
+                     shows a line to paste into the other, twice, and a six-digit code. Type the \
+                     code the other screen shows. The vault's folder must be synced here first.",
+                )
+                .arg(Arg::new("folder").long("folder").value_name("DIR").required(true).help("This device's copy of the vault's folder"))
+                .arg(Arg::new("name").long("name").value_name("VAULT").help("The name for the vault here (default: personal)")),
+        )
+        .subcommand(
+            Command::new("device")
+                .about("Add, list and remove the devices of a synced vault")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("add")
+                        .about("Pair a new device; it runs txc vault join")
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
+                        .arg(
+                            Arg::new("role")
+                                .long("role")
+                                .value_name("ROLE")
+                                .value_parser(["writer", "reader"])
+                                .default_value("writer")
+                                .help("What the device may do: read and write, or view only"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("list")
+                        .about("List the devices")
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
+                )
+                .subcommand(
+                    Command::new("remove")
+                        .about("Remove a device; it reads nothing written afterwards")
+                        .arg(Arg::new("DEVICE").required(true).help("The device, by the start of its id"))
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
+                        .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue).help("Do not ask first")),
+                ),
+        )
+        .subcommand(
+            Command::new("status")
+                .about("One screen: what is fine, and what needs you")
+                .arg(Arg::new("VAULT").help("The synced vault")),
+        )
+        .subcommand(
+            Command::new("sync")
+                .about("Read what other devices wrote, and note what this one has seen")
+                .arg(Arg::new("VAULT").help("The synced vault")),
+        )
+        .subcommand(
+            Command::new("recovery")
+                .about("Write down the recovery sheets, or check one")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("print")
+                        .about("Show the three sheets and the card, one at a time, to write down")
+                        .arg(Arg::new("VAULT").help("The synced vault")),
+                )
+                .subcommand(
+                    Command::new("check")
+                        .about("Check one sheet and the card against the vault")
+                        .arg(Arg::new("VAULT").help("The synced vault")),
+                ),
+        )
+        .subcommand(
+            Command::new("resolve")
+                .about("Show the two versions of an entry edited on two devices at once, and keep one")
+                .arg(reference())
+                .arg(Arg::new("field").long("field").value_name("NAME").help("The field to settle"))
+                .arg(
+                    Arg::new("keep")
+                        .long("keep")
+                        .value_name("NUMBER")
+                        .value_parser(value_parser!(usize))
+                        .requires("field")
+                        .help("The version to keep, as numbered when shown"),
+                ),
+        )
+        .subcommand(
+            Command::new("migrate")
+                .about("Copy a vault into a synced vault; the old one is left as it is")
+                .arg(Arg::new("VAULT").required(true).help("The vault to copy"))
+                .arg(Arg::new("folder").long("folder").value_name("DIR").help("The sync folder, when the synced vault is new"))
+                .arg(Arg::new("name").long("name").value_name("VAULT").help("The synced vault (default: the same name)")),
+        )
+        .subcommand(
             Command::new("rm")
                 .about("Remove an entry")
                 .long_about(
@@ -805,6 +908,23 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         unreachable!("clap requires a subcommand");
     };
     match name {
+        "init" if synced_command::folder_of(sub).is_some() => {
+            let folder = synced_command::folder_of(sub).cloned().unwrap_or_default();
+            synced_command::init(&context.synced(), sub, &folder)
+        }
+        "join" => synced_command::join(&context.synced(), sub),
+        "device" => synced_command::device(&context.synced(), sub),
+        "status" => synced_command::status(&context.synced(), sub),
+        "sync" => synced_command::sync(&context.synced(), sub),
+        "recovery" => synced_command::recovery(&context.synced(), sub),
+        "resolve" => synced_command::entry(&context.synced(), "resolve", sub),
+        "migrate" => {
+            let keyring = context.unlock()?;
+            synced_command::migrate(&context.synced(), &keyring, sub)
+        }
+        "list" | "add" | "show" | "copy" | "edit" | "rm" if context.names_synced(name, sub) => {
+            synced_command::entry(&context.synced(), name, sub)
+        }
         "init" => context.init(sub),
         "unlock" => context.start_session(sub),
         "run" => context.run_program(sub),
@@ -896,7 +1016,7 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
 ///
 /// Deriving the key from a passphrase takes a moment on purpose, and a
 /// command that sits silently looks like one that has hung.
-fn working<T>(message: &str, work: impl FnOnce() -> Result<T>) -> Result<T> {
+pub(crate) fn working<T>(message: &str, work: impl FnOnce() -> Result<T>) -> Result<T> {
     let shown = io::stderr().is_terminal();
     if shown {
         eprint!("{message}");
@@ -927,6 +1047,32 @@ struct Session {
 }
 
 impl Session {
+    const fn synced(&self) -> synced_command::Context<'_> {
+        synced_command::Context {
+            home: &self.home,
+            passphrase: &self.passphrase,
+            resume: self.resume,
+        }
+    }
+
+    /// Whether an entry verb names a synced vault: by its `[VAULT/]ENTRY`,
+    /// or for `list`, by its vault, or with no vault on a home that has only
+    /// synced vaults.
+    fn names_synced(&self, verb: &str, sub: &ArgMatches) -> bool {
+        if verb == "list" {
+            return match sub.get_one::<String>("VAULT") {
+                Some(vault) => synced_command::is_synced(&self.home, vault),
+                None => {
+                    !self.home.has_identity()
+                        && synced::names(&self.home).is_ok_and(|names| !names.is_empty())
+                }
+            };
+        }
+        sub.get_one::<String>("ENTRY")
+            .and_then(|entry| entry.parse::<crate::vault::model::Reference>().ok())
+            .is_some_and(|reference| synced_command::is_synced(&self.home, &reference.vault))
+    }
+
     /// Unlocks the identity: from the open session when there is one, from the
     /// passphrase otherwise.
     fn unlock(&self) -> Result<Keyring> {
@@ -1172,9 +1318,11 @@ impl Session {
         command.args(args);
 
         let mut deliveries = Vec::new();
-        let needs_secrets = variables
-            .iter()
-            .any(|(_, value)| matches!(value, Value::Secret(_)));
+        let needs_secrets = variables.iter().any(|(_, value)| {
+            matches!(value, Value::Secret(reference) if !synced_command::is_synced(&self.home, &reference.vault))
+        });
+        let mut synced_opened: std::collections::BTreeMap<String, Synced> =
+            std::collections::BTreeMap::new();
         let keyring = if needs_secrets {
             Some(self.unlock()?)
         } else {
@@ -1190,6 +1338,27 @@ impl Session {
                 }
                 Value::Secret(reference) => reference,
             };
+            if synced_command::is_synced(&self.home, &reference.vault) {
+                let secret = synced_command::resolve_reference(
+                    &self.synced(),
+                    &mut synced_opened,
+                    &reference.vault,
+                    &reference.entry,
+                    reference.field.as_deref(),
+                )
+                .with_context(|| format!("{name}={reference}"))?;
+                match reference.delivery {
+                    How::Environment => {
+                        command.env(name, secret.expose_secret());
+                    }
+                    How::File => {
+                        let delivery = Delivery::prepare(&secret, &mut command)?;
+                        command.env(name, &delivery.path);
+                        deliveries.push(delivery);
+                    }
+                }
+                continue;
+            }
             let keyring = keyring
                 .as_ref()
                 .context("the vault is unlocked for secrets")?;
@@ -1221,6 +1390,7 @@ impl Session {
         }
         // Nothing but the child's copies stay in memory while it runs.
         drop(opened);
+        drop(synced_opened);
         drop(keyring);
 
         let mut child = command
@@ -2216,7 +2386,7 @@ impl Session {
 }
 
 /// The definition of a kind's main secret field.
-fn main_spec(kind: Kind) -> &'static FieldSpec {
+pub(crate) fn main_spec(kind: Kind) -> &'static FieldSpec {
     // Every kind's primary field is one of its own defined fields.
     #[allow(clippy::expect_used)]
     kind.spec(kind.primary())
@@ -2225,7 +2395,7 @@ fn main_spec(kind: Kind) -> &'static FieldSpec {
 
 /// Refuses a secret field given as a plain value, and a plain one asked for
 /// as a secret, before anything is unlocked or typed.
-fn check_sensitivities(
+pub(crate) fn check_sensitivities(
     kind: Kind,
     plain: &[(String, String)],
     secret_fields: &[String],
@@ -2255,7 +2425,7 @@ fn check_sensitivities(
 }
 
 /// The main secret for `add` or `edit`: generated, piped in, or typed.
-fn main_secret(sub: &ArgMatches, spec: &FieldSpec) -> Result<(SecretString, bool)> {
+pub(crate) fn main_secret(sub: &ArgMatches, spec: &FieldSpec) -> Result<(SecretString, bool)> {
     if sub.get_flag("generate") {
         let secret = if spec.generator == Some(Generator::Pin) {
             generate_pin(PIN_LENGTH)
@@ -2339,7 +2509,7 @@ pub fn generate_pin(length: usize) -> SecretString {
 
 /// Waits for the time to run out, a key, or the clipboard to be taken over,
 /// then clears the secret if it is still there.
-fn wait_then_clear(held: Held, seconds: u64, what: &str) -> Result<()> {
+pub(crate) fn wait_then_clear(held: Held, seconds: u64, what: &str) -> Result<()> {
     // A few seconds added to the current instant cannot overflow a real clock.
     #[allow(clippy::arithmetic_side_effects)]
     let deadline = Instant::now() + Duration::from_secs(seconds);
@@ -2391,7 +2561,7 @@ fn wait_for_key(deadline: Instant, held: &Held) -> Result<()> {
     Ok(())
 }
 
-fn required<'a>(sub: &'a ArgMatches, name: &str) -> &'a str {
+pub(crate) fn required<'a>(sub: &'a ArgMatches, name: &str) -> &'a str {
     // Only ever called for arguments clap marks required, which are always set.
     #[allow(clippy::expect_used)]
     sub.get_one::<String>(name)
@@ -2413,7 +2583,7 @@ fn checked_tags(sub: &ArgMatches, name: &str) -> Result<Vec<String>> {
     Ok(tags)
 }
 
-fn checked_field_names(sub: &ArgMatches, name: &str) -> Result<Vec<String>> {
+pub(crate) fn checked_field_names(sub: &ArgMatches, name: &str) -> Result<Vec<String>> {
     let names = many(sub, name);
     for field in &names {
         check_field_name(field)?;
@@ -2422,7 +2592,7 @@ fn checked_field_names(sub: &ArgMatches, name: &str) -> Result<Vec<String>> {
 }
 
 /// `--username`, `--url` and every `--field NAME=VALUE`.
-fn plain_fields(sub: &ArgMatches) -> Result<Vec<(String, String)>> {
+pub(crate) fn plain_fields(sub: &ArgMatches) -> Result<Vec<(String, String)>> {
     let mut fields = Vec::new();
     for name in ["username", "url"] {
         if let Some(value) = sub.get_one::<String>(name) {
@@ -2447,7 +2617,7 @@ fn plain_fields(sub: &ArgMatches) -> Result<Vec<(String, String)>> {
 // `index` runs over a row of exactly N cells, so `index + 1` cannot overflow and
 // `widths[index]` is always in range.
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
-fn table<const N: usize>(rows: &[[String; N]]) -> String {
+pub(crate) fn table<const N: usize>(rows: &[[String; N]]) -> String {
     let mut widths = [0; N];
     for row in rows {
         for (width, cell) in widths.iter_mut().zip(row) {
@@ -2477,7 +2647,7 @@ fn capitalise(text: &str) -> String {
     })
 }
 
-fn output(text: &str) -> Result<()> {
+pub(crate) fn output(text: &str) -> Result<()> {
     crate::input::write(text, None, true)
 }
 
@@ -2604,6 +2774,11 @@ mod tests {
             "format",
             "into",
             "output",
+            "folder",
+            "name",
+            "vault",
+            "role",
+            "keep",
         ];
         walk(&command(), &valued);
     }

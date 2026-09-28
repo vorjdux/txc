@@ -511,6 +511,16 @@ impl Synced {
         self.save()
     }
 
+    /// Removes a device from the vault and saves.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this device is not an admin or the write fails.
+    pub fn remove_device(&mut self, device: Id) -> Result<()> {
+        self.device.remove(&self.store, device)?;
+        self.save()
+    }
+
     /// Joins a vault as a new device: answers the admin's first step.
     ///
     /// # Errors

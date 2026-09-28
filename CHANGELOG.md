@@ -8,6 +8,20 @@ All notable changes to txc are recorded here. The format follows
 
 ### Added
 
+- **Synced vaults.** `txc vault init --folder DIR` creates a vault in a sync
+  folder that several devices share: signed, encrypted objects with random
+  names, post-quantum from end to end (age `mlkem768x25519`, composite
+  ML-DSA-65 + Ed25519 signatures). `txc vault join` and `txc vault device
+  add | list | remove` pair devices through two pasted lines and a six-digit
+  code; removing a device keeps it out of everything written afterwards.
+  Concurrent edits keep both versions until `txc vault resolve`.
+  `txc vault status` shows what needs doing, one line each. Keys at rest need
+  the passphrase and a second factor from the system keystore. Recovery is
+  three SLIP-39 sheets and a card (`txc vault recovery print | check`), and a
+  second device waits until they are written down. `txc vault migrate` copies
+  a vault into a synced one and leaves the original untouched; `run`, `copy`,
+  `show`, `list`, `add`, `edit` and `rm` work on synced vaults by name, and
+  `txc vault unlock` covers them too.
 - **Sessions.** `txc vault unlock` asks for the passphrase once and keeps the
   vaults open across commands; `txc vault lock` ends it. The unlocked identity
   is sealed under a random session key kept where only this login can reach

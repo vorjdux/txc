@@ -82,6 +82,9 @@ impl Sandbox {
             .env("XDG_RUNTIME_DIR", self.private("run"))
             .env("TMPDIR", self.private("tmp"))
             .env("LOCALAPPDATA", self.private("local"))
+            // Debug builds keep the synced vaults' second factor here rather
+            // than in the OS keystore, which CI runners do not have.
+            .env("TXC_VAULT_TEST_KEYSTORE", self.private("keystore"))
             .env_remove("TXC_VAULT_HOME")
             .stdin(if input.is_some() {
                 Stdio::piped()
@@ -1460,4 +1463,249 @@ fn a_plaintext_export_needs_a_person_to_confirm_it() {
     ]);
     fails(&result);
     assert!(!output.exists());
+}
+
+// ------------------------------------------------------------ synced vaults --
+
+impl Sandbox {
+    /// A shared sync folder, the same directory for every device in a test.
+    fn folder(&self) -> PathBuf {
+        let folder = self.root.join("sync");
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    /// Marks the recovery kit as written down, which the terminal-only
+    /// `recovery print` does, so pairing is allowed.
+    fn kit_written(&self, home: &Path, vault: &str) {
+        std::fs::remove_file(home.join("synced").join(vault).join("recovery.age")).unwrap();
+    }
+
+    /// Starts `txc vault` with piped standard input and output, for pairing.
+    fn spawn(&self, home: &Path, args: &[&str]) -> Child {
+        Command::new(BIN)
+            .arg("vault")
+            .arg("--home")
+            .arg(home)
+            .arg("--passphrase-file")
+            .arg(self.root.join("pass"))
+            .args(args)
+            .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+            .env("XDG_RUNTIME_DIR", self.private("run"))
+            .env("TMPDIR", self.private("tmp"))
+            .env("LOCALAPPDATA", self.private("local"))
+            .env("TXC_VAULT_TEST_KEYSTORE", self.private("keystore"))
+            .env_remove("TXC_VAULT_HOME")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("txc starts")
+    }
+}
+
+/// Reads one line a pairing process printed.
+fn line_from(reader: &mut impl std::io::BufRead) -> String {
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    line.trim().to_owned()
+}
+
+/// Reads standard error until the code line, and returns the code.
+fn code_from(reader: &mut impl std::io::BufRead) -> String {
+    loop {
+        let mut line = String::new();
+        assert!(
+            reader.read_line(&mut line).unwrap() > 0,
+            "the process ended without showing a code"
+        );
+        if let Some(code) = line.trim().strip_prefix("This screen shows the code: ") {
+            return code.to_owned();
+        }
+    }
+}
+
+#[test]
+fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
+    let sandbox = Sandbox::new("synced-first-run");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    // The folder holds objects only: random names, nothing readable.
+    let objects: Vec<String> = std::fs::read_dir(folder.join("objects"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert!(objects.len() >= 2 && objects.iter().all(|name| name.len() == 64));
+
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("● green   vault \"personal\", 1 device"),
+        "{status}"
+    );
+    assert!(
+        status.contains("● yellow  recovery sheets not written down"),
+        "{status}"
+    );
+    assert_eq!(status.lines().count(), 2, "{status}");
+
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "github"])),
+        "hunter2"
+    );
+    let shown = succeeds(&sandbox.vault(&["show", "github"]));
+    assert!(
+        shown.contains("octocat") && !shown.contains("hunter2"),
+        "{shown}"
+    );
+    assert!(succeeds(&sandbox.vault(&["list"])).contains("github"));
+
+    succeeds(&sandbox.vault(&["edit", "github", "--username", "hubot"]));
+    assert!(succeeds(&sandbox.vault(&["show", "github"])).contains("hubot"));
+    if cfg!(unix) {
+        let ran = succeeds(&sandbox.vault(&[
+            "run",
+            "--set",
+            "TOKEN=txc://personal/github",
+            "--",
+            "sh",
+            "-c",
+            "printf %s \"$TOKEN\"",
+        ]));
+        assert_eq!(ran, "hunter2");
+    }
+
+    // No name or secret is readable anywhere in the home or the folder.
+    for (path, bytes) in every_file(&sandbox.root) {
+        if path.starts_with(sandbox.root.join("pass"))
+            || path.starts_with(sandbox.root.join("write-pass"))
+        {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            !text.contains("hunter2") && !text.contains("octocat"),
+            "{}",
+            path.display()
+        );
+    }
+
+    succeeds(&sandbox.vault(&["rm", "--yes", "github"]));
+    fails(&sandbox.vault(&["copy", "--print", "github"]));
+    // Pairing waits for the recovery sheets.
+    let refused = fails(&sandbox.vault(&["device", "add"]));
+    assert!(refused.contains("recovery sheets"), "{refused}");
+}
+
+#[test]
+fn two_devices_pair_through_pasted_lines_and_a_code_and_share_entries() {
+    use std::io::{BufReader, Write as _};
+
+    let sandbox = Sandbox::new("synced-pair");
+    let folder = sandbox.folder();
+    let (home_a, home_b) = (sandbox.root.join("home-a"), sandbox.root.join("home-b"));
+    succeeds(&sandbox.vault_with(
+        &home_a,
+        &sandbox.root.join("pass"),
+        &["init", "--folder", folder.to_str().unwrap()],
+        None,
+    ));
+    sandbox.kit_written(&home_a, "personal");
+    succeeds(&sandbox.vault_with(
+        &home_a,
+        &sandbox.root.join("pass"),
+        &["add", "mail", "--secret-from-stdin"],
+        Some("s3cret"),
+    ));
+
+    let mut admin = sandbox.spawn(&home_a, &["device", "add"]);
+    let mut admin_out = BufReader::new(admin.stdout.take().unwrap());
+    let mut admin_err = BufReader::new(admin.stderr.take().unwrap());
+    let mut admin_in = admin.stdin.take().unwrap();
+    let mut device = sandbox.spawn(&home_b, &["join", "--folder", folder.to_str().unwrap()]);
+    let mut device_out = BufReader::new(device.stdout.take().unwrap());
+    let mut device_err = BufReader::new(device.stderr.take().unwrap());
+    let mut device_in = device.stdin.take().unwrap();
+
+    writeln!(device_in, "{}", line_from(&mut admin_out)).unwrap();
+    writeln!(admin_in, "{}", line_from(&mut device_out)).unwrap();
+    writeln!(device_in, "{}", line_from(&mut admin_out)).unwrap();
+    let admin_code = code_from(&mut admin_err);
+    let device_code = code_from(&mut device_err);
+    assert_eq!(admin_code.len(), 7);
+    // Each person types the code the other screen shows.
+    writeln!(admin_in, "{device_code}").unwrap();
+    writeln!(device_in, "{admin_code}").unwrap();
+    drop((admin_in, device_in));
+    assert!(admin.wait().unwrap().success());
+    assert!(device.wait().unwrap().success());
+
+    let pass = sandbox.root.join("pass");
+    assert_eq!(
+        succeeds(&sandbox.vault_with(&home_b, &pass, &["copy", "--print", "mail"], None)),
+        "s3cret"
+    );
+    succeeds(&sandbox.vault_with(
+        &home_b,
+        &pass,
+        &["add", "bank", "--secret-from-stdin"],
+        Some("pin"),
+    ));
+    assert_eq!(
+        succeeds(&sandbox.vault_with(&home_a, &pass, &["copy", "--print", "bank"], None)),
+        "pin"
+    );
+    let devices = succeeds(&sandbox.vault_with(&home_a, &pass, &["device", "list"], None));
+    assert_eq!(devices.lines().count(), 3, "{devices}");
+}
+
+#[test]
+fn a_vault_migrates_into_a_synced_vault_and_the_old_one_stays() {
+    let sandbox = Sandbox::new("synced-migrate");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&[
+        "migrate",
+        "personal",
+        "--folder",
+        folder.to_str().unwrap(),
+        "--name",
+        "work",
+    ]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "work/github"])),
+        "hunter2"
+    );
+    assert!(succeeds(&sandbox.vault(&["show", "work/github"])).contains("octocat"));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "personal/github"])),
+        "hunter2"
+    );
+    // Migrating again copies nothing twice.
+    succeeds(&sandbox.vault(&["migrate", "personal", "--name", "work"]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["list", "work"]))
+            .matches("github")
+            .count(),
+        1
+    );
 }
