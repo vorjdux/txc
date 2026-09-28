@@ -614,6 +614,28 @@ pub fn command() -> Command {
                 .hide(true),
         )
         .subcommand(
+            Command::new("breach")
+                .about("Check passwords against a breach list, offline")
+                .long_about(
+                    "Check passwords against a breach list, offline.\n\n\
+                     Download the Pwned Passwords SHA-1 list (haveibeenpwned.com/Passwords) \
+                     yourself, then import it once: it becomes a filter in the txc home, about \
+                     1.2 GB for the whole list, and needs that much memory while importing. \
+                     Nothing is ever sent anywhere. A match is probably, not certainly, breached.",
+                )
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("import")
+                        .about("Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line")
+                        .arg(Arg::new("FILE").required(true)),
+                )
+                .subcommand(
+                    Command::new("check")
+                        .about("List the entries whose password is in the imported list")
+                        .arg(Arg::new("VAULT").help("The synced vault")),
+                ),
+        )
+        .subcommand(
             Command::new("compare")
                 .about("Show digests to compare with another device, to see you share one history")
                 .arg(Arg::new("VAULT").help("The synced vault")),
@@ -991,6 +1013,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "status" => synced_command::status(&context.synced(), sub),
         "sync" => synced_command::sync(&context.synced(), sub),
         "compare" => synced_command::compare(&context.synced(), sub),
+        "breach" => synced_command::breach(&context.synced(), sub),
         "keyholder" => crate::vault::keyholder::serve(&context.home),
         "ssh-ca" => synced_command::ssh_ca(&context.synced(), sub),
         "ssh" => synced_command::ssh(&context.synced(), sub),

@@ -1948,3 +1948,36 @@ fn the_keyholder_process_holds_a_synced_vault_and_releases_one_secret_at_a_time(
         "1234"
     );
 }
+
+#[test]
+fn a_password_in_an_imported_breach_list_is_reported_offline() {
+    use sha1::{Digest, Sha1};
+
+    let sandbox = Sandbox::new("breach");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "weak", "--secret-from-stdin"], "password"));
+    succeeds(&sandbox.vault_piped(&["add", "strong", "--secret-from-stdin"], "xq7-Vt!9s-wP2e"));
+
+    let list = sandbox.root.join("pwned.txt");
+    let lines: Vec<String> = ["password", "123456", "qwerty"]
+        .iter()
+        .map(|leaked| {
+            format!(
+                "{}:1000",
+                data_encoding::HEXUPPER.encode(&Sha1::digest(leaked.as_bytes()))
+            )
+        })
+        .collect();
+    std::fs::write(&list, lines.join("\n")).unwrap();
+    succeeds(&sandbox.vault(&["breach", "import", list.to_str().unwrap()]));
+
+    let found = succeeds(&sandbox.vault(&["breach", "check"]));
+    assert!(found.contains("weak: password"), "{found}");
+    assert!(!found.contains("strong"), "{found}");
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("1 password is in the breach list"),
+        "{status}"
+    );
+}

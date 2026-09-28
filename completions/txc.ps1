@@ -2442,6 +2442,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
             [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
+            [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
@@ -2777,6 +2778,51 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;breach' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;breach;import' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;breach;check' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;breach;help' {
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;breach;help;import' {
+            break
+        }
+        'txc;vault;breach;help;check' {
+            break
+        }
+        'txc;vault;breach;help;help' {
+            break
+        }
         'txc;vault;compare' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
@@ -3028,6 +3074,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
             [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
+            [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
@@ -3122,6 +3169,17 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;keyholder' {
+            break
+        }
+        'txc;vault;help;breach' {
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            break
+        }
+        'txc;vault;help;breach;import' {
+            break
+        }
+        'txc;vault;help;breach;check' {
             break
         }
         'txc;vault;help;compare' {
@@ -3815,6 +3873,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
             [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
+            [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
@@ -3908,6 +3967,17 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;keyholder' {
+            break
+        }
+        'txc;help;vault;breach' {
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            break
+        }
+        'txc;help;vault;breach;import' {
+            break
+        }
+        'txc;help;vault;breach;check' {
             break
         }
         'txc;help;vault;compare' {

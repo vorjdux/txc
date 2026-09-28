@@ -424,6 +424,16 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             ));
         }
     }
+    let filter_path = context.home.root().join(crate::vault::breach::FILE_NAME);
+    if let Ok(mut filter) = crate::vault::breach::Filter::open(&filter_path) {
+        let found = breached(&vault, &mut filter)?.len();
+        if found > 0 {
+            lines.push(format!(
+                "● yellow  {found} password{} in the breach list  → txc vault breach check {name}",
+                if found == 1 { " is" } else { "s are" }
+            ));
+        }
+    }
     let members = device.members().len();
     lines.insert(
         0,
@@ -740,6 +750,81 @@ pub fn redeem(sealed: &[u8], sub: &ArgMatches) -> Result<()> {
     {
         Err(error) if error.kind() != io::ErrorKind::BrokenPipe => Err(error.into()),
         _ => Ok(()),
+    }
+}
+
+// ---------------------------------------------------------------- breach --
+
+/// The fields whose passwords are probably in the imported breach list, as
+/// `entry: field`. Operation-only entries are never read.
+fn breached(vault: &Synced, filter: &mut crate::vault::breach::Filter) -> Result<Vec<String>> {
+    let entries = vault.entries()?;
+    let mut found = Vec::new();
+    for view in entries.list() {
+        if view.sensitivity == Sensitivity::OperationOnly {
+            continue;
+        }
+        for field in view
+            .fields
+            .iter()
+            .filter(|field| field.kind == FieldKind::Secret)
+        {
+            for value in entries.reveal(&view.id, &field.id, Slot::Value)? {
+                if filter.contains(&value)? {
+                    found.push(format!("{}: {}", view.names.join(" / "), field.label));
+                }
+            }
+        }
+    }
+    found.sort();
+    found.dedup();
+    Ok(found)
+}
+
+/// `txc vault breach import | check`.
+///
+/// # Errors
+///
+/// Returns an error when the subcommand fails.
+pub fn breach(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let (verb, args) = sub
+        .subcommand()
+        .context("clap requires a breach subcommand")?;
+    let path = context.home.root().join(crate::vault::breach::FILE_NAME);
+    match verb {
+        "import" => {
+            let list = std::path::PathBuf::from(required(args, "FILE"));
+            crate::vault::breach::check_list(&list)?;
+            crate::vault::home::private_dir(context.home.root(), crate::vault::home::PRIVATE)?;
+            let imported = working("Reading the list twice, then writing the filter...", || {
+                crate::vault::breach::import(&list, &path)
+            })?;
+            eprintln!(
+                "Imported {} hashes ({} MB); {} lines were not hashes. Check with: txc vault breach check",
+                imported.hashes,
+                imported.bytes / 1_000_000,
+                imported.skipped
+            );
+            Ok(())
+        }
+        "check" => {
+            let name = context.which(args.get_one::<String>("VAULT"))?;
+            let mut filter = crate::vault::breach::Filter::open(&path)?;
+            let (vault, _) = context.open_confined(&name)?;
+            let found = breached(&vault, &mut filter)?;
+            if found.is_empty() {
+                eprintln!(
+                    "None of the passwords in \"{name}\" is in the breach list of {} hashes.",
+                    filter.hashes
+                );
+                return Ok(());
+            }
+            eprintln!(
+                "These are probably in the breach list; change them where they are used, then here:"
+            );
+            output(&found.join("\n"))
+        }
+        other => bail!("unknown breach subcommand {other}"),
     }
 }
 

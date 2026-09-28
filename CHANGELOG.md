@@ -34,6 +34,13 @@ All notable changes to txc are recorded here. The format follows
   that connection with a certificate that lives five minutes (`--minutes`, an
   hour at most) and hands both to `ssh` as in-memory files; `--setup` prints
   the `TrustedUserCAKeys` line servers need.
+- **Offline breach checks.** `txc vault breach import` turns a downloaded
+  Pwned Passwords SHA-1 list into a filter in the txc home, and
+  `txc vault breach check` lists the entries whose password is probably in
+  it; `status` says how many. Nothing is sent anywhere.
+- **A keyholder for the interactive screen.** `txc vault` on a terminal now
+  shows synced vaults too, and holds their keys in a separate, confined
+  process that gives the screen one secret at a time.
 - **`txc vault compare`** shows checkpoint digests to compare between devices,
   so a storage provider showing them different histories is noticed, and
   **`txc vault doctor`** prints a report for bug reports with no secret in it.
