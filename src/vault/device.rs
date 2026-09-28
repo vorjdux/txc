@@ -166,6 +166,11 @@ pub struct Device {
     checkpoints: BTreeMap<Id, (u64, Checkpoint)>,
     alarms: BTreeSet<Alarm>,
     originated: BTreeSet<Id>,
+    /// This device's own content objects in the folder, for collection.
+    written: BTreeMap<Hash, Name>,
+    /// Snapshots this device verified (rule 13); remembered because what
+    /// they cover is collected afterwards.
+    verified: BTreeSet<Hash>,
 }
 
 impl Device {
@@ -199,6 +204,8 @@ impl Device {
             checkpoints: BTreeMap::new(),
             alarms: BTreeSet::new(),
             originated: BTreeSet::new(),
+            written: BTreeMap::new(),
+            verified: BTreeSet::new(),
         }
     }
 
@@ -277,6 +284,12 @@ impl Device {
     #[must_use]
     pub const fn genesis_hash(&self) -> Hash {
         self.genesis_hash
+    }
+
+    /// The admin this device paired with, whose join snapshot it trusts.
+    #[must_use]
+    pub fn paired_admin(&self) -> Option<Id> {
+        self.pinned_admin.as_ref().map(|keys| keys.device)
     }
 
     /// Alarms raised so far.
@@ -1174,6 +1187,7 @@ impl Device {
         self.done.insert(name);
         let key_id = mine.key.id;
         let hash = payload.hash();
+        self.written.insert(hash, name);
         if let Addressing::Content { seq, .. } = payload.addressing {
             self.key_counters.entry(key_id).or_default().insert(seq);
         }
@@ -1719,14 +1733,76 @@ impl Device {
     /// # Errors
     ///
     /// Returns an error when the write fails.
-    pub fn checkpoint(&mut self, store: &Store, build: Hash) -> Result<Hash> {
+    pub fn checkpoint(
+        &mut self,
+        store: &Store,
+        build: Hash,
+        verified: BTreeSet<Hash>,
+    ) -> Result<Hash> {
         let checkpoint = Checkpoint {
             heads: self.heads.clone(),
             facts: self.fact_hashes(),
-            verified: BTreeSet::new(),
+            verified,
             build,
         };
-        self.write_content(store, Kind::Checkpoint, checkpoint.encode())
+        let previous: Vec<Hash> = self
+            .content
+            .values()
+            .filter(|content| {
+                content.payload.author == self.me.device && content.payload.kind == Kind::Checkpoint
+            })
+            .map(|content| content.hash)
+            .collect();
+        let hash = self.write_content(store, Kind::Checkpoint, checkpoint.encode())?;
+        // Older checkpoints are superseded and collected like ops.
+        self.collect(store, &previous.into_iter().collect())?;
+        Ok(hash)
+    }
+
+    /// The latest checkpoint read from each device, with its position.
+    #[must_use]
+    pub const fn checkpoints(&self) -> &BTreeMap<Id, (u64, Checkpoint)> {
+        &self.checkpoints
+    }
+
+    /// Records that a verified snapshot covers every object under a sender
+    /// key up to `seq`, so objects collected later never look like gaps.
+    pub fn cover(&mut self, key: Id, seq: u64) {
+        self.key_counters.entry(key).or_default().cover(seq);
+    }
+
+    /// Removes this device's own objects among `hashes` from the folder,
+    /// and forgets their content. Other devices' objects are never removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a removal fails.
+    pub fn collect(&mut self, store: &Store, hashes: &BTreeSet<Hash>) -> Result<usize> {
+        let mut removed = 0_usize;
+        for hash in hashes {
+            if let Some(name) = self.written.remove(hash) {
+                store.remove(&name)?;
+                removed = removed.saturating_add(1);
+            }
+        }
+        Ok(removed)
+    }
+
+    /// Forgets content covered by a verified snapshot, keeping local state
+    /// bounded; the snapshot stands in for it.
+    pub fn forget(&mut self, hashes: &BTreeSet<Hash>) {
+        self.content.retain(|hash, _| !hashes.contains(hash));
+    }
+
+    /// Remembers snapshots this device verified.
+    pub fn mark_verified(&mut self, snapshots: &BTreeSet<Hash>) {
+        self.verified.extend(snapshots);
+    }
+
+    /// The snapshots this device has verified.
+    #[must_use]
+    pub const fn verified(&self) -> &BTreeSet<Hash> {
+        &self.verified
     }
 
     /// Anti-entropy: seals to each current member, in one forward, the facts
@@ -1816,6 +1892,13 @@ fn read_ids(input: &mut Reader<'_>) -> Result<BTreeSet<Id>> {
     (0..input.count(MAX_STATE_ITEMS)?)
         .map(|_| input.fixed())
         .collect()
+}
+
+fn write_hashes(out: &mut Writer, hashes: &BTreeSet<Hash>) {
+    out.count(hashes.len());
+    for hash in hashes {
+        out.fixed(hash);
+    }
 }
 
 fn write_names(out: &mut Writer, names: &BTreeSet<Name>) {
@@ -2017,6 +2100,12 @@ impl Device {
             alarm.write(&mut out);
         }
         write_ids(&mut out, &self.originated);
+        write_hashes(&mut out, &self.verified);
+        out.count(self.written.len());
+        for (hash, name) in &self.written {
+            out.fixed(hash);
+            out.fixed(&name.to_bytes());
+        }
         Zeroizing::new(out.finish())
     }
 
@@ -2140,6 +2229,14 @@ impl Device {
             state.alarms.insert(Alarm::read(&mut input)?);
         }
         state.originated = read_ids(&mut input)?;
+        state.verified = (0..input.count(MAX_STATE_ITEMS)?)
+            .map(|_| input.fixed())
+            .collect::<Result<_>>()?;
+        for _ in 0..input.count(MAX_STATE_ITEMS)? {
+            state
+                .written
+                .insert(input.fixed()?, Name::from_bytes(input.fixed()?));
+        }
         input.finish()?;
         Ok(state)
     }
@@ -2320,7 +2417,7 @@ mod tests {
         laptop.sync(&store).unwrap();
         assert!(laptop.members().contains(&phone.me().device));
 
-        laptop.checkpoint(&store, [0; 48]).unwrap();
+        laptop.checkpoint(&store, [0; 48], BTreeSet::new()).unwrap();
         admin.sync(&store).unwrap();
         assert_eq!(admin.forward_missing(&store).unwrap(), 1);
         laptop.sync(&store).unwrap();

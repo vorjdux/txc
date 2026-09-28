@@ -28,9 +28,9 @@ use zeroize::Zeroizing;
 
 use crate::vault::authority::new_id;
 use crate::vault::core::fold::{self, Kind as OpKind, Op, State};
-use crate::vault::device::Device;
+use crate::vault::device::{Content, Device};
 use crate::vault::model::displayable;
-use crate::vault::object::{Hash, Id, Kind};
+use crate::vault::object::{Addressing, Hash, Id, Kind};
 use crate::vault::store::Store;
 use crate::vault::wire::{Reader, Writer};
 
@@ -410,83 +410,419 @@ pub struct FieldView {
     pub conflict: bool,
 }
 
-/// The entries of a vault, folded from the ops a device has accepted.
+/// A snapshot: the objects it covers and the folded state of every
+/// register, with values sealed again under its own field key.
+struct SnapshotBody {
+    key: Zeroizing<[u8; 32]>,
+    /// The op objects it covers.
+    covers: BTreeSet<Hash>,
+    /// Per sender key, the highest sequence number it covers.
+    keys: BTreeMap<Id, u64>,
+    /// Every register's live ops.
+    live: Vec<(OpId, FieldOp)>,
+    /// Tombstones still inside the retention window that are no longer live.
+    tombs: Vec<(OpId, FieldOp)>,
+}
+
+const SNAPSHOT_TAG: &[u8] = b"txc/v1/snapshot";
+
+fn write_id_op(out: &mut Writer, id: &OpId, op: &FieldOp) {
+    out.fixed(&id.object);
+    out.u64(u64::from(id.index));
+    write_op(out, op);
+}
+
+fn read_id_op(input: &mut Reader<'_>) -> Result<(OpId, FieldOp)> {
+    let object = input.fixed()?;
+    let index =
+        u32::try_from(input.u64()?).map_err(|_index| anyhow!("an op index is out of range"))?;
+    Ok((OpId { object, index }, read_op(input)?))
+}
+
+impl SnapshotBody {
+    fn encode(&self) -> Zeroizing<Vec<u8>> {
+        let mut out = Writer::default();
+        out.fixed(SNAPSHOT_TAG);
+        out.fixed(&self.key[..]);
+        out.count(self.covers.len());
+        for object in &self.covers {
+            out.fixed(object);
+        }
+        out.count(self.keys.len());
+        for (key, seq) in &self.keys {
+            out.fixed(key);
+            out.u64(*seq);
+        }
+        for list in [&self.live, &self.tombs] {
+            out.count(list.len());
+            for (id, op) in list {
+                write_id_op(&mut out, id, op);
+            }
+        }
+        Zeroizing::new(out.finish())
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self> {
+        let mut input = Reader(bytes);
+        ensure!(
+            input.take(SNAPSHOT_TAG.len())? == SNAPSHOT_TAG,
+            "not a snapshot"
+        );
+        let key = Zeroizing::new(input.fixed()?);
+        let covers = (0..input.count(MAX_OPS)?)
+            .map(|_| input.fixed())
+            .collect::<Result<_>>()?;
+        let keys = (0..input.count(MAX_OPS)?)
+            .map(|_| Ok((input.fixed()?, input.u64()?)))
+            .collect::<Result<_>>()?;
+        let live = (0..input.count(MAX_OPS)?)
+            .map(|_| read_id_op(&mut input))
+            .collect::<Result<_>>()?;
+        let tombs = (0..input.count(MAX_OPS)?)
+            .map(|_| read_id_op(&mut input))
+            .collect::<Result<_>>()?;
+        input.finish()?;
+        Ok(Self {
+            key,
+            covers,
+            keys,
+            live,
+            tombs,
+        })
+    }
+}
+
+/// How many op objects since the last snapshot trigger a new one (rule 19).
+pub const COMPACT_AFTER: usize = 200;
+
+/// The entries of a vault, folded from the ops a device has accepted and
+/// the snapshot they start from.
 pub struct Entries {
+    /// The ops folded: those the base snapshot stands in for, then every
+    /// op object it does not cover.
     ops: BTreeMap<OpId, (FieldOp, Hash)>,
+    /// Field keys, by the object whose values they seal.
     keys: BTreeMap<Hash, Zeroizing<[u8; 32]>>,
+    /// The snapshot the fold starts from, if any.
+    base: Option<(Hash, SnapshotBody)>,
+    /// Snapshots this device re-folded and found equal (rule 13).
+    verified: BTreeSet<Hash>,
+    /// Other valid snapshots, by hash, with what they cover.
+    snapshots: BTreeMap<Hash, BTreeSet<Hash>>,
+    /// Op objects read and not covered by the base, with their sender key
+    /// and sequence number.
+    objects: BTreeMap<Hash, (Id, u64)>,
+}
+
+/// Op objects and snapshots as a device holds them.
+struct Raw {
+    batches: BTreeMap<Hash, (Batch, (Id, u64))>,
+    snapshots: BTreeMap<Hash, (SnapshotBody, Id)>,
+}
+
+const fn origin(content: &Content) -> (Id, u64) {
+    match content.payload.addressing {
+        Addressing::Content { key, seq } => (key, seq),
+        Addressing::Control(_) => ([0; 16], 0),
+    }
+}
+
+/// Whether an op can be applied: every dep, transitively, is present or
+/// covered by the base snapshot.
+fn applied(ops: &BTreeMap<OpId, (FieldOp, Hash)>, id: &OpId, covered: &BTreeSet<Hash>) -> bool {
+    let mut stack = vec![*id];
+    let mut seen = BTreeSet::new();
+    while let Some(current) = stack.pop() {
+        if !seen.insert(current) || covered.contains(&current.object) {
+            continue;
+        }
+        let Some((op, _)) = ops.get(&current) else {
+            return false;
+        };
+        stack.extend(op.deps.iter().copied());
+    }
+    true
+}
+
+/// Folds registers from a set of ops, where deps on objects in `covered`
+/// count as present.
+fn fold_registers(
+    ops: &BTreeMap<OpId, (FieldOp, Hash)>,
+    covered: &BTreeSet<Hash>,
+) -> BTreeMap<Register, (FieldKind, BTreeSet<OpId>, State<Stored>)> {
+    let mut registers: BTreeMap<Register, BTreeMap<OpId, Op<OpId, Stored>>> = BTreeMap::new();
+    for (id, (op, source)) in ops {
+        let stored = |bytes: &Vec<u8>| Stored {
+            source: *source,
+            bytes: bytes.clone(),
+        };
+        let kind = match &op.value {
+            Some(value) => OpKind::Set(stored(value)),
+            None => OpKind::Delete {
+                old: op.old.iter().map(stored).collect(),
+            },
+        };
+        registers.entry(op.register).or_default().insert(
+            *id,
+            Op {
+                kind,
+                deps: op.deps.clone(),
+                time: op.time,
+            },
+        );
+    }
+    registers
+        .into_iter()
+        .map(|(register, register_ops)| {
+            // Rule 7: an op waits until every dep is here or covered.
+            let mut applied: BTreeSet<OpId> = BTreeSet::new();
+            loop {
+                let before = applied.len();
+                for (id, op) in &register_ops {
+                    if op
+                        .deps
+                        .iter()
+                        .all(|dep| applied.contains(dep) || covered.contains(&dep.object))
+                    {
+                        applied.insert(*id);
+                    }
+                }
+                if applied.len() == before {
+                    break;
+                }
+            }
+            let dominated: BTreeSet<OpId> = applied
+                .iter()
+                .filter_map(|id| register_ops.get(id))
+                .flat_map(|op| op.deps.iter().copied())
+                .collect();
+            let live: BTreeSet<OpId> = applied.difference(&dominated).copied().collect();
+            let kind = live
+                .iter()
+                .filter_map(|id| ops.get(id))
+                .map(|(op, _)| op.kind)
+                .next_back()
+                .unwrap_or(FieldKind::Unknown(0));
+            let state = fold::fold(&applied, &register_ops);
+            (register, (kind, live, state))
+        })
+        .collect()
 }
 
 impl Entries {
-    /// Folds every valid op object the device holds.
+    /// Folds every valid op object and snapshot the device holds.
     ///
     /// # Errors
     ///
-    /// Returns an error when an op object is malformed.
+    /// Returns an error when an op object or snapshot is malformed.
     pub fn read(device: &Device) -> Result<Self> {
+        let mut raw = Raw {
+            batches: BTreeMap::new(),
+            snapshots: BTreeMap::new(),
+        };
+        for content in device.content() {
+            match content.payload.kind {
+                Kind::Op => {
+                    raw.batches.insert(
+                        content.hash,
+                        (Batch::decode(&content.payload.body)?, origin(content)),
+                    );
+                }
+                Kind::Snapshot => {
+                    raw.snapshots.insert(
+                        content.hash,
+                        (
+                            SnapshotBody::decode(&content.payload.body)?,
+                            content.payload.author,
+                        ),
+                    );
+                }
+                _ => {}
+            }
+        }
+        // Verify snapshots smallest first, so each can be checked against
+        // an already verified one it extends.
+        let mut order: Vec<&Hash> = raw.snapshots.keys().collect();
+        order.sort_by_key(|hash| {
+            (
+                raw.snapshots
+                    .get(*hash)
+                    .map_or(0, |(body, _)| body.covers.len()),
+                **hash,
+            )
+        });
+        let mut verified: BTreeSet<Hash> = device.verified().clone();
+        for hash in order {
+            if verified.contains(hash) {
+                continue;
+            }
+            if Self::check(&raw, &verified, hash) {
+                verified.insert(*hash);
+            }
+        }
+        // The base: the verified snapshot covering most, or one from the
+        // admin this device paired with that it could not check (trust on
+        // join, rule 13).
+        let trusted = device.paired_admin();
+        let base = raw
+            .snapshots
+            .iter()
+            .filter(|(hash, (_, author))| verified.contains(*hash) || Some(*author) == trusted)
+            .max_by_key(|(hash, (body, _))| (body.covers.len(), **hash))
+            .map(|(hash, _)| *hash);
         let mut entries = Self {
             ops: BTreeMap::new(),
             keys: BTreeMap::new(),
+            base: None,
+            verified,
+            snapshots: BTreeMap::new(),
+            objects: BTreeMap::new(),
         };
-        for content in device.content() {
-            if content.payload.kind != Kind::Op {
+        let covered: BTreeSet<Hash> = base
+            .and_then(|hash| {
+                raw.snapshots
+                    .get(&hash)
+                    .map(|(body, _)| body.covers.clone())
+            })
+            .unwrap_or_default();
+        for (hash, (batch, at)) in raw.batches {
+            if covered.contains(&hash) {
                 continue;
             }
-            let batch = Batch::decode(&content.payload.body)?;
             for (index, op) in (0_u32..).zip(batch.ops) {
                 entries.ops.insert(
                     OpId {
-                        object: content.hash,
+                        object: hash,
                         index,
                     },
-                    (op, content.hash),
+                    (op, hash),
                 );
             }
-            entries.keys.insert(content.hash, batch.key);
+            entries.keys.insert(hash, batch.key);
+            entries.objects.insert(hash, at);
+        }
+        for (hash, (body, _)) in raw.snapshots {
+            if Some(hash) == base {
+                for (id, op) in &body.live {
+                    entries.ops.insert(*id, (op.clone(), hash));
+                }
+                entries.keys.insert(hash, Zeroizing::new(*body.key));
+                entries.base = Some((hash, body));
+            } else {
+                entries.snapshots.insert(hash, body.covers);
+            }
         }
         Ok(entries)
     }
 
-    fn register_ops(&self) -> BTreeMap<Register, BTreeMap<OpId, Op<OpId, Stored>>> {
-        let mut registers: BTreeMap<Register, BTreeMap<OpId, Op<OpId, Stored>>> = BTreeMap::new();
-        for (id, (op, source)) in &self.ops {
-            let stored = |bytes: &Vec<u8>| Stored {
-                source: *source,
-                bytes: bytes.clone(),
-            };
-            let kind = match &op.value {
-                Some(value) => OpKind::Set(stored(value)),
-                None => OpKind::Delete {
-                    old: op.old.iter().map(stored).collect(),
-                },
-            };
-            registers.entry(op.register).or_default().insert(
-                *id,
-                Op {
-                    kind,
-                    deps: op.deps.clone(),
-                    time: op.time,
-                },
-            );
+    /// Rule 13: re-folds what a snapshot covers from the ops this device
+    /// holds, starting from a verified snapshot it extends, and compares.
+    fn check(raw: &Raw, verified: &BTreeSet<Hash>, hash: &Hash) -> bool {
+        let Some((body, _)) = raw.snapshots.get(hash) else {
+            return false;
+        };
+        let start = verified
+            .iter()
+            .filter_map(|other| {
+                raw.snapshots
+                    .get(other)
+                    .map(|(snapshot, _)| (other, snapshot))
+            })
+            .filter(|(_, snapshot)| snapshot.covers.is_subset(&body.covers))
+            .max_by_key(|(other, snapshot)| (snapshot.covers.len(), **other));
+        let covered_before: BTreeSet<Hash> = start
+            .map(|(_, snapshot)| snapshot.covers.clone())
+            .unwrap_or_default();
+        let mut ops: BTreeMap<OpId, (FieldOp, Hash)> = BTreeMap::new();
+        let mut keys: BTreeMap<Hash, &[u8; 32]> = BTreeMap::new();
+        if let Some((start_hash, snapshot)) = start {
+            for (id, op) in &snapshot.live {
+                ops.insert(*id, (op.clone(), *start_hash));
+            }
+            keys.insert(*start_hash, &snapshot.key);
         }
-        registers
+        for object in body.covers.difference(&covered_before) {
+            let Some((batch, _)) = raw.batches.get(object) else {
+                return false;
+            };
+            for (index, op) in (0_u32..).zip(&batch.ops) {
+                ops.insert(
+                    OpId {
+                        object: *object,
+                        index,
+                    },
+                    (op.clone(), *object),
+                );
+            }
+            keys.insert(*object, &batch.key);
+        }
+        let expected = fold_registers(&ops, &covered_before);
+        let mut claimed: BTreeMap<Register, BTreeSet<OpId>> = BTreeMap::new();
+        for (id, op) in &body.live {
+            claimed.entry(op.register).or_default().insert(*id);
+        }
+        let plain = |register: &Register,
+                     kind: FieldKind,
+                     key: &[u8; 32],
+                     bytes: &[u8]|
+         -> Option<Vec<u8>> {
+            if kind.is_secret() {
+                open_value(key, &register.0, &register.1, bytes)
+                    .ok()
+                    .map(|plain| plain.to_vec())
+            } else {
+                Some(bytes.to_vec())
+            }
+        };
+        expected
+            .iter()
+            .filter(|(_, (_, live, _))| !live.is_empty())
+            .count()
+            == claimed.len()
+            && expected.iter().all(|(register, (kind, live, _))| {
+                if live.is_empty() {
+                    return !claimed.contains_key(register);
+                }
+                claimed.get(register) == Some(live)
+                    && live.iter().all(|id| {
+                        let Some((original, source)) = ops.get(id) else {
+                            return false;
+                        };
+                        let Some((_, copy)) = body.live.iter().find(|(other, _)| other == id)
+                        else {
+                            return false;
+                        };
+                        let Some(source_key) = keys.get(source) else {
+                            return false;
+                        };
+                        let values = |op: &FieldOp, key: &[u8; 32]| -> Option<Vec<Vec<u8>>> {
+                            op.value
+                                .iter()
+                                .map(|value| plain(register, *kind, key, value))
+                                .collect()
+                        };
+                        copy.deps == original.deps
+                            && copy.value.is_some() == original.value.is_some()
+                            && values(original, source_key) == values(copy, &body.key)
+                    })
+            })
+    }
+
+    fn covered(&self) -> BTreeSet<Hash> {
+        self.base
+            .as_ref()
+            .map(|(_, body)| body.covers.clone())
+            .unwrap_or_default()
     }
 
     /// Every register's folded state, over the ops whose dependencies have
-    /// all arrived; the rest wait (rule 7).
+    /// all arrived or are covered by the base snapshot; the rest wait
+    /// (rule 7).
     #[must_use]
     pub fn registers(&self) -> BTreeMap<Register, Field> {
-        self.register_ops()
+        fold_registers(&self.ops, &self.covered())
             .into_iter()
-            .map(|(register, ops)| {
-                let known: BTreeSet<OpId> = ops.keys().copied().collect();
-                let applied = fold::applicable(&known, &ops);
-                let kind = applied
-                    .iter()
-                    .filter_map(|id| self.ops.get(id))
-                    .map(|(op, _)| op.kind)
-                    .next_back()
-                    .unwrap_or(FieldKind::Unknown(0));
-                let state = fold::fold(&applied, &ops);
+            .map(|(register, (kind, _, state))| {
                 (
                     register,
                     Field {
@@ -500,17 +836,168 @@ impl Entries {
     }
 
     fn live(&self, register: &Register) -> BTreeSet<OpId> {
-        let Some(ops) = self.register_ops().remove(register) else {
-            return BTreeSet::new();
-        };
-        let known: BTreeSet<OpId> = ops.keys().copied().collect();
-        let applied = fold::applicable(&known, &ops);
-        let dominated: BTreeSet<OpId> = applied
+        let ops: BTreeMap<OpId, (FieldOp, Hash)> = self
+            .ops
             .iter()
-            .filter_map(|id| ops.get(id))
-            .flat_map(|op| op.deps.iter().copied())
+            .filter(|(_, (op, _))| op.register == *register)
+            .map(|(id, op)| (*id, op.clone()))
             .collect();
-        applied.difference(&dominated).copied().collect()
+        fold_registers(&ops, &self.covered())
+            .remove(register)
+            .map(|(_, live, _)| live)
+            .unwrap_or_default()
+    }
+
+    /// The snapshots this device verified, for its checkpoint.
+    #[must_use]
+    pub fn verified(&self) -> BTreeSet<Hash> {
+        self.verified.clone()
+    }
+
+    /// Whether enough op objects arrived since the base snapshot that a new
+    /// one is due (rule 19).
+    #[must_use]
+    pub fn needs_snapshot(&self) -> bool {
+        self.objects.len() >= COMPACT_AFTER
+    }
+
+    /// Writes a snapshot of everything folded so far: the live ops of every
+    /// register sealed again under a new field key, and the tombstones still
+    /// inside the retention window.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a value does not open or the write fails.
+    pub fn snapshot(
+        &self,
+        device: &mut Device,
+        store: &Store,
+        now: u64,
+        retention: u64,
+    ) -> Result<Hash> {
+        let covered = self.covered();
+        let folded = fold_registers(&self.ops, &covered);
+        let applied_objects: BTreeSet<Hash> = self
+            .objects
+            .keys()
+            .filter(|object| {
+                self.ops
+                    .keys()
+                    .filter(|id| id.object == **object)
+                    .all(|id| applied(&self.ops, id, &covered))
+            })
+            .copied()
+            .collect();
+        let mut key = Zeroizing::new([0; 32]);
+        rand::fill(&mut key[..]);
+        let reseal = |op: &FieldOp, source: &Hash| -> Result<FieldOp> {
+            let source_key = self
+                .keys
+                .get(source)
+                .ok_or_else(|| anyhow!("a field key is missing"))?;
+            let seal = |bytes: &Vec<u8>| -> Result<Vec<u8>> {
+                if op.kind.is_secret() {
+                    let plain = open_value(source_key, &op.register.0, &op.register.1, bytes)?;
+                    seal_value(&key, &op.register.0, &op.register.1, &plain)
+                } else {
+                    Ok(bytes.clone())
+                }
+            };
+            Ok(FieldOp {
+                value: op.value.as_ref().map(seal).transpose()?,
+                old: op.old.iter().map(seal).collect::<Result<_>>()?,
+                ..op.clone()
+            })
+        };
+        let mut live = Vec::new();
+        for (_, ids, _) in folded.values() {
+            for id in ids {
+                let (op, source) = self
+                    .ops
+                    .get(id)
+                    .ok_or_else(|| anyhow!("a live op is missing"))?;
+                live.push((*id, reseal(op, source)?));
+            }
+        }
+        let live_ids: BTreeSet<OpId> = live.iter().map(|(id, _)| *id).collect();
+        let mut tombs = Vec::new();
+        for (id, (op, source)) in &self.ops {
+            let in_window = now.saturating_sub(op.time) < retention;
+            if op.value.is_none()
+                && in_window
+                && !live_ids.contains(id)
+                && applied_objects.contains(&id.object)
+            {
+                tombs.push((*id, reseal(op, source)?));
+            }
+        }
+        if let Some((hash, base)) = &self.base {
+            for (id, op) in &base.tombs {
+                if now.saturating_sub(op.time) < retention {
+                    tombs.push((*id, reseal(op, hash)?));
+                }
+            }
+        }
+        let mut keys = self
+            .base
+            .as_ref()
+            .map(|(_, body)| body.keys.clone())
+            .unwrap_or_default();
+        for object in &applied_objects {
+            if let Some((sender, seq)) = self.objects.get(object) {
+                let highest = keys.entry(*sender).or_insert(*seq);
+                *highest = (*highest).max(*seq);
+            }
+        }
+        let body = SnapshotBody {
+            key,
+            covers: covered.union(&applied_objects).copied().collect(),
+            keys,
+            live,
+            tombs,
+        };
+        device.write_content(store, Kind::Snapshot, body.encode().to_vec())
+    }
+
+    /// Garbage collection (rule 16): once every current member's checkpoint
+    /// says it verified the base snapshot, this device removes its own op
+    /// objects and snapshots that the base covers, and its counters record
+    /// the coverage so nothing collected looks like a gap.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a removal fails.
+    pub fn collect(&self, device: &mut Device, store: &Store) -> Result<usize> {
+        device.mark_verified(&self.verified);
+        let Some((base, body)) = &self.base else {
+            return Ok(0);
+        };
+        for (key, seq) in &body.keys {
+            device.cover(*key, *seq);
+        }
+        let me = device.me().device;
+        let everyone = device.view().keys().all(|member| {
+            if *member == me {
+                return self.verified.contains(base);
+            }
+            device
+                .checkpoints()
+                .get(member)
+                .is_some_and(|(_, checkpoint)| checkpoint.verified.contains(base))
+        });
+        if !everyone {
+            return Ok(0);
+        }
+        let mut collectible: BTreeSet<Hash> = body.covers.clone();
+        collectible.extend(
+            self.snapshots
+                .iter()
+                .filter(|(_, covers)| covers.is_subset(&body.covers))
+                .map(|(hash, _)| *hash),
+        );
+        let removed = device.collect(store, &collectible)?;
+        device.forget(&collectible);
+        Ok(removed)
     }
 
     fn plain(
@@ -1126,5 +1613,195 @@ mod tests {
         let listed = Entries::read(&admin).unwrap().list();
         assert!(!listed[0].names[0].contains('\x1b'));
         assert_eq!(listed[0].sensitivity, Sensitivity::RootGrade);
+    }
+
+    fn names(device: &Device) -> Vec<String> {
+        let mut names: Vec<String> = Entries::read(device)
+            .unwrap()
+            .list()
+            .into_iter()
+            .flat_map(|entry| entry.names)
+            .collect();
+        names.sort();
+        names
+    }
+
+    const DAY: u64 = 86_400;
+
+    #[test]
+    fn a_verified_snapshot_lets_every_device_collect_its_own_objects() {
+        let (_scratch, store, mut admin, mut laptop) = setup();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW);
+        let entry = changes.create("mail").unwrap();
+        let password = changes
+            .add_field(&entry, FieldKind::Secret, b"first")
+            .unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        laptop.sync(&store).unwrap();
+        let entries = Entries::read(&laptop).unwrap();
+        let mut changes = Changes::new(&entries, NOW + 1);
+        changes
+            .set_field(&entry, &password, FieldKind::Secret, b"second")
+            .unwrap();
+        changes.create("bank").unwrap();
+        changes.write(&mut laptop, &store).unwrap();
+        admin.sync(&store).unwrap();
+
+        let snapshot = Entries::read(&admin)
+            .unwrap()
+            .snapshot(&mut admin, &store, NOW + 2, 30 * DAY)
+            .unwrap();
+        laptop.sync(&store).unwrap();
+        for device in [&mut admin, &mut laptop] {
+            let entries = Entries::read(device).unwrap();
+            assert!(entries.verified().contains(&snapshot));
+            device
+                .checkpoint(&store, [0; 48], entries.verified())
+                .unwrap();
+        }
+        admin.sync(&store).unwrap();
+        laptop.sync(&store).unwrap();
+        let before = store.list().unwrap().names.len();
+        let removed: usize = [&mut admin, &mut laptop]
+            .into_iter()
+            .map(|device| {
+                Entries::read(device)
+                    .unwrap()
+                    .collect(device, &store)
+                    .unwrap()
+            })
+            .sum();
+        assert_eq!(removed, 2);
+        assert_eq!(store.list().unwrap().names.len(), before - 2);
+
+        for device in [&admin, &laptop] {
+            assert_eq!(names(device), vec!["bank".to_owned(), "mail".to_owned()]);
+            let values = Entries::read(device)
+                .unwrap()
+                .reveal(&entry, &password, Slot::Value)
+                .unwrap();
+            assert_eq!(
+                values
+                    .iter()
+                    .map(|value| value.to_vec())
+                    .collect::<Vec<_>>(),
+                vec![b"second".to_vec()]
+            );
+        }
+
+        // Editing after collection builds on the snapshot's live ops.
+        let entries = Entries::read(&laptop).unwrap();
+        let mut changes = Changes::new(&entries, NOW + 3);
+        changes
+            .set_field(&entry, &password, FieldKind::Secret, b"third")
+            .unwrap();
+        changes.write(&mut laptop, &store).unwrap();
+        admin.sync(&store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        assert!(!entries.list().iter().any(|view| view.conflict));
+        assert_eq!(
+            entries.reveal(&entry, &password, Slot::Value).unwrap()[0].to_vec(),
+            b"third"
+        );
+
+        // A device paired afterwards starts from the admin's snapshot.
+        let me = Me::generate();
+        let (start, commit) = AdminStart::new(&admin.me().keys(), admin.genesis_hash());
+        let (reply_state, reply) = DeviceReply::new(&me.keys(), &commit).unwrap();
+        let (on_admin, reveal) = start.reveal(&reply).unwrap();
+        admin
+            .add(
+                &store,
+                &on_admin.peer,
+                [7; 16],
+                Role::Reader,
+                Lifetime::Desktop,
+                NOW,
+            )
+            .unwrap();
+        let mut phone = Device::joining(me, &reply_state.check(&reveal).unwrap());
+        phone.sync(&store).unwrap();
+        assert_eq!(names(&phone), vec!["bank".to_owned(), "mail".to_owned()]);
+        Entries::read(&phone)
+            .unwrap()
+            .collect(&mut phone, &store)
+            .unwrap();
+        assert!(phone.gaps().is_empty(), "{:?}", phone.gaps());
+    }
+
+    #[test]
+    fn a_snapshot_that_does_not_refold_is_never_used() {
+        let (_scratch, store, mut admin, mut laptop) = setup();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW);
+        changes.create("real").unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        laptop.sync(&store).unwrap();
+
+        // The laptop writes a snapshot claiming another name.
+        let entries = Entries::read(&laptop).unwrap();
+        let mut forged = Changes::new(&entries, NOW);
+        forged.create("forged").unwrap();
+        let (id, op) = entries
+            .ops
+            .iter()
+            .next()
+            .map(|(id, (op, _))| (*id, op.clone()))
+            .unwrap();
+        let body = SnapshotBody {
+            key: Zeroizing::new([1; 32]),
+            covers: [id.object].into_iter().collect(),
+            keys: BTreeMap::new(),
+            live: vec![(
+                id,
+                FieldOp {
+                    value: Some(b"forged".to_vec()),
+                    ..op
+                },
+            )],
+            tombs: Vec::new(),
+        };
+        let hash = laptop
+            .write_content(&store, Kind::Snapshot, body.encode().to_vec())
+            .unwrap();
+        admin.sync(&store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        assert!(!entries.verified().contains(&hash));
+        assert_eq!(names(&admin), vec!["real".to_owned()]);
+    }
+
+    #[test]
+    fn tombstones_outlive_collection_only_inside_the_window() {
+        let (_scratch, store, mut admin, _laptop) = setup();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW);
+        let entry = changes.create("gone").unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW + DAY);
+        changes.delete_entry(&entry).unwrap();
+        changes.write(&mut admin, &store).unwrap();
+
+        let tombstones = |device: &mut Device, now: u64| {
+            Entries::read(device)
+                .unwrap()
+                .snapshot(device, &store, now, 30 * DAY)
+                .unwrap();
+            let entries = Entries::read(device).unwrap();
+            let (_, base) = entries.base.as_ref().unwrap();
+            base.live
+                .iter()
+                .chain(&base.tombs)
+                .filter(|(_, op)| op.value.is_none())
+                .count()
+        };
+        assert_eq!(tombstones(&mut admin, NOW + 2 * DAY), 1);
+        assert_eq!(
+            tombstones(&mut admin, NOW + 40 * DAY),
+            1,
+            "a live tombstone stays until superseded"
+        );
+        assert!(names(&admin).is_empty());
     }
 }
