@@ -192,3 +192,74 @@ fn a_vault_control_object_opens_with_go_age_and_the_recovery_identity() {
     );
     assert_eq!(open_control(&sealed, &member).unwrap().unwrap(), signed);
 }
+
+/// Answers nothing: age-plugin-pq never asks.
+struct Silent;
+
+impl txc::vault::hardware::Prompter for Silent {
+    fn message(&self, _text: &str) {}
+    fn secret(&self, _question: &str) -> Option<age::secrecy::SecretString> {
+        None
+    }
+    fn public(&self, _question: &str) -> Option<String> {
+        None
+    }
+    fn confirm(&self, _question: &str, _yes: &str, _no: Option<&str>) -> Option<bool> {
+        None
+    }
+}
+
+#[test]
+fn a_secret_sealed_through_a_pinned_plugin_opens_through_it_and_a_changed_plugin_is_refused() {
+    use txc::vault::hardware::Hardware;
+
+    let Some(dir) = age_dir() else {
+        return eprintln!("TXC_AGE_DIR is not set; skipped");
+    };
+    let scratch = Scratch::new("plugin");
+    // age-plugin-pq is a software plugin: it stands in for hardware here,
+    // speaking the same protocol a security key's plugin does.
+    let native = pq::Identity::generate();
+    let recipient = native.to_public().to_string();
+    let converted = run(
+        &dir,
+        "age-plugin-pq",
+        &["-identity"],
+        format!("{}\n", native.to_string().expose_secret()).as_bytes(),
+    );
+    let plugin_identity = String::from_utf8(converted)
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("AGE-PLUGIN-PQ-"))
+        .unwrap()
+        .to_owned();
+    let plugin = dir.join("age-plugin-pq");
+    let hardware =
+        Hardware::set_up(&recipient, &plugin_identity, Some(&plugin), Some(&plugin)).unwrap();
+
+    let sealed = hardware.seal(b"second factor", &Silent).unwrap();
+    assert_eq!(
+        &hardware.open(&sealed, &Silent).unwrap()[..],
+        b"second factor"
+    );
+    // What the plugin sealed is a plain age file Go age opens natively.
+    let key = scratch.0.join("native.key");
+    std::fs::write(&key, format!("{}\n", native.to_string().expose_secret())).unwrap();
+    assert_eq!(
+        run(&dir, "age", &["-d", "-i", key.to_str().unwrap()], &sealed),
+        b"second factor"
+    );
+
+    // A plugin binary that changed after it was pinned is never run.
+    let copy = scratch.0.join("age-plugin-pq");
+    std::fs::copy(&plugin, &copy).unwrap();
+    let pinned = Hardware::set_up(&recipient, &plugin_identity, Some(&copy), Some(&copy)).unwrap();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&copy)
+        .unwrap()
+        .write_all(b"tampered")
+        .unwrap();
+    assert!(pinned.open(&sealed, &Silent).is_err());
+    assert!(pinned.seal(b"x", &Silent).is_err());
+}

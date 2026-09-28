@@ -30,7 +30,7 @@ vault = ["dep:age", "dep:age-core", "dep:argon2", "dep:arboard", "dep:bech32", "
 age = { version = "0.12", optional = true }
 # age's post-quantum recipient type (mlkem768x25519), composed in
 # src/vault/pq.rs from the same parts, and versions, the age crate uses.
-age-core = { version = "0.12", optional = true }
+age-core = { version = "0.12", optional = true, features = ["plugin"] }
 argon2 = { version = "0.6", optional = true, default-features = false, features = ["alloc", "zeroize"] }
 bech32 = { version = "0.11", optional = true }
 hkdf = { version = "0.13", optional = true }

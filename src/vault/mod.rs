@@ -59,6 +59,7 @@ pub mod entries;
 mod grant;
 pub mod grant2;
 pub mod harden;
+pub mod hardware;
 mod home;
 pub mod import;
 pub mod keyholder;
