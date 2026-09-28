@@ -22,8 +22,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 
 use crate::vault::authority::{
-    Certificate, Genesis, Issuance, IssuedCertificate, Issuer, Lifetime, RenewalRequest, Role,
-    SignedGenesis, new_id, quorum,
+    Certificate, Endorsement, Genesis, Issuance, IssuedCertificate, Issuer, Lifetime, Renewal,
+    RenewalRequest, Role, SignedGenesis, new_id, quorum,
 };
 use crate::vault::composite::SigningKey;
 use crate::vault::control::{
@@ -84,6 +84,7 @@ impl Me {
 struct At {
     author: Id,
     seq: u64,
+    hash: Hash,
 }
 
 /// A sender key this device can read with.
@@ -99,6 +100,9 @@ struct Mine {
     recipients: BTreeSet<(Id, Id)>,
     next: u64,
 }
+
+/// A co-signing device's certificate id and its signature.
+type Cosigner = (Id, Vec<u8>);
 
 /// A content object accepted for the layers above.
 #[derive(Clone, Debug)]
@@ -130,7 +134,14 @@ pub struct Device {
     genesis_hash: Hash,
     genesis: Option<Genesis>,
     pinned_admin: Option<pairing::Keys>,
-    certificates: BTreeMap<Id, (Certificate, Option<(Id, u64)>)>,
+    certificates: BTreeMap<Id, (Certificate, Option<At>)>,
+    /// Admin self-renewals made without a co-signature.
+    lone_renewals: BTreeSet<Id>,
+    /// This admin's renewal waiting for a co-signature, and the co-signature
+    /// once it arrives.
+    proposal: Option<(Renewal, Option<Cosigner>)>,
+    /// Renewals of this owner's admin waiting for approval here.
+    approvals: BTreeMap<Id, Certificate>,
     facts: BTreeMap<Hash, (Fact, At)>,
     certificate_objects: BTreeMap<Id, Hash>,
     renewal: Option<(SigningKey, pq::Identity)>,
@@ -162,6 +173,9 @@ impl Device {
             genesis: None,
             pinned_admin: None,
             certificates: BTreeMap::new(),
+            lone_renewals: BTreeSet::new(),
+            proposal: None,
+            approvals: BTreeMap::new(),
             facts: BTreeMap::new(),
             certificate_objects: BTreeMap::new(),
             renewal: None,
@@ -294,11 +308,7 @@ impl Device {
             return BTreeMap::new();
         };
         let rooted = |fact: &Fact| quorum(&genesis.roots, &fact.statement(), &fact.endorsements);
-        let within = |cutoffs: &BTreeMap<Id, Cutoff>, held: &At| {
-            cutoffs
-                .get(&held.author)
-                .is_none_or(|cutoff| held.seq <= cutoff.seq)
-        };
+        let within = Self::within;
         let collect = |valid: &dyn Fn(&Fact, &At) -> bool| -> BTreeMap<Id, Cutoff> {
             let facts: Vec<&Fact> = self
                 .facts
@@ -349,23 +359,93 @@ impl Device {
         a != b && principal(a).is_some() && principal(a) == principal(b)
     }
 
-    /// Whether an object at this chain position is valid under the cutoffs.
-    fn within(cutoffs: &BTreeMap<Id, Cutoff>, author: &Id, seq: u64) -> bool {
-        cutoffs.get(author).is_none_or(|cutoff| seq <= cutoff.seq)
+    /// Whether an object is valid under the cutoffs: before its author's
+    /// cutoff, or the very object the cutoff names. Another object at the
+    /// cutoff's position is a fork and is not.
+    fn within(cutoffs: &BTreeMap<Id, Cutoff>, at: &At) -> bool {
+        cutoffs.get(&at.author).is_none_or(|cutoff| {
+            at.seq < cutoff.seq || (at.seq == cutoff.seq && at.hash == cutoff.hash)
+        })
+    }
+
+    fn principal_of(&self, device: &Id) -> Option<Id> {
+        self.certificates
+            .values()
+            .find(|(cert, _)| cert.device == *device)
+            .map(|(cert, _)| cert.principal)
+    }
+
+    fn rooted(&self, fact: &Fact) -> bool {
+        self.genesis
+            .as_ref()
+            .is_some_and(|genesis| quorum(&genesis.roots, &fact.statement(), &fact.endorsements))
+    }
+
+    /// How many devices an admin may add: the policy's allowance plus every
+    /// root grant, counted over facts, never time.
+    fn allowance(&self, admin: &Id) -> u64 {
+        let base = self
+            .genesis
+            .as_ref()
+            .map_or(0, |genesis| u64::from(genesis.policy.mint_allowance));
+        self.facts
+            .values()
+            .filter(|(fact, _)| fact.device == *admin && self.rooted(fact))
+            .filter_map(|(fact, _)| match fact.kind {
+                FactKind::MintAllowance(count) => Some(u64::from(count)),
+                _ => None,
+            })
+            .fold(base, u64::saturating_add)
+    }
+
+    /// The adds an admin had made up to and including a position in its
+    /// chain.
+    fn adds_by(&self, admin: &Id, up_to: u64) -> u64 {
+        self.facts
+            .values()
+            .filter(|(fact, at)| {
+                matches!(fact.kind, FactKind::Add { .. }) && at.author == *admin && at.seq <= up_to
+            })
+            .fold(0, |count, _| count.saturating_add(1))
     }
 
     /// Whether a certificate is valid: its issuer was within its cutoff when
     /// it published it.
     fn certificate_valid(&self, cutoffs: &BTreeMap<Id, Cutoff>, id: &Id) -> bool {
-        self.certificates
-            .get(id)
-            .is_some_and(
-                |(certificate, published)| match (certificate.issuer, published) {
-                    (Issuer::Root, _) => true,
-                    (Issuer::Admin(_), Some((author, seq))) => Self::within(cutoffs, author, *seq),
-                    (Issuer::Admin(_), None) => false,
-                },
-            )
+        let Some((certificate, published)) = self.certificates.get(id) else {
+            return false;
+        };
+        if self.lone_renewals.contains(id)
+            && published
+                .as_ref()
+                .is_some_and(|at| self.needed_cosigner(cutoffs, certificate, at))
+        {
+            return false;
+        }
+        match (certificate.issuer, published) {
+            (Issuer::Root, _) => true,
+            (Issuer::Admin(_), Some(at)) => Self::within(cutoffs, at),
+            (Issuer::Admin(_), None) => false,
+        }
+    }
+
+    /// An admin renewing itself needs a co-signature once it had added
+    /// another device of its owner that is still a member: a stolen admin
+    /// cannot renew itself alone.
+    fn needed_cosigner(
+        &self,
+        cutoffs: &BTreeMap<Id, Cutoff>,
+        certificate: &Certificate,
+        at: &At,
+    ) -> bool {
+        self.facts.values().any(|(fact, added)| {
+            matches!(fact.kind, FactKind::Add { .. })
+                && added.author == certificate.device
+                && added.seq < at.seq
+                && fact.device != certificate.device
+                && !cutoffs.contains_key(&fact.device)
+                && self.principal_of(&fact.device) == Some(certificate.principal)
+        })
     }
 
     /// The member set: every device with a valid root-issued admin
@@ -385,8 +465,9 @@ impl Device {
             .filter(|(fact, held)| match fact.kind {
                 FactKind::Add { certificate } => {
                     self.is_admin_device(&held.author)
-                        && Self::within(&cutoffs, &held.author, held.seq)
+                        && Self::within(&cutoffs, held)
                         && self.certificate_valid(&cutoffs, &certificate)
+                        && self.adds_by(&held.author, held.seq) <= self.allowance(&held.author)
                 }
                 _ => cutoffs.contains_key(&fact.device),
             })
@@ -459,6 +540,7 @@ impl Device {
             }
         }
         self.check_restored();
+        self.finish_self_renewal(store)?;
         Ok(accepted)
     }
 
@@ -570,14 +652,7 @@ impl Device {
             Kind::SenderKey => self.apply_sender_key(&payload)?,
             Kind::Forward => self.apply_forward(&payload)?,
             Kind::Join => true,
-            Kind::RenewalRequest => {
-                // This device's own requests are held from when it wrote
-                // them, so one read here was made by someone else.
-                if payload.author == self.me.device {
-                    self.alarms.insert(Alarm::Hijack);
-                }
-                true
-            }
+            Kind::RenewalRequest => self.apply_renewal(&payload)?,
             Kind::Op | Kind::Snapshot | Kind::Checkpoint | Kind::Policy => {
                 self.apply_content(&payload)?
             }
@@ -590,6 +665,43 @@ impl Device {
             }
         }
         Ok(accepted)
+    }
+
+    fn apply_renewal(&mut self, payload: &Payload) -> Result<bool> {
+        // This device's own requests are held from when it wrote them, so
+        // one read here was made by someone else.
+        if payload.author == self.me.device {
+            self.alarms.insert(Alarm::Hijack);
+            return Ok(true);
+        }
+        match Renewal::decode(&payload.body)? {
+            Renewal::Member(_) => {}
+            Renewal::Admin { certificate, .. } => {
+                let mine = self.my_certificate()?;
+                ensure!(
+                    certificate.device == payload.author && certificate.principal == mine.principal,
+                    "only this owner's admin asks this device to co-sign"
+                );
+                self.approvals.insert(certificate.id, certificate);
+            }
+            Renewal::Cosign {
+                certificate,
+                signature,
+            } => {
+                if let Some((
+                    Renewal::Admin {
+                        certificate: proposed,
+                        ..
+                    },
+                    cosigner,
+                )) = &mut self.proposal
+                    && proposed.id == certificate
+                {
+                    *cosigner = Some((payload.author_cert, signature));
+                }
+            }
+        }
+        Ok(true)
     }
 
     fn record_position(&mut self, payload: &Payload, hash: Hash) {
@@ -642,7 +754,14 @@ impl Device {
         let certificate = &issued.certificate;
         let for_me =
             certificate.device == self.me.device && !self.originated.contains(&certificate.id);
-        self.accept_certificate(&issued, Some((payload.author, payload.seq)))?;
+        self.accept_certificate(
+            &issued,
+            Some(At {
+                author: payload.author,
+                seq: payload.seq,
+                hash: payload.hash(),
+            }),
+        )?;
         self.certificate_objects
             .insert(issued.certificate.id, payload.hash());
         if for_me {
@@ -693,7 +812,7 @@ impl Device {
     fn accept_certificate(
         &mut self,
         issued: &IssuedCertificate,
-        published: Option<(Id, u64)>,
+        published: Option<At>,
     ) -> Result<()> {
         let genesis = self
             .genesis
@@ -701,6 +820,12 @@ impl Device {
             .ok_or_else(|| anyhow!("no genesis yet"))?;
         let known = |id: &Id| self.certificate(id).cloned();
         issued.verify(genesis, &known)?;
+        if matches!(
+            issued.issuance,
+            Issuance::SelfRenewal { cosigner: None, .. }
+        ) {
+            self.lone_renewals.insert(issued.certificate.id);
+        }
         self.certificates.insert(
             issued.certificate.id,
             (issued.certificate.clone(), published),
@@ -742,6 +867,7 @@ impl Device {
                 At {
                     author: payload.author,
                     seq: payload.seq,
+                    hash,
                 },
             ),
         );
@@ -899,13 +1025,21 @@ impl Device {
         }
     }
 
-    /// Content accepted and still valid: written within its author's cutoff.
+    /// Content accepted and still valid: written within its author's cutoff,
+    /// by an author not quarantined for a fork.
     #[must_use]
     pub fn content(&self) -> Vec<&Content> {
         let cutoffs = self.cutoffs();
         self.content
             .values()
-            .filter(|content| Self::within(&cutoffs, &content.payload.author, content.payload.seq))
+            .filter(|content| {
+                let at = At {
+                    author: content.payload.author,
+                    seq: content.payload.seq,
+                    hash: content.hash,
+                };
+                Self::within(&cutoffs, &at) && !self.alarms.contains(&Alarm::Fork(at.author))
+            })
             .collect()
     }
 
@@ -1127,6 +1261,10 @@ impl Device {
             "making a device an admin is a root action"
         );
         ensure!(
+            self.adds_by(&self.me.device, u64::MAX) < self.allowance(&self.me.device),
+            "this admin has used its mint allowance: root must grant more"
+        );
+        ensure!(
             lifetime != Lifetime::Admin,
             "members do not get the admin lifetime"
         );
@@ -1151,34 +1289,46 @@ impl Device {
         let id = certificate.id;
         let issued = IssuedCertificate::by_admin(certificate, &self.me.signing)?;
         let mut to = self.members_except(&keys.device);
-        let object = self.write_control(store, Kind::Certificate, &issued.encode(), &to)?;
-        self.certificates.insert(
-            id,
-            (
-                issued.certificate.clone(),
-                Some((self.me.device, self.seq.saturating_sub(1))),
-            ),
-        );
-        self.certificate_objects.insert(id, object);
+        self.publish_certificate(store, &issued, &to)?;
         let fact = Fact {
             device: keys.device,
             kind: FactKind::Add { certificate: id },
             endorsements: Vec::new(),
         };
         to.push(keys.device);
-        let hash = self.write_control(store, Kind::Fact, &fact.encode(), &to)?;
-        self.facts.insert(
-            hash,
-            (
-                fact,
-                At {
-                    author: self.me.device,
-                    seq: self.seq.saturating_sub(1),
-                },
-            ),
-        );
+        self.publish_fact(store, fact, &to)?;
         self.send_join(store, keys.device)?;
         Ok(id)
+    }
+
+    /// Where the object this device wrote last sits.
+    const fn last_written(&self, hash: Hash) -> At {
+        At {
+            author: self.me.device,
+            seq: self.seq.saturating_sub(1),
+            hash,
+        }
+    }
+
+    fn publish_certificate(
+        &mut self,
+        store: &Store,
+        issued: &IssuedCertificate,
+        to: &[Id],
+    ) -> Result<Hash> {
+        let object = self.write_control(store, Kind::Certificate, &issued.encode(), to)?;
+        let at = self.last_written(object);
+        self.accept_certificate(issued, Some(at))?;
+        self.certificate_objects
+            .insert(issued.certificate.id, object);
+        Ok(object)
+    }
+
+    fn publish_fact(&mut self, store: &Store, fact: Fact, to: &[Id]) -> Result<Hash> {
+        let hash = self.write_control(store, Kind::Fact, &fact.encode(), to)?;
+        let at = self.last_written(hash);
+        self.facts.insert(hash, (fact, at));
+        Ok(hash)
     }
 
     fn send_join(&mut self, store: &Store, device: Id) -> Result<()> {
@@ -1236,17 +1386,7 @@ impl Device {
         };
         // The removed device never receives another control object.
         let to = self.members_except(&device);
-        let hash = self.write_control(store, Kind::Fact, &fact.encode(), &to)?;
-        self.facts.insert(
-            hash,
-            (
-                fact,
-                At {
-                    author: self.me.device,
-                    seq: self.seq.saturating_sub(1),
-                },
-            ),
-        );
+        let hash = self.publish_fact(store, fact, &to)?;
         Ok(hash)
     }
 
@@ -1320,15 +1460,7 @@ impl Device {
         let id = certificate.id;
         let issued = IssuedCertificate::by_admin(certificate, &self.me.signing)?;
         let to: Vec<Id> = self.view().keys().copied().collect();
-        let object = self.write_control(store, Kind::Certificate, &issued.encode(), &to)?;
-        self.certificates.insert(
-            id,
-            (
-                issued.certificate.clone(),
-                Some((self.me.device, self.seq.saturating_sub(1))),
-            ),
-        );
-        self.certificate_objects.insert(id, object);
+        self.publish_certificate(store, &issued, &to)?;
         Ok(id)
     }
 
@@ -1352,7 +1484,12 @@ impl Device {
             .filter(|cert| cert.role == Role::Admin)
             .map(|cert| cert.device)
             .collect();
-        self.write_control(store, Kind::RenewalRequest, &request.encode(), &admins)?;
+        self.write_control(
+            store,
+            Kind::RenewalRequest,
+            &Renewal::Member(request).encode(),
+            &admins,
+        )?;
         self.renewal = Some((signing, identity));
         Ok(())
     }
@@ -1366,7 +1503,10 @@ impl Device {
             .filter(|payload| {
                 payload.kind == Kind::RenewalRequest && payload.author != self.me.device
             })
-            .filter_map(|payload| RenewalRequest::decode(&payload.body).ok())
+            .filter_map(|payload| match Renewal::decode(&payload.body) {
+                Ok(Renewal::Member(request)) => Some(request),
+                _ => None,
+            })
             .filter(|request| {
                 !self
                     .certificates
@@ -1374,6 +1514,201 @@ impl Device {
                     .any(|(cert, _)| cert.renews == Some(request.certificate))
             })
             .collect()
+    }
+
+    /// Renews this admin's own certificate with fresh keys. A vault with no
+    /// other device of the same owner renews at once; otherwise the new
+    /// certificate goes to those devices for one of them to approve, and is
+    /// published by [`sync`](Self::sync) once the co-signature arrives.
+    /// Returns whether the renewal is already done.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this device is not an admin or a write fails.
+    pub fn request_self_renewal(&mut self, store: &Store, now: u64) -> Result<bool> {
+        self.require_admin()?;
+        let current = self.my_certificate()?.clone();
+        let signing = SigningKey::generate();
+        let identity = pq::Identity::generate();
+        let certificate = Certificate {
+            id: new_id(),
+            signing_key: signing.verifying_key(),
+            recipient: identity.to_public(),
+            renews: Some(current.id),
+            not_before: now,
+            not_after: now.saturating_add(Lifetime::Admin.max_seconds()),
+            ..current.clone()
+        };
+        let proposal = Renewal::admin(certificate, &self.me.signing, &signing)?;
+        let owners: Vec<Id> = self
+            .view()
+            .values()
+            .filter(|cert| cert.principal == current.principal && cert.device != self.me.device)
+            .map(|cert| cert.device)
+            .collect();
+        self.renewal = Some((signing, identity));
+        if owners.is_empty() {
+            self.proposal = Some((proposal, None));
+            self.finish_self_renewal(store)?;
+            return Ok(true);
+        }
+        self.write_control(store, Kind::RenewalRequest, &proposal.encode(), &owners)?;
+        self.proposal = Some((proposal, None));
+        Ok(false)
+    }
+
+    /// Publishes this admin's renewal once it may: co-signed, or alone when
+    /// the owner has no other device.
+    fn finish_self_renewal(&mut self, store: &Store) -> Result<()> {
+        let Some((Renewal::Admin { certificate, .. }, cosigner)) = &self.proposal else {
+            return Ok(());
+        };
+        let alone = !self.view().values().any(|cert| {
+            cert.principal == certificate.principal && cert.device != certificate.device
+        });
+        if cosigner.is_none() && !alone {
+            return Ok(());
+        }
+        let Some((proposal, cosigner)) = self.proposal.take() else {
+            return Ok(());
+        };
+        let issued = proposal.issue(cosigner)?;
+        let to: Vec<Id> = self.view().keys().copied().collect();
+        self.publish_certificate(store, &issued, &to)?;
+        self.adopt(&issued.certificate);
+        Ok(())
+    }
+
+    /// Renewals of this owner's admin waiting for approval on this device.
+    #[must_use]
+    pub fn approvals(&self) -> Vec<&Certificate> {
+        self.approvals.values().collect()
+    }
+
+    /// Approves an admin's renewal: one touch, once a year.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there is no such request or the write fails.
+    pub fn approve(&mut self, store: &Store, certificate: &Id) -> Result<()> {
+        self.refuse_if_alarmed()?;
+        let proposed = self
+            .approvals
+            .remove(certificate)
+            .ok_or_else(|| anyhow!("no renewal waits for approval"))?;
+        let signature = crate::vault::authority::cosign(&proposed, &self.me.signing)?;
+        let body = Renewal::Cosign {
+            certificate: proposed.id,
+            signature,
+        };
+        self.write_control(
+            store,
+            Kind::RenewalRequest,
+            &body.encode(),
+            &[proposed.device],
+        )?;
+        Ok(())
+    }
+
+    // ---------------------------------------------------------- root acts --
+
+    /// The admin certificate a root ceremony signs for a device: each sheet
+    /// in turn signs its encoding with [`Endorsement::sign`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this device has no certificate.
+    pub fn admin_certificate(
+        &self,
+        keys: &pairing::Keys,
+        principal: Id,
+        now: u64,
+    ) -> Result<Certificate> {
+        let scope = self.my_certificate()?.scope.clone();
+        Ok(Certificate {
+            id: new_id(),
+            genesis: self.genesis_hash,
+            principal,
+            device: keys.device,
+            signing_key: keys.signing_key.clone(),
+            recipient: keys.recipient.clone(),
+            authenticators: Vec::new(),
+            role: Role::Admin,
+            scope,
+            lifetime: Lifetime::Admin,
+            issuer: Issuer::Root,
+            presence_key: None,
+            renews: None,
+            not_before: now,
+            not_after: now.saturating_add(Lifetime::Admin.max_seconds()),
+        })
+    }
+
+    /// Publishes an admin certificate two roots signed, and sends the new
+    /// admin a join package when it is not a member yet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the signatures are not two distinct roots'.
+    pub fn publish_admin(
+        &mut self,
+        store: &Store,
+        certificate: Certificate,
+        endorsements: Vec<Endorsement>,
+    ) -> Result<Id> {
+        self.refuse_if_alarmed()?;
+        let issued = IssuedCertificate {
+            certificate,
+            issuance: Issuance::Root(endorsements),
+        };
+        let genesis = self
+            .genesis
+            .as_ref()
+            .ok_or_else(|| anyhow!("no genesis yet"))?;
+        issued.verify(genesis, &|id: &Id| self.certificate(id).cloned())?;
+        let device = issued.certificate.device;
+        let new = !self.members().contains(&device);
+        let mut to: Vec<Id> = self.view().keys().copied().collect();
+        if new {
+            to.push(device);
+        }
+        // Known before it is sealed to its own device.
+        self.accept_certificate(&issued, None)?;
+        self.publish_certificate(store, &issued, &to)?;
+        if new {
+            self.send_join(store, device)?;
+        }
+        Ok(issued.certificate.id)
+    }
+
+    /// The revocation a root ceremony signs for an admin: its cutoff is the
+    /// last object this device has seen from it. Each sheet in turn signs
+    /// [`Fact::statement`].
+    #[must_use]
+    pub fn admin_revocation(&self, admin: Id) -> Fact {
+        let (seq, hash) = self.heads.get(&admin).copied().unwrap_or((0, [0; 48]));
+        Fact {
+            device: admin,
+            kind: FactKind::AdminRevoke(Cutoff { seq, hash }),
+            endorsements: Vec::new(),
+        }
+    }
+
+    /// Publishes a fact two roots signed: an admin revocation, a removal of
+    /// an admin, or a mint grant. A device it takes out never receives it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fact lacks two root signatures.
+    pub fn publish_root_fact(&mut self, store: &Store, fact: Fact) -> Result<Hash> {
+        self.refuse_if_alarmed()?;
+        ensure!(self.rooted(&fact), "the fact lacks two root signatures");
+        let to = if fact.cutoff().is_some() {
+            self.members_except(&fact.device)
+        } else {
+            self.view().keys().copied().collect()
+        };
+        self.publish_fact(store, fact, &to)
     }
 
     /// Writes a checkpoint: the heads seen and the facts held.
@@ -1764,5 +2099,184 @@ mod tests {
                 .write_content(&store, Kind::Op, b"reader".to_vec())
                 .is_err()
         );
+    }
+
+    fn endorse(message: &[u8]) -> Vec<Endorsement> {
+        let keys = roots().keys;
+        // One sheet at a time: each root key signs on its own.
+        vec![
+            Endorsement::sign(&keys[0], 0, message).unwrap(),
+            Endorsement::sign(&keys[2], 2, message).unwrap(),
+        ]
+    }
+
+    fn join_as(store: &Store, admin: &Device, me: Me) -> Device {
+        let (start, commit) = AdminStart::new(&admin.me().keys(), admin.genesis_hash());
+        let (reply_state, reply) = DeviceReply::new(&me.keys(), &commit).unwrap();
+        let (_, reveal) = start.reveal(&reply).unwrap();
+        let mut device = Device::joining(me, &reply_state.check(&reveal).unwrap());
+        device.sync(store).unwrap();
+        device
+    }
+
+    #[test]
+    fn an_admin_adds_only_what_its_allowance_permits_until_root_grants_more() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        for _ in 0..4 {
+            pair(&store, &mut admin, Role::Reader);
+        }
+        let extra = Me::generate();
+        assert!(
+            admin
+                .add(
+                    &store,
+                    &extra.keys(),
+                    PRINCIPAL,
+                    Role::Reader,
+                    Lifetime::Desktop,
+                    NOW
+                )
+                .is_err()
+        );
+
+        let mut grant = Fact {
+            device: admin.me().device,
+            kind: FactKind::MintAllowance(1),
+            endorsements: Vec::new(),
+        };
+        assert!(admin.publish_root_fact(&store, grant.clone()).is_err());
+        grant.endorsements = endorse(&grant.statement());
+        admin.publish_root_fact(&store, grant).unwrap();
+        admin
+            .add(
+                &store,
+                &extra.keys(),
+                PRINCIPAL,
+                Role::Reader,
+                Lifetime::Desktop,
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(admin.members().len(), 6);
+    }
+
+    #[test]
+    fn root_adds_an_admin_and_later_revokes_it() {
+        let World { _scratch, store } = world();
+        let mut first = create(&store);
+        let me = Me::generate();
+        let certificate = first.admin_certificate(&me.keys(), PRINCIPAL, NOW).unwrap();
+        let endorsements = endorse(&certificate.encode());
+        first
+            .publish_admin(&store, certificate, endorsements)
+            .unwrap();
+        let mut second = join_as(&store, &first, me);
+        assert_eq!(second.members().len(), 2);
+
+        let early = pair(&store, &mut second, Role::Reader);
+        first.sync(&store).unwrap();
+        assert!(first.members().contains(&early.me().device));
+
+        let mut revocation = first.admin_revocation(second.me().device);
+        revocation.endorsements = endorse(&revocation.statement());
+        first.publish_root_fact(&store, revocation).unwrap();
+
+        // The revoked admin does not know yet; what it adds now is void.
+        let late = pair(&store, &mut second, Role::Reader);
+        first.sync(&store).unwrap();
+        let members = first.members();
+        assert!(!members.contains(&second.me().device));
+        assert!(members.contains(&early.me().device));
+        assert!(!members.contains(&late.me().device));
+    }
+
+    #[test]
+    fn a_lone_admin_renews_itself_at_once() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        let before = admin.me().certificate;
+        assert!(admin.request_self_renewal(&store, NOW + 100).unwrap());
+        assert_ne!(admin.me().certificate, before);
+        assert_eq!(admin.me().retired.len(), 1);
+        admin
+            .write_content(&store, Kind::Op, b"after renewal".to_vec())
+            .unwrap();
+        let laptop = pair(&store, &mut admin, Role::Reader);
+        assert!(texts(&laptop).contains("after renewal"));
+    }
+
+    #[test]
+    fn an_admin_with_another_device_renews_only_with_its_approval() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        let before = admin.me().certificate;
+
+        assert!(!admin.request_self_renewal(&store, NOW + 100).unwrap());
+        admin.sync(&store).unwrap();
+        assert_eq!(admin.me().certificate, before);
+
+        laptop.sync(&store).unwrap();
+        let waiting: Vec<Id> = laptop.approvals().iter().map(|cert| cert.id).collect();
+        assert_eq!(waiting.len(), 1);
+        laptop.approve(&store, &waiting[0]).unwrap();
+
+        admin.sync(&store).unwrap();
+        assert_eq!(admin.me().certificate, Some(waiting[0]));
+        laptop.sync(&store).unwrap();
+        assert_eq!(laptop.view()[&admin.me().device].id, waiting[0]);
+
+        admin
+            .write_content(&store, Kind::Op, b"renewed admin".to_vec())
+            .unwrap();
+        laptop.sync(&store).unwrap();
+        assert!(texts(&laptop).contains("renewed admin"));
+    }
+
+    #[test]
+    fn a_stolen_admin_cannot_renew_itself_alone() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        let current = admin.my_certificate().unwrap().clone();
+        let new = SigningKey::generate();
+        let forged = Certificate {
+            id: new_id(),
+            signing_key: new.verifying_key(),
+            renews: Some(current.id),
+            not_before: NOW + 100,
+            not_after: NOW + 100 + Lifetime::Admin.max_seconds(),
+            ..current.clone()
+        };
+        let issued = Renewal::admin(forged, &admin.me.signing, &new)
+            .unwrap()
+            .issue(None)
+            .unwrap();
+        let to: Vec<Id> = admin.view().keys().copied().collect();
+        admin.publish_certificate(&store, &issued, &to).unwrap();
+
+        laptop.sync(&store).unwrap();
+        assert_eq!(laptop.view()[&admin.me().device].id, current.id);
+        assert_eq!(admin.view()[&admin.me().device].id, current.id);
+    }
+
+    #[test]
+    fn a_forked_writer_is_quarantined() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        laptop
+            .write_content(&store, Kind::Op, b"first".to_vec())
+            .unwrap();
+        // Two different objects at one position of the laptop's chain.
+        laptop.seq -= 1;
+        laptop
+            .write_content(&store, Kind::Op, b"second".to_vec())
+            .unwrap();
+
+        admin.sync(&store).unwrap();
+        assert!(admin.alarms().contains(&Alarm::Fork(laptop.me().device)));
+        assert!(texts(&admin).is_empty());
     }
 }

@@ -725,19 +725,11 @@ impl IssuedCertificate {
         new: &SigningKey,
         cosigner: Option<(Id, &SigningKey)>,
     ) -> Result<Self> {
-        let message = certificate.encode();
         let cosigner = match cosigner {
-            Some((id, key)) => Some((id, key.sign(&message, CERT_CONTEXT)?)),
+            Some((id, key)) => Some((id, cosign(&certificate, key)?)),
             None => None,
         };
-        Ok(Self {
-            certificate,
-            issuance: Issuance::SelfRenewal {
-                old: old.sign(&message, RENEWAL_CONTEXT)?,
-                new: new.sign(&message, RENEWAL_CONTEXT)?,
-                cosigner,
-            },
-        })
+        Renewal::admin(certificate, old, new)?.issue(cosigner)
     }
 
     /// The object body.
@@ -893,6 +885,16 @@ impl IssuedCertificate {
     }
 }
 
+/// A co-signature by another device of the same person on an admin's
+/// renewal: "Approve renewal of laptop x1?".
+///
+/// # Errors
+///
+/// Returns an error when the system has no randomness.
+pub fn cosign(certificate: &Certificate, key: &SigningKey) -> Result<Vec<u8>> {
+    key.sign(&certificate.encode(), CERT_CONTEXT)
+}
+
 // ---------------------------------------------------------------- renewal --
 
 /// A device asking for its certificate to be renewed with fresh keys,
@@ -1030,6 +1032,122 @@ impl RenewalRequest {
             old,
             new,
         })
+    }
+}
+
+/// The body of a renewal-request object.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Renewal {
+    /// A member asks an admin for a certificate for its new keys.
+    Member(RenewalRequest),
+    /// An admin asks another device of its owner to co-sign its renewal:
+    /// the new certificate, signed with its old and new keys.
+    Admin {
+        /// The proposed certificate.
+        certificate: Certificate,
+        /// The old key's signature.
+        old: Vec<u8>,
+        /// The new key's signature.
+        new: Vec<u8>,
+    },
+    /// The co-signature, sent back to the admin.
+    Cosign {
+        /// The proposed certificate's id.
+        certificate: Id,
+        /// The co-signature over it.
+        signature: Vec<u8>,
+    },
+}
+
+impl Renewal {
+    /// An admin's proposal, signed with both keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the system has no randomness.
+    pub fn admin(certificate: Certificate, old: &SigningKey, new: &SigningKey) -> Result<Self> {
+        let message = certificate.encode();
+        Ok(Self::Admin {
+            old: old.sign(&message, RENEWAL_CONTEXT)?,
+            new: new.sign(&message, RENEWAL_CONTEXT)?,
+            certificate,
+        })
+    }
+
+    /// Turns an admin's proposal into its certificate, with the
+    /// co-signature when there is one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this is not an admin's proposal.
+    pub fn issue(self, cosigner: Option<(Id, Vec<u8>)>) -> Result<IssuedCertificate> {
+        let Self::Admin {
+            certificate,
+            old,
+            new,
+        } = self
+        else {
+            bail!("not an admin's renewal")
+        };
+        Ok(IssuedCertificate {
+            certificate,
+            issuance: Issuance::SelfRenewal { old, new, cosigner },
+        })
+    }
+
+    /// The object body.
+    #[must_use]
+    pub fn encode(&self) -> Vec<u8> {
+        let mut out = Writer::default();
+        match self {
+            Self::Member(request) => {
+                out.u8(1);
+                out.bytes(&request.encode());
+            }
+            Self::Admin {
+                certificate,
+                old,
+                new,
+            } => {
+                out.u8(2);
+                out.bytes(&certificate.encode());
+                out.bytes(old);
+                out.bytes(new);
+            }
+            Self::Cosign {
+                certificate,
+                signature,
+            } => {
+                out.u8(3);
+                out.fixed(certificate);
+                out.bytes(signature);
+            }
+        }
+        out.finish()
+    }
+
+    /// Reads the object body.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when it is malformed.
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        let mut input = Reader(bytes);
+        let renewal = match input.u8()? {
+            1 => Self::Member(RenewalRequest::decode(input.bytes()?)?),
+            2 => Self::Admin {
+                certificate: Certificate::decode(input.bytes()?)?,
+                old: input.bytes()?.to_vec(),
+                new: input.bytes()?.to_vec(),
+            },
+            3 => Self::Cosign {
+                certificate: input.fixed()?,
+                signature: input.bytes()?.to_vec(),
+            },
+            other => bail!("unknown renewal {other}"),
+        };
+        input.finish()?;
+        Ok(renewal)
     }
 }
 
@@ -1286,5 +1404,30 @@ pub(crate) mod tests {
                 .verify(&current)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn every_renewal_body_round_trips() {
+        let genesis = roots().genesis;
+        let old = SigningKey::generate();
+        let new = SigningKey::generate();
+        let current = certificate(&genesis, Role::Writer, Issuer::Admin([1; 16]), &old);
+        let member = Renewal::Member(
+            RenewalRequest::new(&current, &old, &new, pq::Identity::generate().to_public())
+                .unwrap(),
+        );
+        let admin = Renewal::admin(
+            certificate(&genesis, Role::Admin, Issuer::Root, &new),
+            &old,
+            &new,
+        )
+        .unwrap();
+        let cosign = Renewal::Cosign {
+            certificate: [3; 16],
+            signature: vec![1, 2],
+        };
+        for body in [member, admin, cosign] {
+            assert_eq!(Renewal::decode(&body.encode()).unwrap(), body);
+        }
     }
 }
