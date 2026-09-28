@@ -102,6 +102,10 @@ windows-sys = { version = "0.61", optional = true, features = [
     "Win32_System_WindowsProgramming",
 ] }
 
+[dev-dependencies]
+# Property-based tests of the vault core's fold laws.
+proptest = "1"
+
 [profile.dev]
 debug = true
 
