@@ -3013,7 +3013,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
-            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
             [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
@@ -3022,15 +3022,20 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;recovery;print' {
+            [CompletionResult]::new('--queue', '--queue', [CompletionResultType]::ParameterName, 'The printer to use, rather than the default')
+            [CompletionResult]::new('--pdf', '--pdf', [CompletionResultType]::ParameterName, 'Write them to a new PDF file, to print and then delete')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--printer', '--printer', [CompletionResultType]::ParameterName, 'Print them with lp, from memory')
             [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
         'txc;vault;recovery;check' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'The root mark printed on the sheet: checks it with nothing secret')
+            [CompletionResult]::new('--share', '--share', [CompletionResultType]::ParameterName, 'The share mark printed on the sheet')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
@@ -3079,7 +3084,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;vault;recovery;help' {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
-            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
             [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
@@ -3624,7 +3629,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;vault;help;recovery' {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
-            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
             [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
@@ -4522,7 +4527,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;help;vault;recovery' {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
-            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
             [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')

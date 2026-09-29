@@ -868,12 +868,53 @@ pub fn command() -> Command {
                 .subcommand(
                     Command::new("print")
                         .about("Show the three sheets and the card, one at a time, to write down")
-                        .arg(Arg::new("VAULT").help("The synced vault")),
+                        .long_about(
+                            "Show the three sheets and the card, one at a time, to write down.\n\n\
+                             --printer prints them instead, straight from memory to a local \
+                             printer (a network or office printer may keep copies). --pdf \
+                             writes them to a file you choose, which status asks you to delete \
+                             once printed.",
+                        )
+                        .arg(Arg::new("VAULT").help("The synced vault"))
+                        .arg(
+                            Arg::new("printer")
+                                .long("printer")
+                                .action(ArgAction::SetTrue)
+                                .conflicts_with("pdf")
+                                .help("Print them with lp, from memory"),
+                        )
+                        .arg(
+                            Arg::new("queue")
+                                .long("queue")
+                                .value_name("PRINTER")
+                                .requires("printer")
+                                .help("The printer to use, rather than the default"),
+                        )
+                        .arg(
+                            Arg::new("pdf")
+                                .long("pdf")
+                                .value_name("FILE")
+                                .help("Write them to a new PDF file, to print and then delete"),
+                        ),
                 )
                 .subcommand(
                     Command::new("check")
-                        .about("Check one sheet and the card against the vault")
-                        .arg(Arg::new("VAULT").help("The synced vault")),
+                        .about("Check one sheet and the card against the vault, or a sheet's printed marks alone")
+                        .arg(Arg::new("VAULT").help("The synced vault"))
+                        .arg(
+                            Arg::new("root")
+                                .long("root")
+                                .value_name("MARK")
+                                .requires("share")
+                                .help("The root mark printed on the sheet: checks it with nothing secret"),
+                        )
+                        .arg(
+                            Arg::new("share")
+                                .long("share")
+                                .value_name("MARK")
+                                .requires("root")
+                                .help("The share mark printed on the sheet"),
+                        ),
                 )
                 .subcommand(
                     Command::new("drill")
@@ -3493,6 +3534,10 @@ mod tests {
             "more",
             "receipt",
             "verify",
+            "queue",
+            "pdf",
+            "root",
+            "share",
             "output",
             "folder",
             "name",

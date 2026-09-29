@@ -2807,7 +2807,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
             cand print 'Show the three sheets and the card, one at a time, to write down'
-            cand check 'Check one sheet and the card against the vault'
+            cand check 'Check one sheet and the card against the vault, or a sheet''s printed marks alone'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
             cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'
@@ -2815,14 +2815,19 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;recovery;print'= {
+            cand --queue 'The printer to use, rather than the default'
+            cand --pdf 'Write them to a new PDF file, to print and then delete'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --printer 'Print them with lp, from memory'
             cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
-            cand -h 'Print help'
-            cand --help 'Print help'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
         }
         &'txc;vault;recovery;check'= {
+            cand --root 'The root mark printed on the sheet: checks it with nothing secret'
+            cand --share 'The share mark printed on the sheet'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2866,7 +2871,7 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;recovery;help'= {
             cand print 'Show the three sheets and the card, one at a time, to write down'
-            cand check 'Check one sheet and the card against the vault'
+            cand check 'Check one sheet and the card against the vault, or a sheet''s printed marks alone'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
             cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'
@@ -3326,7 +3331,7 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;help;recovery'= {
             cand print 'Show the three sheets and the card, one at a time, to write down'
-            cand check 'Check one sheet and the card against the vault'
+            cand check 'Check one sheet and the card against the vault, or a sheet''s printed marks alone'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
             cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'
@@ -4002,7 +4007,7 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;help;vault;recovery'= {
             cand print 'Show the three sheets and the card, one at a time, to write down'
-            cand check 'Check one sheet and the card against the vault'
+            cand check 'Check one sheet and the card against the vault, or a sheet''s printed marks alone'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
             cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'

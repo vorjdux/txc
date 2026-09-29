@@ -3262,17 +3262,22 @@ _arguments "${_arguments_options[@]}" : \
         case $line[1] in
             (print)
 _arguments "${_arguments_options[@]}" : \
+'--queue=[The printer to use, rather than the default]:PRINTER:_default' \
+'--pdf=[Write them to a new PDF file, to print and then delete]:FILE:_default' \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
 '--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
 '--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'(--pdf)--printer[Print them with lp, from memory]' \
 '--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
-'-h[Print help]' \
-'--help[Print help]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 '::VAULT -- The synced vault:_default' \
 && ret=0
 ;;
 (check)
 _arguments "${_arguments_options[@]}" : \
+'--root=[The root mark printed on the sheet\: checks it with nothing secret]:MARK:_default' \
+'--share=[The share mark printed on the sheet]:MARK:_default' \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
 '--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
 '--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
@@ -6732,7 +6737,7 @@ _txc__subcmd__help__subcmd__vault__subcmd__recipients_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__recovery_commands() {
     local commands; commands=(
 'print:Show the three sheets and the card, one at a time, to write down' \
-'check:Check one sheet and the card against the vault' \
+'check:Check one sheet and the card against the vault, or a sheet'\''s printed marks alone' \
 'drill:Rehearse a full recovery with two sheets and the card, keeping nothing' \
 'key:Print the recovery key from two sheets and the card, to read a backup with age' \
 'reissue:Replace the sheets and the card, after one was lost or seen by someone else' \
@@ -8153,7 +8158,7 @@ _txc__subcmd__vault__subcmd__help__subcmd__recipients_commands() {
 _txc__subcmd__vault__subcmd__help__subcmd__recovery_commands() {
     local commands; commands=(
 'print:Show the three sheets and the card, one at a time, to write down' \
-'check:Check one sheet and the card against the vault' \
+'check:Check one sheet and the card against the vault, or a sheet'\''s printed marks alone' \
 'drill:Rehearse a full recovery with two sheets and the card, keeping nothing' \
 'key:Print the recovery key from two sheets and the card, to read a backup with age' \
 'reissue:Replace the sheets and the card, after one was lost or seen by someone else' \
@@ -8330,7 +8335,7 @@ _txc__subcmd__vault__subcmd__recipients_commands() {
 _txc__subcmd__vault__subcmd__recovery_commands() {
     local commands; commands=(
 'print:Show the three sheets and the card, one at a time, to write down' \
-'check:Check one sheet and the card against the vault' \
+'check:Check one sheet and the card against the vault, or a sheet'\''s printed marks alone' \
 'drill:Rehearse a full recovery with two sheets and the card, keeping nothing' \
 'key:Print the recovery key from two sheets and the card, to read a backup with age' \
 'reissue:Replace the sheets and the card, after one was lost or seen by someone else' \
@@ -8353,7 +8358,7 @@ _txc__subcmd__vault__subcmd__recovery__subcmd__drill_commands() {
 _txc__subcmd__vault__subcmd__recovery__subcmd__help_commands() {
     local commands; commands=(
 'print:Show the three sheets and the card, one at a time, to write down' \
-'check:Check one sheet and the card against the vault' \
+'check:Check one sheet and the card against the vault, or a sheet'\''s printed marks alone' \
 'drill:Rehearse a full recovery with two sheets and the card, keeping nothing' \
 'key:Print the recovery key from two sheets and the card, to read a backup with age' \
 'reissue:Replace the sheets and the card, after one was lost or seen by someone else' \

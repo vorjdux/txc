@@ -1596,7 +1596,7 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -l no-session -d 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -s h -l help -d 'Print help'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "print" -d 'Show the three sheets and the card, one at a time, to write down'
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "check" -d 'Check one sheet and the card against the vault'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "check" -d 'Check one sheet and the card against the vault, or a sheet\'s printed marks alone'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "drill" -d 'Rehearse a full recovery with two sheets and the card, keeping nothing'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "key" -d 'Print the recovery key from two sheets and the card, to read a backup with age'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "reissue" -d 'Replace the sheets and the card, after one was lost or seen by someone else'

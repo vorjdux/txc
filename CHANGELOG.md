@@ -29,6 +29,13 @@ All notable changes to txc are recorded here. The format follows
   their own before it stay removed. `txc vault list VAULT --removed` lists
   what can come back. After the 30 days a snapshot drops the removed values,
   so they no longer outlive the window.
+- **The kit on paper.** `txc vault recovery print --printer` prints the
+  sheets and the card with `lp` straight from memory, after warning that
+  network printers keep copies; `--pdf FILE` writes them to a new file only
+  you can read, and `status` asks you to delete it until it is gone. Each
+  sheet carries, in the clear, its root and share marks, and
+  `txc vault recovery check --root MARK --share MARK` confirms a sheet
+  belongs to the vault with nothing secret typed.
 - **Offline backups.** `txc vault backup --to DIR` writes one age file,
   sealed to the vault's recovery key and this device, holding the whole
   vault as documented JSON (`txc-backup-v1`), removed entries still inside

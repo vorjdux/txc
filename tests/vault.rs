@@ -89,6 +89,7 @@ impl Sandbox {
             // Debug builds print the recovery kit here instead of showing it
             // one sheet at a time at a terminal.
             .env("TXC_VAULT_TEST_KIT", "1")
+            .env("TXC_VAULT_TEST_LP", self.root.join("fake-lp"))
             // Debug builds take the swap's state from here: CI runners swap
             // to plain files, which would change what status says.
             .env("TXC_VAULT_TEST_SWAP", "safe")
@@ -2544,4 +2545,57 @@ fn an_offline_backup_opens_with_the_recovery_key_alone() {
     );
     // Remembered: the next backup needs no --to.
     succeeds(&sandbox.vault(&["backup"]));
+}
+
+#[cfg(unix)]
+#[test]
+fn the_kit_prints_from_memory_or_to_a_pdf_that_status_asks_to_delete() {
+    use std::os::unix::fs::PermissionsExt;
+    let sandbox = Sandbox::new("synced-kit-print");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let pdf = sandbox.root.join("kit.pdf");
+    succeeds(&sandbox.vault(&["recovery", "print", "--pdf", pdf.to_str().unwrap()]));
+    assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-1.4"));
+    assert_eq!(
+        std::fs::metadata(&pdf).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("still in") && !status.contains("not written down"),
+        "{status}"
+    );
+    std::fs::remove_file(&pdf).unwrap();
+    assert!(!succeeds(&sandbox.vault(&["status"])).contains("still in"));
+
+    // A second vault goes to the printer, through a stand-in for lp.
+    let lp = sandbox.root.join("fake-lp");
+    std::fs::write(&lp, "#!/bin/sh\ncat > \"$0.out\"\n").unwrap();
+    std::fs::set_permissions(&lp, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let other = sandbox.root.join("sync-other");
+    succeeds(&sandbox.vault(&["create", "other", "--folder", other.to_str().unwrap()]));
+    succeeds(&sandbox.vault(&["recovery", "print", "other", "--printer"]));
+    let printed = std::fs::read_to_string(sandbox.root.join("fake-lp.out")).unwrap();
+    assert!(
+        printed.contains("txc recovery sheet 3 of 3") && printed.contains("txc recovery card"),
+        "{printed}"
+    );
+    assert!(!succeeds(&sandbox.vault(&["status", "other"])).contains("not written down"));
+
+    // The marks printed on a sheet check it with nothing secret.
+    let marks = printed
+        .lines()
+        .find(|line| line.starts_with("Not secret"))
+        .unwrap();
+    let words: Vec<&str> = marks.split_whitespace().collect();
+    let root = words[words.iter().position(|w| *w == "root").unwrap() + 1];
+    let share = words[words.iter().position(|w| *w == "share").unwrap() + 1];
+    let checked = stderr(&sandbox.vault(&[
+        "recovery", "check", "other", "--root", root, "--share", share,
+    ]));
+    assert!(checked.contains("belongs to this vault"), "{checked}");
+    fails(&sandbox.vault(&[
+        "recovery", "check", "personal", "--root", root, "--share", share,
+    ]));
 }

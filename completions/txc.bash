@@ -12652,12 +12652,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__recovery__subcmd__check)
-            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --root --share --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --root)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --share)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --home)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
@@ -12842,12 +12850,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__recovery__subcmd__print)
-            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --printer --queue --pdf --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --queue)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --pdf)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --home)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

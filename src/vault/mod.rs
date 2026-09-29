@@ -65,6 +65,7 @@ mod home;
 pub mod import;
 pub mod keyholder;
 mod keyring;
+pub mod kitprint;
 pub mod local;
 pub mod model;
 pub mod object;

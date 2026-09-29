@@ -49,6 +49,7 @@ const ACKNOWLEDGED: &str = "acknowledged";
 const CHECKS: &str = "checks";
 const SNOOZED: &str = "snoozed";
 const REMINDED: &str = "reminded";
+const KIT_PDF: &str = "kit-pdf";
 const KEYSTORE_SERVICE: &str = "txc vault";
 const CARD_WORDS: usize = 8;
 const SHEETS: u8 = 3;
@@ -526,6 +527,7 @@ fn wipe(dir: &Path, device: &Id) {
         SNOOZED,
         REMINDED,
         "backup",
+        KIT_PDF,
         PLUGINS,
         ACKNOWLEDGED,
         FOLDER,
@@ -635,6 +637,27 @@ pub fn snooze(home: &Home, name: &str, keys: &[String], until: u64) -> Result<()
         .collect::<Vec<_>>()
         .join("\n");
     home::write_atomic(&dir(home, name).join(SNOOZED), text.as_bytes(), None)
+}
+
+/// Where a PDF of the recovery kit was written, which status asks to delete.
+#[must_use]
+pub fn kit_pdf(home: &Home, name: &str) -> Option<PathBuf> {
+    home::read_private(&dir(home, name).join(KIT_PDF), 4096, PRIVATE)
+        .ok()
+        .map(|bytes| PathBuf::from(String::from_utf8_lossy(&bytes).trim()))
+}
+
+/// Records where a PDF of the recovery kit was written.
+///
+/// # Errors
+///
+/// Returns an error when the write fails.
+pub fn record_kit_pdf(home: &Home, name: &str, path: &Path) -> Result<()> {
+    home::write_atomic(
+        &dir(home, name).join(KIT_PDF),
+        path.as_os_str().as_encoded_bytes(),
+        None,
+    )
 }
 
 /// When this device last reminded of a vault's yellow lines at unlock.

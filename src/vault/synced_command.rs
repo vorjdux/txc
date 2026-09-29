@@ -674,6 +674,12 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
             data_encoding::HEXLOWER.encode(&device[..4])
         ));
     }
+    if let Some(pdf) = synced::kit_pdf(home, name).filter(|path| path.exists()) {
+        lines.push(format!(
+            "● yellow  the recovery sheets are still in {} → print it, then delete it",
+            pdf.display()
+        ));
+    }
     if vault.kit_pending() {
         lines.push(format!(
             "● yellow  recovery sheets not written down   → txc vault recovery print {name}"
@@ -1950,6 +1956,48 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let name = context.which(args.get_one::<String>("VAULT"))?;
     let vault = context.open_quiet(&name)?;
     match verb {
+        "print" if args.get_flag("printer") || args.get_one::<String>("pdf").is_some() => {
+            let kit = vault.kit()?;
+            let set = vault
+                .device()
+                .authority()
+                .context("this device has not read the vault's genesis yet")?
+                .set;
+            let pages = crate::vault::kitprint::pages(&name, &kit, &set)?;
+            if let Some(file) = args.get_one::<String>("pdf") {
+                write_new_private(Path::new(file), &crate::vault::kitprint::pdf(&pages))?;
+                let path = std::fs::canonicalize(file)?;
+                synced::record_kit_pdf(context.home, &name, &path)?;
+                vault.kit_done()?;
+                eprintln!(
+                    "Wrote the sheets and the card to {}. Print it, then delete it: status \
+                     reminds you until it is gone.",
+                    path.display()
+                );
+                return Ok(());
+            }
+            eprintln!(
+                "Printing from memory. A network or office printer may keep a copy of what it \
+                 prints; use one at home."
+            );
+            print_pages(
+                &crate::vault::kitprint::text(&pages),
+                args.get_one::<String>("queue").map(String::as_str),
+            )?;
+            if io::stdin().is_terminal() {
+                ensure!(
+                    prompt::confirm_value(
+                        "Type \"printed\" once all four pages came out:",
+                        "printed",
+                        ""
+                    )?,
+                    "the sheets stay on this device, sealed; run this again to finish"
+                );
+            }
+            vault.kit_done()?;
+            eprintln!("Done. Check a sheet now and then with: txc vault recovery check {name}");
+            Ok(())
+        }
         "print" => {
             // Debug builds only: the tests read the kit from standard output.
             #[cfg(debug_assertions)]
@@ -1977,8 +2025,18 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
                     number + 1,
                     kit.sheets.len()
                 ))?;
+                let marks = crate::vault::slip39::share_index(sheet)
+                    .ok()
+                    .zip(vault.device().authority())
+                    .and_then(|(index, authority)| {
+                        crate::vault::kitprint::marks(&authority.set, usize::from(index))
+                    })
+                    .map(|(root, share)| {
+                        format!("\nNot secret, to check this sheet: root {root}  share {share}\n")
+                    })
+                    .unwrap_or_default();
                 eprintln!(
-                    "\nSheet {} of {}:\n\n{}\n",
+                    "\nSheet {} of {}:\n\n{}\n{marks}",
                     number + 1,
                     kit.sheets.len(),
                     words_in_rows(sheet)
@@ -2008,6 +2066,21 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
                 .authority()
                 .context("this device has not read the vault's genesis yet")?
                 .set;
+            if let (Some(root), Some(share)) = (
+                args.get_one::<String>("root"),
+                args.get_one::<String>("share"),
+            ) {
+                let index = crate::vault::kitprint::sheet_of(&set, root, share).context(
+                    "those marks are not on any current sheet of this vault: the sheet is \
+                     another vault's, was replaced by a reissue, or the marks were misread",
+                )?;
+                eprintln!(
+                    "Sheet {} belongs to this vault. To check its words and the card too, on a \
+                     computer you trust: txc vault recovery check {name}",
+                    index + 1
+                );
+                return Ok(());
+            }
             let (sheet, card) = if io::stdin().is_terminal() {
                 (
                     prompt::secret_from_terminal("Sheet words")?,
@@ -2035,6 +2108,48 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         }
         other => bail!("unknown recovery subcommand {other}"),
     }
+}
+
+/// Sends text to the printer through `lp`, from memory: nothing is written
+/// to a file here, though the print system may spool it.
+fn print_pages(text: &str, queue: Option<&str>) -> Result<()> {
+    #[cfg(debug_assertions)]
+    let program = std::env::var("TXC_VAULT_TEST_LP").unwrap_or_else(|_| "lp".to_owned());
+    #[cfg(not(debug_assertions))]
+    let program = "lp".to_owned();
+    let mut command = std::process::Command::new(&program);
+    if let Some(queue) = queue {
+        command.args(["-d", queue]);
+    }
+    let mut child = command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .with_context(|| format!("cannot start {program}; print with a PDF instead: --pdf FILE"))?;
+    child
+        .stdin
+        .take()
+        .context("lp has no input")?
+        .write_all(text.as_bytes())?;
+    ensure!(child.wait()?.success(), "{program} could not print");
+    Ok(())
+}
+
+/// Creates a new file only its owner reads, refusing to replace one.
+fn write_new_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .with_context(|| format!("cannot create {}; it must not exist yet", path.display()))?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
 }
 
 fn pause(message: &str) -> Result<()> {
