@@ -1060,6 +1060,9 @@ _txc() {
             txc__subcmd__help__subcmd__vault__subcmd__hardware,pin)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__hardware__subcmd__pin"
                 ;;
+            txc__subcmd__help__subcmd__vault__subcmd__hardware,rewrap)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__hardware__subcmd__rewrap"
+                ;;
             txc__subcmd__help__subcmd__vault__subcmd__recovery,check)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__recovery__subcmd__check"
                 ;;
@@ -1261,6 +1264,9 @@ _txc() {
             txc__subcmd__vault__subcmd__hardware,pin)
                 cmd="txc__subcmd__vault__subcmd__hardware__subcmd__pin"
                 ;;
+            txc__subcmd__vault__subcmd__hardware,rewrap)
+                cmd="txc__subcmd__vault__subcmd__hardware__subcmd__rewrap"
+                ;;
             txc__subcmd__vault__subcmd__hardware__subcmd__help,add)
                 cmd="txc__subcmd__vault__subcmd__hardware__subcmd__help__subcmd__add"
                 ;;
@@ -1269,6 +1275,9 @@ _txc() {
                 ;;
             txc__subcmd__vault__subcmd__hardware__subcmd__help,pin)
                 cmd="txc__subcmd__vault__subcmd__hardware__subcmd__help__subcmd__pin"
+                ;;
+            txc__subcmd__vault__subcmd__hardware__subcmd__help,rewrap)
+                cmd="txc__subcmd__vault__subcmd__hardware__subcmd__help__subcmd__rewrap"
                 ;;
             txc__subcmd__vault__subcmd__help,add)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__add"
@@ -1422,6 +1431,9 @@ _txc() {
                 ;;
             txc__subcmd__vault__subcmd__help__subcmd__hardware,pin)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__hardware__subcmd__pin"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__hardware,rewrap)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__hardware__subcmd__rewrap"
                 ;;
             txc__subcmd__vault__subcmd__help__subcmd__recovery,check)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__recovery__subcmd__check"
@@ -5182,7 +5194,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault__subcmd__hardware)
-            opts="add pin"
+            opts="add rewrap pin"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -5210,6 +5222,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault__subcmd__hardware__subcmd__pin)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__hardware__subcmd__rewrap)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -9896,7 +9922,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__hardware)
-            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help add pin help"
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help add rewrap pin help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -9972,7 +9998,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__hardware__subcmd__help)
-            opts="add pin help"
+            opts="add rewrap pin help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -10027,6 +10053,20 @@ _txc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        txc__subcmd__vault__subcmd__hardware__subcmd__help__subcmd__rewrap)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         txc__subcmd__vault__subcmd__hardware__subcmd__pin)
             opts="-h --path --vault --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -10038,6 +10078,36 @@ _txc() {
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
+                --vault)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__hardware__subcmd__rewrap)
+            opts="-h --vault --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
                 --vault)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
@@ -10356,7 +10426,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help__subcmd__hardware)
-            opts="add pin"
+            opts="add rewrap pin"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -10384,6 +10454,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help__subcmd__hardware__subcmd__pin)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__hardware__subcmd__rewrap)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

@@ -1560,6 +1560,7 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -l no-session -d 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -f -a "add" -d 'Seal this device\'s second factor to hardware'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -f -a "rewrap" -d 'Seal protected entries again to every security key registered now'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -f -a "pin" -d 'Pin a plugin, to seal protected entries to other devices\' hardware'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from compare" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r

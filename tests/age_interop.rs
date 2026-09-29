@@ -395,6 +395,22 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         ));
         assert_eq!(shown, "pin-4321");
     }
+    ok(txc(&["hardware", "rewrap"], b""));
+    if cfg!(unix) {
+        let shown = ok(txc(
+            &[
+                "run",
+                "--set",
+                "PIN=txc+file://personal/bank",
+                "--",
+                "sh",
+                "-c",
+                "cat \"$PIN\"",
+            ],
+            b"",
+        ));
+        assert_eq!(shown, "pin-4321", "still opens after rewrapping");
+    }
 
     std::fs::OpenOptions::new()
         .append(true)

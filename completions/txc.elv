@@ -2675,6 +2675,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
             cand add 'Seal this device''s second factor to hardware'
+            cand rewrap 'Seal protected entries again to every security key registered now'
             cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -2685,6 +2686,15 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --recipient-plugin 'The plugin for the recipient, rather than the one on PATH now'
             cand --identity-plugin 'The plugin for the identity, rather than the one on PATH now'
             cand --name 'What to call it where other devices show it (default: security key)'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;hardware;rewrap'= {
+            cand --vault 'The synced vault'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2704,10 +2714,13 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;hardware;help'= {
             cand add 'Seal this device''s second factor to hardware'
+            cand rewrap 'Seal protected entries again to every security key registered now'
             cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;hardware;help;add'= {
+        }
+        &'txc;vault;hardware;help;rewrap'= {
         }
         &'txc;vault;hardware;help;pin'= {
         }
@@ -3028,9 +3041,12 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;help;hardware'= {
             cand add 'Seal this device''s second factor to hardware'
+            cand rewrap 'Seal protected entries again to every security key registered now'
             cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
         }
         &'txc;vault;help;hardware;add'= {
+        }
+        &'txc;vault;help;hardware;rewrap'= {
         }
         &'txc;vault;help;hardware;pin'= {
         }
@@ -3644,9 +3660,12 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;help;vault;hardware'= {
             cand add 'Seal this device''s second factor to hardware'
+            cand rewrap 'Seal protected entries again to every security key registered now'
             cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
         }
         &'txc;help;vault;hardware;add'= {
+        }
+        &'txc;help;vault;hardware;rewrap'= {
         }
         &'txc;help;vault;hardware;pin'= {
         }

@@ -704,6 +704,11 @@ pub fn command() -> Command {
                         ),
                 )
                 .subcommand(
+                    Command::new("rewrap")
+                        .about("Seal protected entries again to every security key registered now")
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
+                )
+                .subcommand(
                     Command::new("pin")
                         .about("Pin a plugin, to seal protected entries to other devices' hardware")
                         .arg(Arg::new("NAME").required(true).help("The plugin's name: tagpq for age-plugin-tagpq"))

@@ -944,6 +944,9 @@ pub fn hardware(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         .subcommand()
         .context("clap requires a hardware subcommand")?;
     let name = context.which(args.get_one::<String>("vault"))?;
+    if verb == "rewrap" {
+        return rewrap(context, &name);
+    }
     if verb == "pin" {
         let plugin = required(args, "NAME");
         let pinned = crate::vault::hardware::Pinned::pin(
@@ -1017,6 +1020,47 @@ pub fn hardware(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         } else {
             ""
         }
+    );
+    Ok(())
+}
+
+/// Seals every protected entry again to the authenticators registered now,
+/// so hardware added since can open them: one touch per entry, on a device
+/// that can open them already, and one change for all.
+fn rewrap(context: &Context<'_>, name: &str) -> Result<()> {
+    // Not confined: this runs the hardware's plugins.
+    let mut vault = context.open(name)?;
+    let entries = vault.entries()?;
+    let mut changes = Changes::new(&entries, now());
+    let mut count = 0_usize;
+    for view in entries.list() {
+        for field in view
+            .fields
+            .iter()
+            .filter(|field| field.kind == FieldKind::Protected)
+        {
+            let values = entries.reveal(&view.id, &field.id, Slot::Value)?;
+            let [sealed] = values.as_slice() else {
+                bail!(
+                    "{} has two versions of {}; resolve it first",
+                    view.names.join(" / "),
+                    field.label
+                );
+            };
+            eprintln!(
+                "Sealing {} again: your security key may ask for a touch.",
+                view.names.join(" / ")
+            );
+            let plain = vault.unprotect(sealed, &crate::vault::hardware::Terminal)?;
+            let resealed = vault.protect(&plain, &crate::vault::hardware::Terminal)?;
+            changes.set_field(&view.id, &field.id, FieldKind::Protected, &resealed)?;
+            count = count.saturating_add(1);
+        }
+    }
+    vault.write(changes)?;
+    eprintln!(
+        "Sealed {count} protected value{} to every registered security key.",
+        if count == 1 { "" } else { "s" }
     );
     Ok(())
 }
