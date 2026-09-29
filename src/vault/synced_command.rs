@@ -278,7 +278,12 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         .subcommand()
         .context("clap requires a device subcommand")?;
     let name = context.which(args.get_one::<String>("vault"))?;
-    let (mut vault, _) = context.open_confined(&name)?;
+    // Forgetting also clears the keystore, which confinement shuts out.
+    let mut vault = if verb == "forget" {
+        context.open(&name)?
+    } else {
+        context.open_confined(&name)?.0
+    };
     match verb {
         "add" => {
             let role = match args.get_one::<String>("role").map(String::as_str) {
@@ -310,23 +315,7 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         "approve" => approve(&mut vault, args.get_flag("yes")),
         "remove" => {
             let prefix = required(args, "DEVICE").to_lowercase();
-            let matches: Vec<Id> = vault
-                .device()
-                .view()
-                .keys()
-                .filter(|device| {
-                    data_encoding::HEXLOWER
-                        .encode(&device[..])
-                        .starts_with(&prefix)
-                })
-                .copied()
-                .collect();
-            let [device] = matches.as_slice() else {
-                bail!(
-                    "{} devices start with {prefix}; see: txc vault device list",
-                    matches.len()
-                );
-            };
+            let device = pick_device(&vault, &prefix)?;
             if !args.get_flag("yes") {
                 ensure!(
                     prompt::confirm(
@@ -336,11 +325,115 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
                     "nothing was removed"
                 );
             }
-            vault.remove_device(*device)?;
-            eprintln!("Removed the device. Every device rotates its keys before it writes again.");
+            let admin = vault
+                .device()
+                .view()
+                .get(&device)
+                .is_some_and(|certificate| certificate.role == Role::Admin);
+            let removed = if admin {
+                eprintln!(
+                    "That device can add devices, so removing it is a root action: two of your \
+                     recovery sheets and the card."
+                );
+                let ([first, second], card) = read_sheets()?;
+                vault.root_action(
+                    [first.expose_secret(), second.expose_secret()],
+                    card.expose_secret(),
+                    synced::RootAction::RemoveAdmin(device),
+                )?;
+                Vec::new()
+            } else {
+                vault.remove_device(device, args.get_flag("wipe"), args.get_flag("key-lost"))?
+            };
+            eprintln!("Removed the device. Every device changes its keys before it writes again.");
+            if args.get_flag("wipe") {
+                eprintln!("If txc opens the vault on it again, it wipes its keys there.");
+            }
+            if !removed.is_empty() {
+                eprintln!(
+                    "Its security keys were removed too: {}. Seal protected entries again \
+                     without them: txc vault hardware rewrap",
+                    removed.join(", ")
+                );
+            }
+            eprintln!(
+                "Change the secrets it could read; they are listed by: txc vault list {name} --stale"
+            );
+            Ok(())
+        }
+        "promote" | "allow" => {
+            let prefix = required(args, "DEVICE").to_lowercase();
+            let device = pick_device(&vault, &prefix)?;
+            let action = if verb == "promote" {
+                synced::RootAction::Promote(device)
+            } else {
+                let more = *args
+                    .get_one::<u32>("more")
+                    .context("clap requires --more")?;
+                synced::RootAction::Allow(device, more)
+            };
+            eprintln!(
+                "This needs two of your recovery sheets and the card, entered one after the other."
+            );
+            let ([first, second], card) = read_sheets()?;
+            vault.root_action(
+                [first.expose_secret(), second.expose_secret()],
+                card.expose_secret(),
+                action,
+            )?;
+            eprintln!(
+                "{}",
+                if verb == "promote" {
+                    format!("Device {prefix} can add devices now.")
+                } else {
+                    format!("Device {prefix} may add more devices or security keys now.")
+                }
+            );
+            Ok(())
+        }
+        "forget" => {
+            if !args.get_flag("yes") {
+                ensure!(
+                    prompt::confirm(
+                        &format!(
+                            "Remove the keys of \"{name}\" from this device? Having the vault \
+                             here again means pairing this device again."
+                        ),
+                        "pass --yes"
+                    )?,
+                    "nothing was removed"
+                );
+            }
+            vault.forget();
+            eprintln!(
+                "This device no longer holds the keys of \"{name}\". The folder and the other \
+                 devices are unchanged; to have it back, pair again with txc vault join."
+            );
             Ok(())
         }
         other => bail!("unknown device subcommand {other}"),
+    }
+}
+
+/// The one device in the vault whose id starts with `prefix`.
+fn pick_device(vault: &Synced, prefix: &str) -> Result<Id> {
+    let matches: Vec<Id> = vault
+        .device()
+        .view()
+        .keys()
+        .filter(|device| {
+            data_encoding::HEXLOWER
+                .encode(&device[..])
+                .starts_with(prefix)
+        })
+        .copied()
+        .collect();
+    match matches.as_slice() {
+        [device] => Ok(*device),
+        _ => bail!(
+            "{} devices start with {prefix}; see: txc vault device list",
+            matches.len()
+        ),
     }
 }
 
@@ -465,6 +558,24 @@ fn list_devices(vault: &Synced) -> Result<()> {
             },
         ]);
     }
+    let keys = vault.authenticators();
+    if !keys.is_empty() {
+        rows.push([String::new(), String::new(), String::new(), String::new()]);
+        rows.push([
+            "Security key".to_owned(),
+            "Fingerprint".to_owned(),
+            "On device".to_owned(),
+            String::new(),
+        ]);
+        for (device, key) in keys {
+            rows.push([
+                key.nickname.clone(),
+                data_encoding::HEXLOWER.encode(&key.fingerprint[..4]),
+                data_encoding::HEXLOWER.encode(&device[..4]),
+                String::new(),
+            ]);
+        }
+    }
     output(&table(&rows))
 }
 
@@ -560,6 +671,14 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
         } else {
             lines.extend(todo.into_iter().map(|item| format!("● yellow  {item}")));
         }
+    }
+    let unchanged = stale(vault)?.len();
+    if unchanged > 0 {
+        lines.push(format!(
+            "● yellow  {unchanged} entr{} a removed device could read {} unchanged → txc vault list {name} --stale",
+            if unchanged == 1 { "y" } else { "ies" },
+            if unchanged == 1 { "is" } else { "are" }
+        ));
     }
     let gaps = device.gaps();
     if !gaps.is_empty() {
@@ -985,6 +1104,15 @@ pub fn hardware(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let name = context.which(args.get_one::<String>("vault"))?;
     if verb == "rewrap" {
         return rewrap(context, &name);
+    }
+    if verb == "remove" {
+        let mut vault = context.open_confined(&name)?.0;
+        let removed = vault.remove_authenticator(required(args, "KEY"))?;
+        eprintln!(
+            "Removed the security key \"{removed}\". Seal protected entries again without it, on \
+             a device with another key: txc vault hardware rewrap"
+        );
+        return Ok(());
     }
     if verb == "pin" {
         let plugin = required(args, "NAME");
@@ -1709,6 +1837,32 @@ fn words_in_rows(sheet: &str) -> String {
         .join("\n")
 }
 
+/// The entries a removed device could read whose secrets have not changed
+/// since it was removed (study rule 11).
+fn stale(vault: &Synced) -> Result<Vec<EntryView>> {
+    let flagged = vault.device().rotation_required();
+    if flagged.is_empty() {
+        return Ok(Vec::new());
+    }
+    let entries = vault.entries()?;
+    Ok(entries
+        .list()
+        .into_iter()
+        .filter(|view| {
+            flagged.get(&view.id).is_some_and(|removed_at| {
+                view.fields
+                    .iter()
+                    .filter(|field| field.kind.is_secret())
+                    .all(|field| {
+                        entries
+                            .written_at(&view.id, &field.id)
+                            .is_none_or(|written| written <= *removed_at)
+                    })
+            })
+        })
+        .collect())
+}
+
 /// A time as a date, for tables.
 fn date_of(at: u64) -> String {
     i64::try_from(at)
@@ -1752,6 +1906,16 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
         "list" => {
             let name = context.which(sub.get_one::<String>("VAULT"))?;
             let (vault, _) = context.open_confined(&name)?;
+            if sub.get_flag("stale") {
+                let mut rows = vec![["Name".to_owned(), "Kind".to_owned()]];
+                for view in stale(&vault)? {
+                    rows.push([
+                        view.names.join(" / "),
+                        kind_of(&view).map_or_else(String::new, |kind| kind.label().to_owned()),
+                    ]);
+                }
+                return output(&table(&rows));
+            }
             if sub.get_flag("removed") {
                 let mut rows = vec![["Name".to_owned(), "Removed".to_owned()]];
                 for removed in vault.entries()?.removed() {

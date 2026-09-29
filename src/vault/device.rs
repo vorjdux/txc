@@ -576,12 +576,45 @@ impl Device {
     /// The adds an admin had made up to and including a position in its
     /// chain.
     fn adds_by(&self, admin: &Id, up_to: u64) -> u64 {
-        self.facts
+        let devices = self
+            .facts
             .values()
             .filter(|(fact, at)| {
                 matches!(fact.kind, FactKind::Add { .. }) && at.author == *admin && at.seq <= up_to
             })
-            .fold(0, |count, _| count.saturating_add(1))
+            .fold(0_u64, |count, _| count.saturating_add(1));
+        // A security key added to a certificate grants access to protected
+        // entries, so it counts as an addition too (study section 5).
+        let keys = self
+            .certificates
+            .values()
+            .filter(|(certificate, at)| {
+                at.as_ref()
+                    .is_some_and(|at| at.author == *admin && at.seq <= up_to)
+                    && self.adds_authenticator(certificate)
+            })
+            .fold(0_u64, |count, _| count.saturating_add(1));
+        devices.saturating_add(keys)
+    }
+
+    /// Whether a certificate names an authenticator the one it renews did
+    /// not.
+    fn adds_authenticator(&self, certificate: &Certificate) -> bool {
+        let before: BTreeSet<Id> = certificate
+            .renews
+            .and_then(|previous| self.certificate(&previous))
+            .map(|previous| {
+                previous
+                    .authenticators
+                    .iter()
+                    .map(|authenticator| authenticator.id)
+                    .collect()
+            })
+            .unwrap_or_default();
+        certificate
+            .authenticators
+            .iter()
+            .any(|authenticator| !before.contains(&authenticator.id))
     }
 
     /// Whether a certificate is valid: its issuer was within its cutoff when
@@ -597,9 +630,16 @@ impl Device {
         {
             return false;
         }
+        // One that adds a security key counts against its publisher's
+        // allowance.
+        let allowed = |at: &At| {
+            !self.adds_authenticator(certificate)
+                || self.adds_by(&at.author, at.seq) <= self.allowance(&at.author)
+        };
         match (certificate.issuer, published) {
-            (Issuer::Root, _) => true,
-            (Issuer::Admin(_), Some(at)) => Self::within(cutoffs, at),
+            (Issuer::Root, None) => true,
+            (Issuer::Root, Some(at)) => allowed(at),
+            (Issuer::Admin(_), Some(at)) => Self::within(cutoffs, at) && allowed(at),
             (Issuer::Admin(_), None) => false,
         }
     }
@@ -651,8 +691,23 @@ impl Device {
         membership::members(&genesis, &facts)
     }
 
-    /// Each member at its newest valid certificate: the latest to start,
-    /// ties broken by id, so every device picks the same one.
+    /// How many renewals lead to a certificate.
+    fn renewal_depth(&self, certificate: &Certificate) -> usize {
+        let mut depth = 0_usize;
+        let mut current = certificate.renews;
+        while let Some(previous) = current {
+            depth = depth.saturating_add(1);
+            if depth > self.certificates.len() {
+                break;
+            }
+            current = self.certificate(&previous).and_then(|cert| cert.renews);
+        }
+        depth
+    }
+
+    /// Each member at its newest valid certificate: an admin one first,
+    /// then the latest to start, then the latest renewal, ties broken by
+    /// id, so every device picks the same one.
     #[must_use]
     pub fn view(&self) -> BTreeMap<Id, Certificate> {
         let cutoffs = self.cutoffs();
@@ -662,9 +717,20 @@ impl Device {
             if !members.contains(&certificate.device) || !self.certificate_valid(&cutoffs, id) {
                 continue;
             }
-            let newer = view.get(&certificate.device).is_none_or(|current| {
-                (certificate.not_before, certificate.id) > (current.not_before, current.id)
-            });
+            // A root-issued admin certificate outranks the member one it
+            // promotes, and a renewal what it renews, however close in time
+            // they were issued.
+            let rank = |cert: &Certificate| {
+                (
+                    cert.role == Role::Admin,
+                    cert.not_before,
+                    self.renewal_depth(cert),
+                    cert.id,
+                )
+            };
+            let newer = view
+                .get(&certificate.device)
+                .is_none_or(|current| rank(certificate) > rank(current));
             if newer {
                 view.insert(certificate.device, certificate.clone());
             }
@@ -721,7 +787,11 @@ impl Device {
 
     fn classify(&mut self, name: Name, bytes: &[u8]) -> usize {
         if bytes.starts_with(AGE_MAGIC) {
-            let identities = std::iter::once(&self.me.identity).chain(&self.me.retired);
+            // Also the keys of a renewal not adopted yet: an object sealed
+            // to the new certificate may be read before the certificate.
+            let identities = std::iter::once(&self.me.identity)
+                .chain(&self.me.retired)
+                .chain(self.renewal.as_ref().map(|(_, identity)| identity));
             for identity in identities {
                 match open_control(bytes, identity) {
                     Ok(Some(signed)) => return self.accept_signed(name, signed),
@@ -1180,13 +1250,18 @@ impl Device {
         // the key object names the reader's certificate). The recovery
         // recipient is sealed every key without being named.
         let mine = self.me.certificate;
-        ensure!(
-            self.recovering.is_some()
-                || recipients
-                    .iter()
-                    .any(|(device, cert, _)| *device == self.me.device && Some(*cert) == mine),
-            "the sender key is not for this device's current certificate"
-        );
+        let named = recipients
+            .iter()
+            .find(|(device, _, _)| *device == self.me.device)
+            .map(|(_, cert, _)| *cert);
+        if self.recovering.is_none() && named != mine {
+            // Named for a renewed certificate this device has not adopted
+            // yet, it waits for it; named for none, it is refused.
+            if named.is_some() && self.renewal.is_some() {
+                return Ok(false);
+            }
+            bail!("the sender key is not for this device's current certificate");
+        }
         let body = SenderKeyBody::decode(&payload.body)?;
         self.keys.insert(
             body.id,
@@ -1710,8 +1785,12 @@ impl Device {
             kind: kind(cutoff),
             endorsements: Vec::new(),
         };
-        // The removed device never receives another control object.
-        let to = self.members_except(&device);
+        // The removed device never receives another control object, but
+        // for the kill itself, which it must read to wipe its keys.
+        let mut to = self.members_except(&device);
+        if matches!(fact.kind, FactKind::Kill(_)) {
+            to.push(device);
+        }
         let hash = self.publish_fact(store, fact, &to)?;
         Ok(hash)
     }
@@ -1725,6 +1804,98 @@ impl Device {
     /// an admin.
     pub fn remove(&mut self, store: &Store, device: Id) -> Result<Hash> {
         self.take_out(store, device, FactKind::Remove)
+    }
+
+    /// Whether a valid fact from an admin, or from root, told this device to
+    /// wipe its keys. A kill from anyone else is ignored.
+    #[must_use]
+    pub fn killed(&self) -> bool {
+        let cutoffs = self.cutoffs();
+        self.facts.iter().any(|(hash, (fact, held))| {
+            fact.device == self.me.device
+                && matches!(fact.kind, FactKind::Kill(_))
+                && (self.rooted(fact, Some(hash))
+                    || (self.is_admin_device(&held.author) && Self::within(&cutoffs, held)))
+        })
+    }
+
+    /// The authenticators an admin or root removed: rotation, re-wrapping
+    /// and status leave them out.
+    #[must_use]
+    pub fn removed_authenticators(&self) -> BTreeSet<Id> {
+        let cutoffs = self.cutoffs();
+        self.facts
+            .iter()
+            .filter(|(hash, (fact, held))| {
+                self.rooted(fact, Some(hash))
+                    || (self.is_admin_device(&held.author) && Self::within(&cutoffs, held))
+            })
+            .filter_map(|(_, (fact, _))| match fact.kind {
+                FactKind::AuthenticatorRemove(id) => Some(id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Removes an authenticator from the vault: protected entries are no
+    /// longer wrapped to it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this device is not an admin or the write
+    /// fails.
+    pub fn remove_authenticator(&mut self, store: &Store, authenticator: Id) -> Result<Hash> {
+        self.require_admin()?;
+        let fact = Fact {
+            device: [0; 16],
+            kind: FactKind::AuthenticatorRemove(authenticator),
+            endorsements: Vec::new(),
+        };
+        let to: Vec<Id> = self.view().keys().copied().collect();
+        self.publish_fact(store, fact, &to)
+    }
+
+    /// Flags the entries a removed device could read, to be rotated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this device is not an admin or the write
+    /// fails.
+    pub fn require_rotation(
+        &mut self,
+        store: &Store,
+        removed: Id,
+        entries: Vec<Id>,
+        now: u64,
+    ) -> Result<Hash> {
+        self.require_admin()?;
+        let fact = Fact {
+            device: removed,
+            kind: FactKind::RotationRequired { entries, at: now },
+            endorsements: Vec::new(),
+        };
+        let to = self.members_except(&removed);
+        self.publish_fact(store, fact, &to)
+    }
+
+    /// Entries flagged for rotation by valid facts, each with the latest
+    /// time it was flagged.
+    #[must_use]
+    pub fn rotation_required(&self) -> BTreeMap<Id, u64> {
+        let cutoffs = self.cutoffs();
+        let mut out: BTreeMap<Id, u64> = BTreeMap::new();
+        for (fact, held) in self.facts.values() {
+            if let FactKind::RotationRequired { entries, at } = &fact.kind
+                && self.is_admin_device(&held.author)
+                && Self::within(&cutoffs, held)
+            {
+                for entry in entries {
+                    let latest = out.entry(*entry).or_insert(*at);
+                    *latest = (*latest).max(*at);
+                }
+            }
+        }
+        out
     }
 
     /// Tells a member to wipe its keys, and takes it out.
@@ -1772,6 +1943,16 @@ impl Device {
             .ok_or_else(|| anyhow!("unknown certificate"))?;
         request.verify(&current)?;
         ensure!(current.role != Role::Admin, "admins renew themselves");
+        let adds = request.authenticators.iter().any(|authenticator| {
+            !current
+                .authenticators
+                .iter()
+                .any(|known| known.id == authenticator.id)
+        });
+        ensure!(
+            !adds || self.adds_by(&self.me.device, u64::MAX) < self.allowance(&self.me.device),
+            "this admin has used its mint allowance: root must grant more"
+        );
         let admin = self.my_certificate()?.clone();
         let mut authenticators = current.authenticators.clone();
         merge_authenticators(&mut authenticators, &request.authenticators);
@@ -3151,5 +3332,75 @@ mod tests {
             .unwrap();
         assert_eq!(mine.authenticators, vec![key]);
         assert!(laptop.alarms().is_empty(), "{:?}", laptop.alarms());
+    }
+
+    #[test]
+    fn a_security_key_added_to_a_certificate_counts_against_the_allowance() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        for _ in 0..3 {
+            pair(&store, &mut admin, Role::Reader);
+        }
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        laptop
+            .request_renewal(
+                &store,
+                vec![Authenticator::new("blue", "age1tagpq1example")],
+            )
+            .unwrap();
+        admin.sync(&store).unwrap();
+        let request = admin.renewal_requests().remove(0);
+        assert!(
+            admin.renew(&store, &request, NOW + 5).is_err(),
+            "four devices used the allowance"
+        );
+        let mut grant = Fact {
+            device: admin.me().device,
+            kind: FactKind::MintAllowance(1),
+            endorsements: Vec::new(),
+        };
+        grant.endorsements = endorse(&grant.statement());
+        admin.publish_root_fact(&store, grant).unwrap();
+        admin.renew(&store, &request, NOW + 5).unwrap();
+        // A renewal that adds nothing costs nothing.
+        laptop.sync(&store).unwrap();
+        laptop.request_renewal(&store, Vec::new()).unwrap();
+        admin.sync(&store).unwrap();
+        let request = admin.renewal_requests().remove(0);
+        admin.renew(&store, &request, NOW + 6).unwrap();
+    }
+
+    #[test]
+    fn an_admin_removes_a_key_flags_entries_and_kills_a_device() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        let key = Authenticator::new("blue", "age1tagpq1example");
+        laptop.request_renewal(&store, vec![key.clone()]).unwrap();
+        admin.sync(&store).unwrap();
+        let request = admin.renewal_requests().remove(0);
+        admin.renew(&store, &request, NOW + 5).unwrap();
+        laptop.sync(&store).unwrap();
+
+        assert!(
+            laptop.remove_authenticator(&store, key.id).is_err(),
+            "admins only"
+        );
+        admin.remove_authenticator(&store, key.id).unwrap();
+        laptop.sync(&store).unwrap();
+        assert!(laptop.removed_authenticators().contains(&key.id));
+
+        let mut phone = pair(&store, &mut admin, Role::Writer);
+        admin
+            .require_rotation(&store, phone.me().device, vec![[9; 16]], NOW + 7)
+            .unwrap();
+        laptop.sync(&store).unwrap();
+        assert_eq!(laptop.rotation_required().get(&[9; 16]), Some(&(NOW + 7)));
+
+        assert!(!phone.killed());
+        admin.kill(&store, phone.me().device).unwrap();
+        phone.sync(&store).unwrap();
+        assert!(phone.killed());
+        assert!(!laptop.killed());
     }
 }

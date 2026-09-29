@@ -6,6 +6,15 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A device that asked for new keys dropped, for good, control objects and
+  sender keys sealed to its renewed certificate when it read them before
+  the certificate itself; they are now opened with the pending keys, or
+  wait. Two certificates of one device issued in the same second were
+  picked between at random; a renewal now always outranks what it renews,
+  and an admin certificate the member one it promotes.
+
 ### Added
 
 - **`txc vault restore VAULT/ENTRY`** brings back an entry removed from a
@@ -29,6 +38,23 @@ All notable changes to txc are recorded here. The format follows
   the new recovery recipient and changes its sender key, and a recovery
   package gives the new sheets the history. The old sheets sign nothing and
   read nothing written afterwards.
+- **Devices, keys and root actions.**
+  - `txc vault device remove` flags every entry the removed device could
+    read until its secret changes: `status` says how many, and
+    `txc vault list VAULT --stale` names them.
+  - `device remove` also removes its security keys unless another device
+    uses them (`--key-lost` removes those too). `--wipe` tells the device to
+    wipe its keys when txc next opens the vault there; only a kill from a
+    device that adds devices, or from root, counts.
+  - `txc vault hardware remove KEY` removes a lost security key, and
+    `device list` shows the keys.
+  - With two sheets and the card, `txc vault device promote DEVICE` lets a
+    device with a security key add devices, `device allow DEVICE --more N`
+    lets it add more, and `device remove` of such a device revokes it.
+  - A security key added to a certificate now counts against the admin's
+    allowance, as a new device does.
+  - `txc vault device forget` removes a vault's keys from this device, as
+    before a border crossing.
 
 ## [0.8.0] - 2026-09-29
 

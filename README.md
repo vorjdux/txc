@@ -437,7 +437,11 @@ the command to run.
 - **Removed entries** come back for 30 days: `txc vault list VAULT
   --removed`, then `txc vault restore VAULT/ENTRY`.
 - **Removing a device** (`txc vault device remove`) means it reads nothing
-  written afterwards: every device changes its keys before it writes again.
+  written afterwards: every device changes its keys before it writes again,
+  and `txc vault list VAULT --stale` lists the secrets it could read that
+  you have not changed yet. `--wipe` also has it wipe its keys the next time
+  txc opens the vault there. `txc vault device forget` drops a vault's keys
+  from this device, as before a border crossing.
 - **SSH without keys on disk**: `txc vault ssh-ca infra` makes a certificate
   authority whose key never leaves txc, and `txc vault ssh host` connects with
   a fresh key and a certificate that lives for minutes. `txc vault ssh

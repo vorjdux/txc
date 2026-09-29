@@ -424,6 +424,14 @@ pub fn command() -> Command {
                         .help("Only entries with this tag"),
                 )
                 .arg(
+                    Arg::new("stale")
+                        .long("stale")
+                        .action(ArgAction::SetTrue)
+                        .requires("VAULT")
+                        .conflicts_with_all(["favourites", "recent", "kind", "tag", "removed"])
+                        .help("Entries of a synced vault a removed device could read, whose secrets have not changed since"),
+                )
+                .arg(
                     Arg::new("removed")
                         .long("removed")
                         .action(ArgAction::SetTrue)
@@ -594,7 +602,58 @@ pub fn command() -> Command {
                 .subcommand(
                     Command::new("remove")
                         .about("Remove a device; it reads nothing written afterwards")
+                        .long_about(
+                            "Remove a device; it reads nothing written afterwards.\n\n\
+                             The entries it could read are flagged until their secrets change \
+                             (txc vault list VAULT --stale). Its security keys are removed too \
+                             unless another device uses them. Removing a device that can add \
+                             devices needs two recovery sheets and the card.",
+                        )
                         .arg(Arg::new("DEVICE").required(true).help("The device, by the start of its id"))
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
+                        .arg(
+                            Arg::new("wipe")
+                                .long("wipe")
+                                .action(ArgAction::SetTrue)
+                                .help("Also tell it to wipe its keys when txc next opens the vault there"),
+                        )
+                        .arg(
+                            Arg::new("key-lost")
+                                .long("key-lost")
+                                .action(ArgAction::SetTrue)
+                                .help("Its security key was lost with it: remove the key even if another device uses it"),
+                        )
+                        .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue).help("Do not ask first")),
+                )
+                .subcommand(
+                    Command::new("promote")
+                        .about("Let a device add devices; needs two recovery sheets and the card")
+                        .arg(Arg::new("DEVICE").required(true).help("The device, by the start of its id"))
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
+                )
+                .subcommand(
+                    Command::new("allow")
+                        .about("Let a device that adds devices add more; needs two recovery sheets and the card")
+                        .arg(Arg::new("DEVICE").required(true).help("The device, by the start of its id"))
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
+                        .arg(
+                            Arg::new("more")
+                                .long("more")
+                                .value_name("COUNT")
+                                .required(true)
+                                .value_parser(value_parser!(u32).range(1..=100))
+                                .help("How many more devices or security keys it may add"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("forget")
+                        .about("Remove this vault's keys from this device, as before a border crossing")
+                        .long_about(
+                            "Remove this vault's keys from this device, as before a border \
+                             crossing.\n\n\
+                             The folder and the other devices are unchanged. Having the vault \
+                             here again is pairing this device again with txc vault join.",
+                        )
                         .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
                         .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue).help("Do not ask first")),
                 ),
@@ -729,6 +788,12 @@ pub fn command() -> Command {
                         .about("Pin a plugin, to seal protected entries to other devices' hardware")
                         .arg(Arg::new("NAME").required(true).help("The plugin's name: tagpq for age-plugin-tagpq"))
                         .arg(Arg::new("path").long("path").value_name("PATH").help("Its binary, rather than the one on PATH now"))
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
+                )
+                .subcommand(
+                    Command::new("remove")
+                        .about("Remove a lost security key from the vault; protected entries stop being sealed to it")
+                        .arg(Arg::new("KEY").required(true).help("Its nickname, or the start of its fingerprint, as device list shows"))
                         .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
                 ),
         )
@@ -3212,6 +3277,7 @@ mod tests {
             "format",
             "into",
             "from",
+            "more",
             "output",
             "folder",
             "name",

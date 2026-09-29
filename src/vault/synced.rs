@@ -493,6 +493,42 @@ pub fn record_checks(home: &Home, name: &str, update: impl FnOnce(&mut Checks)) 
     )
 }
 
+/// What a root action does.
+#[derive(Clone, Copy, Debug)]
+pub enum RootAction {
+    /// Makes a member device an admin, which then adds devices.
+    Promote(Id),
+    /// Removes an admin device, voiding what it issued afterwards.
+    RemoveAdmin(Id),
+    /// Lets an admin add this many more devices or security keys.
+    Allow(Id, u32),
+}
+
+/// Erases a synced vault's local files on this device and its keystore
+/// secret. The folder is untouched. Best effort: overwritten, then removed.
+fn wipe(dir: &Path, device: &Id) {
+    forget_second_factor(device);
+    for file in [
+        KEYS,
+        STATE,
+        SECOND,
+        HARDWARE,
+        KIT,
+        CHECKS,
+        PLUGINS,
+        ACKNOWLEDGED,
+        FOLDER,
+    ] {
+        let path = dir.join(file);
+        if let Ok(metadata) = fs::metadata(&path) {
+            let zeros = vec![0; usize::try_from(metadata.len()).unwrap_or(0)];
+            home::write_atomic(&path, &zeros, None).ok();
+            fs::remove_file(&path).ok();
+        }
+    }
+    fs::remove_dir(dir).ok();
+}
+
 /// The sync folder a synced vault on this device reads.
 ///
 /// # Errors
@@ -711,6 +747,15 @@ impl Synced {
     /// Returns an error when the folder cannot be read or a write fails.
     pub fn sync(&mut self) -> Result<usize> {
         let accepted = self.device.sync(&self.store)?;
+        if self.device.killed() {
+            wipe(&self.dir, &self.device.me().device);
+            bail!(
+                "a device that can add devices told this one to wipe its keys for the vault \
+                 \"{}\", and they are gone; to use the vault here again, pair this device again \
+                 with txc vault join",
+                self.name
+            );
+        }
         self.device.expire_due(&self.store, now())?;
         self.device.forward_missing(&self.store)?;
         let entries = Entries::read(&self.device)?;
@@ -983,6 +1028,7 @@ impl Synced {
     /// Returns an error when the file is damaged.
     pub fn unacknowledged(&self) -> Result<Vec<(Id, Authenticator)>> {
         let seen = self.acknowledged()?;
+        let removed = self.device.removed_authenticators();
         Ok(self
             .device
             .view()
@@ -992,7 +1038,9 @@ impl Synced {
                     .into_iter()
                     .map(move |authenticator| (device, authenticator))
             })
-            .filter(|(_, authenticator)| !seen.contains(&authenticator.id))
+            .filter(|(_, authenticator)| {
+                !seen.contains(&authenticator.id) && !removed.contains(&authenticator.id)
+            })
             .collect())
     }
 
@@ -1004,15 +1052,12 @@ impl Synced {
     /// Returns an error when no authenticator is registered, or the plugin
     /// for one is not pinned here.
     pub fn protect(&self, plain: &[u8], prompter: &dyn Prompter) -> Result<Vec<u8>> {
+        let removed = self.device.removed_authenticators();
         let mut recipients: Vec<String> = self
-            .device
-            .view()
-            .values()
-            .flat_map(|cert| {
-                cert.authenticators
-                    .iter()
-                    .map(|authenticator| authenticator.recipient.clone())
-            })
+            .authenticators()
+            .into_iter()
+            .filter(|(_, authenticator)| !removed.contains(&authenticator.id))
+            .map(|(_, authenticator)| authenticator.recipient)
             .collect();
         recipients.sort();
         recipients.dedup();
@@ -1118,9 +1163,204 @@ impl Synced {
     /// # Errors
     ///
     /// Returns an error when this device is not an admin or the write fails.
-    pub fn remove_device(&mut self, device: Id) -> Result<()> {
-        self.device.remove(&self.store, device)?;
+    pub fn remove_device(&mut self, device: Id, wipe: bool, key_lost: bool) -> Result<Vec<String>> {
+        let view = self.device.view();
+        let theirs = view
+            .get(&device)
+            .map(|certificate| certificate.authenticators.clone())
+            .unwrap_or_default();
+        let readable: Vec<Id> = Entries::read(&self.device)?
+            .list()
+            .into_iter()
+            .filter(|view| view.fields.iter().any(|field| field.kind.is_secret()))
+            .map(|view| view.id)
+            .collect();
+        if wipe {
+            self.device.kill(&self.store, device)?;
+        } else {
+            self.device.remove(&self.store, device)?;
+        }
+        self.after_removal(device, &view, theirs, readable, key_lost)
+    }
+
+    /// What follows taking a device out: its entries flagged for rotation,
+    /// and its security keys removed unless another device uses them, or
+    /// all of them when it was lost with its key.
+    fn after_removal(
+        &mut self,
+        device: Id,
+        view: &std::collections::BTreeMap<Id, crate::vault::authority::Certificate>,
+        theirs: Vec<Authenticator>,
+        readable: Vec<Id>,
+        key_lost: bool,
+    ) -> Result<Vec<String>> {
+        if !readable.is_empty() {
+            self.device
+                .require_rotation(&self.store, device, readable, now())?;
+        }
+        let others: std::collections::BTreeSet<Id> = view
+            .iter()
+            .filter(|(other, _)| **other != device)
+            .flat_map(|(_, certificate)| {
+                certificate
+                    .authenticators
+                    .iter()
+                    .map(|authenticator| authenticator.id)
+            })
+            .collect();
+        let mut removed = Vec::new();
+        for authenticator in theirs {
+            if key_lost || !others.contains(&authenticator.id) {
+                self.device
+                    .remove_authenticator(&self.store, authenticator.id)?;
+                removed.push(authenticator.nickname);
+            }
+        }
+        self.save()?;
+        Ok(removed)
+    }
+
+    /// Every authenticator in the vault's current certificates, with the
+    /// device it belongs to.
+    #[must_use]
+    pub fn authenticators(&self) -> Vec<(Id, Authenticator)> {
+        let removed = self.device.removed_authenticators();
+        let mut out: Vec<(Id, Authenticator)> = Vec::new();
+        for (device, certificate) in self.device.view() {
+            for authenticator in certificate.authenticators {
+                if !removed.contains(&authenticator.id)
+                    && !out.iter().any(|(_, known)| known.id == authenticator.id)
+                {
+                    out.push((device, authenticator));
+                }
+            }
+        }
+        out
+    }
+
+    /// Removes a security key from the vault, by nickname or the start of
+    /// its fingerprint. Returns its nickname.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when none or several match, or this device is not
+    /// an admin.
+    pub fn remove_authenticator(&mut self, which: &str) -> Result<String> {
+        let wanted = which.to_lowercase();
+        let found: Vec<Authenticator> = self
+            .authenticators()
+            .into_iter()
+            .map(|(_, authenticator)| authenticator)
+            .filter(|authenticator| {
+                authenticator.nickname == which
+                    || hex(&authenticator.fingerprint).starts_with(&wanted)
+            })
+            .collect();
+        let [authenticator] = found.as_slice() else {
+            bail!(
+                "{} security keys match {which:?}; see: txc vault device list",
+                found.len()
+            );
+        };
+        self.device
+            .remove_authenticator(&self.store, authenticator.id)?;
+        self.save()?;
+        Ok(authenticator.nickname.clone())
+    }
+
+    /// A root action (study section 5), signed by two sheets' root keys and
+    /// the card: making a device an admin, removing an admin, or granting
+    /// an admin more additions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the sheets or card do not match, or the action
+    /// does not apply to the device.
+    pub fn root_action(&mut self, sheets: [&str; 2], card: &str, action: RootAction) -> Result<()> {
+        use crate::vault::authority::Endorsement;
+        let authority = self
+            .device
+            .authority()
+            .context("the vault's genesis is not read yet")?;
+        let [(first, a), (second, b)] = root_keys(&authority.set, sheets, card)?;
+        let endorse = |message: &[u8]| -> Result<Vec<Endorsement>> {
+            Ok(vec![
+                Endorsement::sign(&first, a, message)?,
+                Endorsement::sign(&second, b, message)?,
+            ])
+        };
+        let view = self.device.view();
+        match action {
+            RootAction::Promote(device) => {
+                let current = view
+                    .get(&device)
+                    .context("no such device in the vault")?
+                    .clone();
+                ensure!(
+                    current.role != Role::Admin,
+                    "that device already adds devices"
+                );
+                ensure!(
+                    !current.authenticators.is_empty(),
+                    "a device that adds devices needs a security key first; on it, run: txc \
+                     vault hardware add"
+                );
+                let keys = crate::vault::pairing::Keys {
+                    device,
+                    signing_key: current.signing_key.clone(),
+                    recipient: current.recipient.clone(),
+                };
+                let mut certificate =
+                    self.device
+                        .admin_certificate(&keys, current.principal, now())?;
+                certificate.authenticators = current.authenticators;
+                let endorsements = endorse(&certificate.encode())?;
+                self.device
+                    .publish_admin(&self.store, certificate, endorsements)?;
+            }
+            RootAction::RemoveAdmin(device) => {
+                let current = view.get(&device).context("no such device in the vault")?;
+                ensure!(
+                    current.role == Role::Admin,
+                    "that device does not add devices"
+                );
+                ensure!(
+                    device != self.device.me().device,
+                    "remove this device from another one"
+                );
+                let theirs = current.authenticators.clone();
+                let readable: Vec<Id> = Entries::read(&self.device)?
+                    .list()
+                    .into_iter()
+                    .map(|view| view.id)
+                    .collect();
+                let mut fact = self.device.admin_revocation(device);
+                fact.endorsements = endorse(&fact.statement())?;
+                self.device.publish_root_fact(&self.store, fact)?;
+                self.after_removal(device, &view, theirs, readable, false)?;
+            }
+            RootAction::Allow(device, more) => {
+                let current = view.get(&device).context("no such device in the vault")?;
+                ensure!(
+                    current.role == Role::Admin,
+                    "that device does not add devices"
+                );
+                let mut fact = crate::vault::control::Fact {
+                    device,
+                    kind: crate::vault::control::FactKind::MintAllowance(more),
+                    endorsements: Vec::new(),
+                };
+                fact.endorsements = endorse(&fact.statement())?;
+                self.device.publish_root_fact(&self.store, fact)?;
+            }
+        }
         self.save()
+    }
+
+    /// Travel mode (study section 5): removes this vault's keys and state
+    /// from this device. Having it back is pairing again.
+    pub fn forget(self) {
+        wipe(&self.dir, &self.device.me().device);
     }
 
     /// Joins a vault as a new device: answers the admin's first step.
@@ -1640,6 +1880,148 @@ pub(crate) mod tests {
                 &old.card
             )
             .is_err()
+        );
+    }
+
+    /// An admin and a writer sharing a vault, with the admin's kit.
+    struct Pair {
+        first: Synced,
+        second: Synced,
+        kit: Kit,
+        homes: (Home, Home),
+        _dirs: (Scratch, Scratch, Scratch),
+    }
+
+    fn pair(label: &str) -> Pair {
+        with_keystore();
+        let dirs = (
+            scratch(&format!("{label}-a")),
+            scratch(&format!("{label}-b")),
+            scratch(&format!("{label}-folder")),
+        );
+        let homes = (Home::at(&dirs.0.0), Home::at(&dirs.1.0));
+        let passphrase = SecretString::from("correct horse battery staple".to_owned());
+        let mut first =
+            Synced::create(&homes.0, "work", &dirs.2.0, &passphrase, TEST_PARAMS).unwrap();
+        let kit = first.kit().unwrap();
+        first.kit_done().unwrap();
+        let (start, commit) = first.pair().unwrap();
+        let (me, reply_state, reply) = Synced::join_reply(&commit).unwrap();
+        let (on_admin, reveal) = start.reveal(&reply).unwrap();
+        let on_device = reply_state.check(&reveal).unwrap();
+        first.add(&on_admin, Role::Writer).unwrap();
+        let mut second = Synced::joined(
+            &homes.1,
+            "work",
+            &dirs.2.0,
+            me,
+            &on_device,
+            &passphrase,
+            TEST_PARAMS,
+        )
+        .unwrap();
+        second.sync().unwrap();
+        Pair {
+            first,
+            second,
+            kit,
+            homes,
+            _dirs: dirs,
+        }
+    }
+
+    #[test]
+    fn a_killed_device_wipes_its_keys_and_a_forgotten_vault_leaves_this_one() {
+        let Pair {
+            mut first,
+            mut second,
+            homes,
+            _dirs,
+            ..
+        } = pair("kill");
+        let entries = first.entries().unwrap();
+        let mut changes = Changes::new(&entries, now());
+        let entry = changes.create("db").unwrap();
+        changes
+            .add_field(&entry, FieldKind::Secret, "password", b"one")
+            .unwrap();
+        first.write(changes).unwrap();
+        second.sync().unwrap();
+
+        let target = second.device().me().device;
+        first.remove_device(target, true, false).unwrap();
+        assert!(first.device().rotation_required().contains_key(&entry));
+        let error = second.sync().unwrap_err().to_string();
+        assert!(error.contains("wipe its keys"), "{error}");
+        assert!(!exists(&homes.1, "work"));
+        assert!(names(&homes.1).unwrap().is_empty());
+
+        first.forget();
+        assert!(!exists(&homes.0, "work"));
+    }
+
+    #[test]
+    fn root_actions_need_two_sheets_and_the_card() {
+        let Pair {
+            mut first,
+            mut second,
+            kit,
+            _dirs,
+            ..
+        } = pair("root");
+        let admin = first.device().me().device;
+        let writer = second.device().me().device;
+        let sheets = [kit.sheets[0].as_str(), kit.sheets[1].as_str()];
+        assert!(
+            first
+                .root_action(
+                    [kit.sheets[0].as_str(), kit.sheets[0].as_str()],
+                    &kit.card,
+                    RootAction::Allow(admin, 2)
+                )
+                .is_err()
+        );
+        first
+            .root_action(sheets, &kit.card, RootAction::Allow(admin, 2))
+            .unwrap();
+        assert!(
+            first
+                .root_action(sheets, &kit.card, RootAction::Promote(writer))
+                .unwrap_err()
+                .to_string()
+                .contains("security key first")
+        );
+
+        // With a security key, the writer becomes an admin, and root can
+        // remove it again.
+        let store = Store::open(&read_folder(&second.dir).unwrap(), false).unwrap();
+        second
+            .device_mut()
+            .request_renewal(
+                &store,
+                vec![Authenticator::new("blue", "age1tagpq1example")],
+            )
+            .unwrap();
+        second.save().unwrap();
+        first.sync().unwrap();
+        let request = first.device().renewal_requests().remove(0);
+        first.renew(&request).unwrap();
+        first
+            .root_action(sheets, &kit.card, RootAction::Promote(writer))
+            .unwrap();
+        second.sync().unwrap();
+        assert_eq!(
+            second.device().view()[&writer].role,
+            Role::Admin,
+            "the writer adds devices now"
+        );
+        first
+            .root_action(sheets, &kit.card, RootAction::RemoveAdmin(writer))
+            .unwrap();
+        assert!(!first.device().members().contains(&writer));
+        assert!(
+            first.device().removed_authenticators().len() == 1,
+            "its key went with it"
         );
     }
 

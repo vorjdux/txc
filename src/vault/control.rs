@@ -44,8 +44,14 @@ pub enum FactKind {
     /// Root revoked an admin, and every certificate it issued after the
     /// cutoff.
     AdminRevoke(Cutoff),
-    /// Entries the removed device could read and that must be rotated.
-    RotationRequired(Vec<Id>),
+    /// Entries the removed device could read and that must be rotated:
+    /// each is flagged until a secret of it is written after `at`.
+    RotationRequired {
+        /// The entries.
+        entries: Vec<Id>,
+        /// When the device was removed, as its admin's clock said.
+        at: u64,
+    },
     /// Root granted an admin more additions.
     MintAllowance(u32),
     /// An authenticator was removed; rotation excludes it.
@@ -136,12 +142,13 @@ impl Fact {
             FactKind::Expire(c) => cutoff(&mut out, 3, c),
             FactKind::Kill(c) => cutoff(&mut out, 4, c),
             FactKind::AdminRevoke(c) => cutoff(&mut out, 5, c),
-            FactKind::RotationRequired(entries) => {
+            FactKind::RotationRequired { entries, at } => {
                 out.u8(6);
                 out.count(entries.len());
                 for entry in entries {
                     out.fixed(entry);
                 }
+                out.u64(*at);
             }
             FactKind::MintAllowance(count) => {
                 out.u8(7);
@@ -212,11 +219,12 @@ impl Fact {
             3 => FactKind::Expire(read_cutoff(&mut input)?),
             4 => FactKind::Kill(read_cutoff(&mut input)?),
             5 => FactKind::AdminRevoke(read_cutoff(&mut input)?),
-            6 => FactKind::RotationRequired(
-                (0..input.count(MAX_ITEMS)?)
+            6 => FactKind::RotationRequired {
+                entries: (0..input.count(MAX_ITEMS)?)
                     .map(|_| input.fixed())
                     .collect::<Result<_>>()?,
-            ),
+                at: input.u64()?,
+            },
             7 => FactKind::MintAllowance(
                 u32::try_from(input.u64()?)
                     .map_err(|_count| anyhow!("a mint allowance is out of range"))?,
@@ -618,7 +626,10 @@ mod tests {
             FactKind::Expire(cutoff(4)),
             FactKind::Kill(cutoff(5)),
             FactKind::AdminRevoke(cutoff(6)),
-            FactKind::RotationRequired(vec![[2; 16], [3; 16]]),
+            FactKind::RotationRequired {
+                entries: vec![[2; 16], [3; 16]],
+                at: 1_700_000_000,
+            },
             FactKind::MintAllowance(4),
             FactKind::AuthenticatorRemove([4; 16]),
         ];

@@ -1726,6 +1726,43 @@ fn two_devices_pair_through_pasted_lines_and_a_code_and_share_entries() {
     }
     let devices = succeeds(&sandbox.vault_with(&home_a, &pass, &["device", "list"], None));
     assert_eq!(devices.lines().count(), 3, "{devices}");
+
+    // Removing the second device with --wipe flags what it could read, and
+    // it wipes its keys when it next opens the vault.
+    let other = devices
+        .lines()
+        .skip(1)
+        .find(|line| !line.contains("this device"))
+        .and_then(|line| line.split_whitespace().next())
+        .unwrap()
+        .to_owned();
+    let removed = stderr(&sandbox.vault_with(
+        &home_a,
+        &pass,
+        &["device", "remove", &other, "--wipe", "--yes"],
+        None,
+    ));
+    assert!(removed.contains("--stale"), "{removed}");
+    let stale =
+        succeeds(&sandbox.vault_with(&home_a, &pass, &["list", "personal", "--stale"], None));
+    assert!(stale.contains("mail") && stale.contains("bank"), "{stale}");
+    let status = succeeds(&sandbox.vault_with(&home_a, &pass, &["status"], None));
+    assert!(
+        status.contains("2 entries a removed device could read"),
+        "{status}"
+    );
+    succeeds(&sandbox.vault_with(
+        &home_a,
+        &pass,
+        &["edit", "mail", "--secret-from-stdin"],
+        Some("new-mail"),
+    ));
+    let stale =
+        succeeds(&sandbox.vault_with(&home_a, &pass, &["list", "personal", "--stale"], None));
+    assert!(!stale.contains("mail") && stale.contains("bank"), "{stale}");
+    let wiped = fails(&sandbox.vault_with(&home_b, &pass, &["list", "personal"], None));
+    assert!(wiped.contains("wipe its keys"), "{wiped}");
+    assert!(!home_b.join("synced").join("personal").exists());
 }
 
 #[test]
@@ -2279,4 +2316,35 @@ fn reissued_sheets_replace_the_old_ones_for_everything_written_afterwards() {
         !with_old.contains("of 2 entries"),
         "the old sheets never read what came after: {with_old}"
     );
+}
+
+#[test]
+fn root_actions_take_the_sheets_and_forget_leaves_the_folder_alone() {
+    let sandbox = Sandbox::new("synced-root");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let kit = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let kit: Vec<&str> = kit.lines().collect();
+    let listed = succeeds(&sandbox.vault(&["device", "list"]));
+    let me = listed
+        .lines()
+        .find(|line| line.contains("this device"))
+        .and_then(|line| line.split_whitespace().next())
+        .unwrap()
+        .to_owned();
+    let allowed = stderr(&sandbox.vault_piped(
+        &["device", "allow", &me, "--more", "2"],
+        &format!("{}\n{}\n{}\n", kit[0], kit[2], kit[3]),
+    ));
+    assert!(allowed.contains("may add more"), "{allowed}");
+    fails(&sandbox.vault_piped(
+        &["device", "allow", &me, "--more", "2"],
+        &format!("{}\n{}\nwrong card words\n", kit[0], kit[2]),
+    ));
+    fails(&sandbox.vault(&["hardware", "remove", "nothing-by-that-name"]));
+
+    let before = std::fs::read_dir(&folder).unwrap().count();
+    succeeds(&sandbox.vault(&["device", "forget", "--yes"]));
+    assert!(!succeeds(&sandbox.vault(&["list"])).contains("personal"));
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), before);
 }
