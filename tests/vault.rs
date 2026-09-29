@@ -2599,3 +2599,24 @@ fn the_kit_prints_from_memory_or_to_a_pdf_that_status_asks_to_delete() {
         "recovery", "check", "personal", "--root", root, "--share", share,
     ]));
 }
+
+#[test]
+fn the_reference_script_derives_the_same_recovery_key_as_txc() {
+    use age::secrecy::ExposeSecret as _;
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/recovery-key.py");
+    for secret in [[0x5a_u8; 32], [0; 32], *b"0123456789abcdef0123456789abcdef"] {
+        let Ok(output) = Command::new("python3")
+            .arg(&script)
+            .arg(data_encoding::HEXLOWER.encode(&secret))
+            .output()
+        else {
+            return eprintln!("python3 is not installed; skipped");
+        };
+        assert!(output.status.success(), "{}", stderr(&output));
+        let expected = txc::vault::authority::recovery_identity(&secret)
+            .to_string()
+            .expose_secret()
+            .to_owned();
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+    }
+}

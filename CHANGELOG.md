@@ -29,6 +29,11 @@ All notable changes to txc are recorded here. The format follows
   their own before it stay removed. `txc vault list VAULT --removed` lists
   what can come back. After the 30 days a snapshot drops the removed values,
   so they no longer outlive the window.
+- **Recovery without txc.** `docs/recovery-without-txc.md` gives the whole
+  path from two sheets and the card to a backup's contents with a SLIP-39
+  tool and age, and `scripts/recovery-key.py`, written from that
+  description and checked against txc in the tests, turns the recovery
+  secret into the age key.
 - **The kit on paper.** `txc vault recovery print --printer` prints the
   sheets and the card with `lp` straight from memory, after warning that
   network printers keep copies; `--pdf FILE` writes them to a new file only

@@ -439,7 +439,9 @@ the command to run.
 - **Offline backups**: `txc vault backup --to /media/usb` writes an age file
   that two sheets and the card open with age alone (`txc vault recovery key
   > key.txt; age -d -i key.txt BACKUP`); while that folder is there, a new
-  one is written each week.
+  one is written each week. Without txc at all, two sheets, the card, a SLIP-39
+  tool and age still read one: see
+  [recovering without txc](docs/recovery-without-txc.md).
 - **Removed entries** come back for 30 days: `txc vault list VAULT
   --removed`, then `txc vault restore VAULT/ENTRY`.
 - **Removing a device** (`txc vault device remove`) means it reads nothing
