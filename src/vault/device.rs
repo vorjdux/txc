@@ -25,7 +25,7 @@ use zeroize::Zeroizing;
 
 use crate::vault::authority::{
     Authenticator, Certificate, Endorsement, Genesis, Issuance, IssuedCertificate, Issuer,
-    Lifetime, Renewal, RenewalRequest, Role, SignedGenesis, new_id, quorum,
+    Lifetime, Renewal, RenewalRequest, Role, RootSet, SignedGenesis, new_id, quorum,
 };
 use crate::vault::composite::SigningKey;
 use crate::vault::control::{
@@ -129,6 +129,46 @@ pub enum Alarm {
     /// The folder holds this device's objects beyond its local position:
     /// it was restored from a backup and must be paired again.
     Restored,
+}
+
+/// The roots in force and what the last reissue of the sheets carried over.
+#[derive(Clone, Debug)]
+pub struct Authority {
+    /// The roots, recovery recipient and commitments in force.
+    pub set: RootSet,
+    /// Root facts signed by earlier roots that stay valid.
+    pub kept_facts: BTreeSet<Hash>,
+    /// Root-issued certificates signed by earlier roots that stay valid.
+    pub kept_certificates: BTreeSet<Hash>,
+}
+
+impl Authority {
+    /// Whether root stated a fact: two roots in force signed it, or a
+    /// reissue carried it over.
+    fn rooted(&self, fact: &Fact, hash: Option<&Hash>) -> bool {
+        quorum(&self.set.roots, &fact.statement(), &fact.endorsements)
+            || hash.is_some_and(|hash| self.kept_facts.contains(hash))
+    }
+}
+
+/// A certificate's identity for a reissue to carry over: the hash of its
+/// encoding, which ids alone are not, since an id is chosen by its signer.
+#[must_use]
+pub fn certificate_hash(certificate: &Certificate) -> Hash {
+    use sha2::{Digest, Sha384};
+    let mut hash = Sha384::new();
+    Digest::update(&mut hash, b"txc/v1/kept-certificate");
+    Digest::update(&mut hash, certificate.encode());
+    hash.finalize().into()
+}
+
+/// The pseudo-recipient standing for the recovery recipient in a sender
+/// key's recipient set, so a new recovery recipient forces a new key.
+fn recovery_marker(recovery: &crate::vault::pq::Recipient) -> (Id, Id) {
+    let digest = crate::vault::crypto::sha256(&[recovery.to_string().as_bytes()]);
+    let mut id = [0; 16];
+    id.copy_from_slice(&digest[..16]);
+    ([0xff; 16], id)
 }
 
 /// A device's view of one vault.
@@ -321,6 +361,70 @@ impl Device {
         self.genesis.as_ref()
     }
 
+    /// The roots in force: genesis's, replaced by each reissue the roots
+    /// before it signed, in turn. A reissue counts only from an admin
+    /// device; of two signed by the same roots, the lower hash wins, the
+    /// same on every device.
+    #[must_use]
+    pub fn authority(&self) -> Option<Authority> {
+        let genesis = self.genesis.as_ref()?;
+        let mut current = Authority {
+            set: genesis.root_set(),
+            kept_facts: BTreeSet::new(),
+            kept_certificates: BTreeSet::new(),
+        };
+        let mut used: BTreeSet<Hash> = BTreeSet::new();
+        loop {
+            let next = self
+                .facts
+                .iter()
+                .filter(|(hash, (_, held))| {
+                    !used.contains(*hash) && self.is_admin_device(&held.author)
+                })
+                .filter_map(|(hash, (fact, _))| match &fact.kind {
+                    FactKind::Reissue(reissue)
+                        if quorum(&current.set.roots, &fact.statement(), &fact.endorsements) =>
+                    {
+                        Some((*hash, reissue))
+                    }
+                    _ => None,
+                })
+                .min_by_key(|(hash, _)| *hash);
+            let Some((hash, reissue)) = next else {
+                break;
+            };
+            used.insert(hash);
+            current = Authority {
+                set: reissue.set.clone(),
+                kept_facts: reissue.kept_facts.clone(),
+                kept_certificates: reissue.kept_certificates.clone(),
+            };
+        }
+        Some(current)
+    }
+
+    /// What a reissue made now carries over: every root fact and every
+    /// root-issued certificate valid under the roots in force.
+    #[must_use]
+    pub fn carried_over(&self) -> (BTreeSet<Hash>, BTreeSet<Hash>) {
+        let Some(authority) = self.authority() else {
+            return (BTreeSet::new(), BTreeSet::new());
+        };
+        let facts = self
+            .facts
+            .iter()
+            .filter(|(hash, (fact, _))| fact.needs_root() && authority.rooted(fact, Some(hash)))
+            .map(|(hash, _)| *hash)
+            .collect();
+        let certificates = self
+            .certificates
+            .values()
+            .filter(|(certificate, _)| certificate.issuer == Issuer::Root)
+            .map(|(certificate, _)| certificate_hash(certificate))
+            .collect();
+        (facts, certificates)
+    }
+
     /// The signed genesis, as its object carries it.
     #[must_use]
     pub fn signed_genesis(&self) -> Option<SignedGenesis> {
@@ -376,10 +480,10 @@ impl Device {
     /// root set for it; and expiry of an admin by another device of its
     /// owner only while that device is itself within its cutoff.
     fn cutoffs(&self) -> BTreeMap<Id, Cutoff> {
-        let Some(genesis) = &self.genesis else {
+        let Some(authority) = self.authority() else {
             return BTreeMap::new();
         };
-        let rooted = |fact: &Fact| quorum(&genesis.roots, &fact.statement(), &fact.endorsements);
+        let rooted = |fact: &Fact, held: &At| authority.rooted(fact, Some(&held.hash));
         let within = Self::within;
         let collect = |valid: &dyn Fn(&Fact, &At) -> bool| -> BTreeMap<Id, Cutoff> {
             let facts: Vec<&Fact> = self
@@ -396,15 +500,15 @@ impl Device {
                 })
                 .collect()
         };
-        let roots_only = collect(&|fact, _| rooted(fact));
+        let roots_only = collect(&|fact, held| rooted(fact, held));
         let with_admins = collect(&|fact, held| {
-            rooted(fact)
+            rooted(fact, held)
                 || (self.is_admin_device(&held.author)
                     && within(&roots_only, held)
                     && !self.is_admin_device(&fact.device))
         });
         collect(&|fact, held| {
-            rooted(fact)
+            rooted(fact, held)
                 || (self.is_admin_device(&held.author)
                     && within(&with_admins, held)
                     && !self.is_admin_device(&fact.device))
@@ -447,10 +551,9 @@ impl Device {
             .map(|(cert, _)| cert.principal)
     }
 
-    fn rooted(&self, fact: &Fact) -> bool {
-        self.genesis
-            .as_ref()
-            .is_some_and(|genesis| quorum(&genesis.roots, &fact.statement(), &fact.endorsements))
+    fn rooted(&self, fact: &Fact, hash: Option<&Hash>) -> bool {
+        self.authority()
+            .is_some_and(|authority| authority.rooted(fact, hash))
     }
 
     /// How many devices an admin may add: the policy's allowance plus every
@@ -461,9 +564,9 @@ impl Device {
             .as_ref()
             .map_or(0, |genesis| u64::from(genesis.policy.mint_allowance));
         self.facts
-            .values()
-            .filter(|(fact, _)| fact.device == *admin && self.rooted(fact))
-            .filter_map(|(fact, _)| match fact.kind {
+            .iter()
+            .filter(|(hash, (fact, _))| fact.device == *admin && self.rooted(fact, Some(hash)))
+            .filter_map(|(_, (fact, _))| match fact.kind {
                 FactKind::MintAllowance(count) => Some(u64::from(count)),
                 _ => None,
             })
@@ -672,21 +775,21 @@ impl Device {
     /// verifiable, `Err` invalid for good.
     fn apply(&mut self, signed: &Signed) -> Result<bool> {
         let payload = Payload::decode(&signed.payload)?;
-        if let Some(commitments) = &self.recovering
+        if let Some(commitments) = self.recovering.clone()
             && self.genesis.is_none()
         {
-            if payload.kind != Kind::Genesis {
-                return Ok(false);
+            match payload.kind {
+                Kind::Genesis => {
+                    let body = SignedGenesis::decode(&payload.body)?;
+                    ensure!(
+                        self.sheets_match(&body.genesis.root_set(), &commitments),
+                        "a genesis that the sheets do not belong to"
+                    );
+                    self.genesis_hash = body.genesis.hash();
+                }
+                Kind::Join => return self.apply_recovery_package(signed, &payload, &commitments),
+                _ => return Ok(false),
             }
-            let body = SignedGenesis::decode(&payload.body)?;
-            ensure!(
-                body.genesis.recovery == self.me.identity.to_public()
-                    && commitments.iter().all(|(index, commitment)| {
-                        body.genesis.commitments.get(usize::from(*index)) == Some(commitment)
-                    }),
-                "a genesis that the sheets do not belong to"
-            );
-            self.genesis_hash = body.genesis.hash();
         }
         ensure!(
             payload.genesis == self.genesis_hash,
@@ -753,6 +856,102 @@ impl Device {
             }
         }
         Ok(accepted)
+    }
+
+    fn sheets_match(&self, set: &RootSet, commitments: &[(u8, Hash)]) -> bool {
+        set.recovery == self.me.identity.to_public()
+            && commitments.iter().all(|(index, commitment)| {
+                set.commitments.get(usize::from(*index)) == Some(commitment)
+            })
+    }
+
+    /// A recovery package read with reissued sheets: its genesis is sealed
+    /// to an earlier recovery recipient, so the package carries it, with
+    /// the reissues that lead from genesis's roots to the sheets'.
+    fn apply_recovery_package(
+        &mut self,
+        signed: &Signed,
+        payload: &Payload,
+        commitments: &[(u8, Hash)],
+    ) -> Result<bool> {
+        let join = Join::decode(&payload.body)?;
+        let inner: Vec<Payload> = join
+            .objects
+            .iter()
+            .filter_map(|object| Payload::decode(&object.payload).ok())
+            .collect();
+        let genesis = inner
+            .iter()
+            .filter(|object| object.kind == Kind::Genesis)
+            .find_map(|object| SignedGenesis::decode(&object.body).ok())
+            .ok_or_else(|| anyhow!("a recovery package without genesis"))?
+            .genesis;
+        let reissues: Vec<(Hash, Fact)> = inner
+            .iter()
+            .filter(|object| object.kind == Kind::Fact)
+            .filter_map(|object| Some((object.hash(), Fact::decode(&object.body).ok()?)))
+            .filter(|(_, fact)| matches!(fact.kind, FactKind::Reissue(_)))
+            .collect();
+        let mut set = genesis.root_set();
+        let mut used = BTreeSet::new();
+        loop {
+            let next = reissues
+                .iter()
+                .filter(|(hash, fact)| {
+                    !used.contains(hash)
+                        && quorum(&set.roots, &fact.statement(), &fact.endorsements)
+                })
+                .min_by_key(|(hash, _)| *hash);
+            let Some((hash, fact)) = next else {
+                break;
+            };
+            used.insert(*hash);
+            if let FactKind::Reissue(reissue) = &fact.kind {
+                set = reissue.set.clone();
+            }
+        }
+        ensure!(
+            self.sheets_match(&set, commitments),
+            "a recovery package that the sheets do not belong to"
+        );
+        self.genesis_hash = genesis.hash();
+        self.genesis = Some(genesis);
+        let mut pending: Vec<Signed> = join.objects;
+        loop {
+            let before = pending.len();
+            let mut rest = Vec::new();
+            for object in pending {
+                match self.apply(&object) {
+                    Ok(true) | Err(_) => {}
+                    Ok(false) => rest.push(object),
+                }
+            }
+            pending = rest;
+            if pending.is_empty() || pending.len() == before {
+                break;
+            }
+        }
+        let author = self
+            .certificate(&payload.author_cert)
+            .filter(|cert| cert.device == payload.author)
+            .ok_or_else(|| anyhow!("the package's author is not in it"))?
+            .signing_key
+            .clone();
+        let payload = signed.verify(&author)?;
+        for (writer, certificate, body) in join.keys {
+            self.keys.insert(
+                body.id,
+                Key {
+                    writer,
+                    certificate,
+                    sender: body.into_key(),
+                },
+            );
+        }
+        let hash = payload.hash();
+        self.held.insert(hash, signed.clone());
+        self.record_position(&payload, hash);
+        Ok(true)
     }
 
     fn apply_renewal(&mut self, payload: &Payload) -> Result<bool> {
@@ -823,13 +1022,18 @@ impl Device {
 
     fn apply_certificate(&mut self, payload: &Payload) -> Result<bool> {
         let issued = IssuedCertificate::decode(&payload.body)?;
-        let Some(genesis) = self.genesis.clone() else {
+        if self.genesis.is_none() {
             return Ok(false);
-        };
-        let known = |id: &Id| self.certificate(id).cloned();
-        match issued.verify(&genesis, &known) {
+        }
+        match self.verify_certificate(&issued) {
             Ok(()) => {}
-            Err(_) if self.names_unknown(&issued) => return Ok(false),
+            // Signed by roots a reissue brings in, or naming a certificate
+            // not read yet: it waits.
+            Err(_)
+                if self.names_unknown(&issued) || matches!(issued.issuance, Issuance::Root(_)) =>
+            {
+                return Ok(false);
+            }
             Err(error) => return Err(error),
         }
         if let Issuer::Admin(admin) = issued.certificate.issuer {
@@ -897,17 +1101,23 @@ impl Device {
             .any(|id| self.certificate(&id).is_none())
     }
 
+    /// Verifies a certificate against the roots in force and the
+    /// certificates known.
+    fn verify_certificate(&self, issued: &IssuedCertificate) -> Result<()> {
+        let authority = self.authority().ok_or_else(|| anyhow!("no genesis yet"))?;
+        let kept = authority
+            .kept_certificates
+            .contains(&certificate_hash(&issued.certificate));
+        let known = |id: &Id| self.certificate(id).cloned();
+        issued.verify_with(self.genesis_hash, &authority.set.roots, kept, &known)
+    }
+
     fn accept_certificate(
         &mut self,
         issued: &IssuedCertificate,
         published: Option<At>,
     ) -> Result<()> {
-        let genesis = self
-            .genesis
-            .as_ref()
-            .ok_or_else(|| anyhow!("no genesis yet"))?;
-        let known = |id: &Id| self.certificate(id).cloned();
-        issued.verify(genesis, &known)?;
+        self.verify_certificate(issued)?;
         if matches!(
             issued.issuance,
             Issuance::SelfRenewal { cosigner: None, .. }
@@ -923,15 +1133,11 @@ impl Device {
 
     fn apply_fact(&mut self, payload: &Payload) -> Result<bool> {
         let fact = Fact::decode(&payload.body)?;
-        let genesis = self
-            .genesis
-            .as_ref()
-            .ok_or_else(|| anyhow!("no genesis yet"))?;
-        if fact.needs_root() {
-            ensure!(
-                quorum(&genesis.roots, &fact.statement(), &fact.endorsements),
-                "a root fact lacks two root signatures"
-            );
+        let authority = self.authority().ok_or_else(|| anyhow!("no genesis yet"))?;
+        // A root fact signed by roots a reissue brings in waits for that
+        // reissue; one signed by no roots at all waits for ever.
+        if fact.needs_root() && !authority.rooted(&fact, Some(&payload.hash())) {
+            return Ok(false);
         }
         if let FactKind::Add { certificate } = &fact.kind {
             let Some(cert) = self.certificate(certificate) else {
@@ -1218,11 +1424,10 @@ impl Device {
             recipients.push(certificate.recipient.clone());
         }
         recipients.push(
-            self.genesis
-                .as_ref()
+            self.authority()
                 .ok_or_else(|| anyhow!("no genesis"))?
-                .recovery
-                .clone(),
+                .set
+                .recovery,
         );
         let payload = self.payload(kind, Addressing::Control(addressing), body.to_vec())?;
         let signed = Signed::sign(&payload, &self.me.signing)?;
@@ -1277,11 +1482,19 @@ impl Device {
     }
 
     fn rotate_if_needed(&mut self, store: &Store) -> Result<()> {
-        let view: BTreeSet<(Id, Id)> = self
+        let recovery = self
+            .authority()
+            .ok_or_else(|| anyhow!("no genesis"))?
+            .set
+            .recovery;
+        let mut view: BTreeSet<(Id, Id)> = self
             .view()
             .values()
             .map(|cert| (cert.device, cert.id))
             .collect();
+        // A new recovery recipient needs a new key too, sealed to it.
+        let marker = recovery_marker(&recovery);
+        view.insert(marker);
         if self
             .mine
             .as_ref()
@@ -1291,7 +1504,11 @@ impl Device {
         }
         let key = SenderKey::generate();
         let body = SenderKeyBody::from_key(&key).encode();
-        let to: Vec<Id> = view.iter().map(|(device, _)| *device).collect();
+        let to: Vec<Id> = view
+            .iter()
+            .filter(|pair| **pair != marker)
+            .map(|(device, _)| *device)
+            .collect();
         self.write_control(store, Kind::SenderKey, &body, &to)?;
         let certificate = self
             .me
@@ -1423,6 +1640,26 @@ impl Device {
     }
 
     fn send_join(&mut self, store: &Store, device: Id) -> Result<()> {
+        let join = self.join_package();
+        self.write_control(store, Kind::Join, &join.encode(), &[device])?;
+        Ok(())
+    }
+
+    /// Writes a package sealed to the recovery recipient alone, holding
+    /// what a data-recovery reader needs that older objects sealed only to
+    /// an earlier recovery recipient: genesis, certificates, facts, and
+    /// every sender key this device holds. After a reissue of the sheets,
+    /// this is how the new sheets read the history.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the write fails.
+    pub fn publish_recovery_package(&mut self, store: &Store) -> Result<Hash> {
+        let join = self.join_package();
+        self.write_control(store, Kind::Join, &join.encode(), &[])
+    }
+
+    fn join_package(&self) -> Join {
         let objects: Vec<Signed> = self
             .held
             .values()
@@ -1447,13 +1684,11 @@ impl Device {
                 )
             })
             .collect();
-        let join = Join {
+        Join {
             objects,
             keys,
             snapshot: None,
-        };
-        self.write_control(store, Kind::Join, &join.encode(), &[device])?;
-        Ok(())
+        }
     }
 
     fn take_out(
@@ -1768,11 +2003,7 @@ impl Device {
             certificate,
             issuance: Issuance::Root(endorsements),
         };
-        let genesis = self
-            .genesis
-            .as_ref()
-            .ok_or_else(|| anyhow!("no genesis yet"))?;
-        issued.verify(genesis, &|id: &Id| self.certificate(id).cloned())?;
+        self.verify_certificate(&issued)?;
         let device = issued.certificate.device;
         let new = !self.members().contains(&device);
         let mut to: Vec<Id> = self.view().keys().copied().collect();
@@ -1809,7 +2040,10 @@ impl Device {
     /// Returns an error when the fact lacks two root signatures.
     pub fn publish_root_fact(&mut self, store: &Store, fact: Fact) -> Result<Hash> {
         self.refuse_if_alarmed()?;
-        ensure!(self.rooted(&fact), "the fact lacks two root signatures");
+        ensure!(
+            self.rooted(&fact, None),
+            "the fact lacks two root signatures"
+        );
         let to = if fact.cutoff().is_some() {
             self.members_except(&fact.device)
         } else {

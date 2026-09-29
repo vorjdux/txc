@@ -22,9 +22,10 @@ use zeroize::Zeroizing;
 
 use crate::vault::authority::Authenticator;
 use crate::vault::authority::{
-    Genesis, Lifetime, Policy, Role, new_id, normalize_card, recovery_identity, root_key,
+    Genesis, Lifetime, Policy, Role, RootSet, new_id, normalize_card, recovery_identity, root_key,
     share_commitment,
 };
+use crate::vault::composite::SigningKey;
 use crate::vault::device::{Device, Me};
 use crate::vault::entries::{Changes, Entries};
 use crate::vault::hardware::{Hardware, Pinned, Prompter};
@@ -243,22 +244,78 @@ fn new_card() -> Zeroizing<String> {
 /// # Errors
 ///
 /// Returns an error saying which part does not match.
-pub fn check_sheet(genesis: &Genesis, sheet: &str, card: &str) -> Result<u8> {
+pub fn check_sheet(set: &RootSet, sheet: &str, card: &str) -> Result<u8> {
+    check_sheet_key(set, sheet, card).map(|(index, _)| index)
+}
+
+/// The same, returning the sheet's root key too, for a root action.
+fn check_sheet_key(set: &RootSet, sheet: &str, card: &str) -> Result<(u8, SigningKey)> {
     let index = slip39::share_index(sheet)?;
     let share = slip39::share_value(sheet)?;
-    let root = genesis
+    let root = set
         .roots
         .get(usize::from(index))
         .ok_or_else(|| anyhow!("the sheet's number is out of range"))?;
     ensure!(
-        genesis.commitments.get(usize::from(index)) == Some(&share_commitment(&share)),
-        "this sheet does not belong to this vault"
+        set.commitments.get(usize::from(index)) == Some(&share_commitment(&share)),
+        "this sheet does not belong to this vault, or was replaced by a reissue"
     );
+    let key = root_key(&share, card, usize::from(index))?;
     ensure!(
-        root_key(&share, card, usize::from(index))?.verifying_key() == *root,
+        key.verifying_key() == *root,
         "the sheet belongs to this vault, but the card does not match it"
     );
-    Ok(index)
+    Ok((index, key))
+}
+
+/// Two distinct sheets' root keys and the card, checked against the roots
+/// in force, for a root action.
+///
+/// # Errors
+///
+/// Returns an error when a sheet or the card does not match, or both
+/// sheets are the same one.
+pub fn root_keys(set: &RootSet, sheets: [&str; 2], card: &str) -> Result<[(SigningKey, u8); 2]> {
+    let (a, first) = check_sheet_key(set, sheets[0], card)?;
+    let (b, second) = check_sheet_key(set, sheets[1], card)?;
+    ensure!(a != b, "two different sheets are needed");
+    Ok([(first, a), (second, b)])
+}
+
+/// A fresh recovery kit and the roots, recovery recipient and commitments
+/// it makes, as at creation or reissue.
+fn new_kit() -> Result<(Kit, RootSet, [SigningKey; 3])> {
+    let mut secret = Zeroizing::new([0_u8; 32]);
+    rand::fill(&mut secret[..]);
+    let card = new_card();
+    let sheets = slip39::split(&secret[..], &card, SHEET_THRESHOLD, SHEETS, SLIP39_EXPONENT)?;
+    let shares: Vec<Zeroizing<Vec<u8>>> = sheets
+        .iter()
+        .map(|sheet| slip39::share_value(sheet))
+        .collect::<Result<_>>()?;
+    let key = |index: usize| -> Result<SigningKey> {
+        root_key(
+            shares.get(index).context("three sheets are needed")?,
+            &card,
+            index,
+        )
+    };
+    let keys = [key(0)?, key(1)?, key(2)?];
+    let commitments = [0, 1, 2].map(|index| {
+        shares
+            .get(index)
+            .map_or([0; 48], |share| share_commitment(share))
+    });
+    let set = RootSet {
+        roots: [
+            keys[0].verifying_key(),
+            keys[1].verifying_key(),
+            keys[2].verifying_key(),
+        ],
+        recovery: recovery_identity(&secret).to_public(),
+        commitments,
+    };
+    Ok((Kit { sheets, card }, set, keys))
 }
 
 /// A vault read back from its folder with two sheets and the card alone
@@ -496,29 +553,11 @@ impl Synced {
             folder.display()
         );
 
-        let mut secret = Zeroizing::new([0_u8; 32]);
-        rand::fill(&mut secret[..]);
-        let card = new_card();
-        let sheets = slip39::split(&secret[..], &card, SHEET_THRESHOLD, SHEETS, SLIP39_EXPONENT)?;
-        let shares: Vec<Zeroizing<Vec<u8>>> = sheets
-            .iter()
-            .map(|sheet| slip39::share_value(sheet))
-            .collect::<Result<_>>()?;
-        let roots =
-            [0, 1, 2].map(|index| shares.get(index).map(|share| root_key(share, &card, index)));
-        let [Some(r0), Some(r1), Some(r2)] = roots else {
-            bail!("three sheets are needed")
-        };
-        let (r0, r1, r2) = (r0?, r1?, r2?);
-        let commitments = [0, 1, 2].map(|index| {
-            shares
-                .get(index)
-                .map_or([0; 48], |share| share_commitment(share))
-        });
+        let (kit, set, [r0, r1, r2]) = new_kit()?;
         let genesis = Genesis {
-            roots: [r0.verifying_key(), r1.verifying_key(), r2.verifying_key()],
-            recovery: recovery_identity(&secret).to_public(),
-            commitments,
+            roots: set.roots,
+            recovery: set.recovery,
+            commitments: set.commitments,
             policy: Policy::default(),
         };
         drop(r2);
@@ -554,7 +593,7 @@ impl Synced {
             store,
             device,
         };
-        synced.seal_kit(&Kit { sheets, card })?;
+        synced.seal_kit(&kit)?;
         synced.save()?;
         Ok(synced)
     }
@@ -1208,6 +1247,62 @@ impl Synced {
         home::write_atomic(&checks, current.encode().as_bytes(), None)
     }
 
+    /// Reissues the recovery sheets (study section 12): two of the current
+    /// sheets and the card sign new root keys, a new recovery recipient and
+    /// new share commitments, carrying over what the old roots signed. A
+    /// snapshot and a recovery package are then written for the new
+    /// recovery recipient, so the new sheets read the whole vault, and the
+    /// new kit waits here, sealed, to be written down. The old sheets sign
+    /// nothing from then on and read nothing written afterwards.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the sheets or card do not match, this device
+    /// is not an admin, or a write fails.
+    pub fn reissue(&mut self, sheets: [&str; 2], card: &str) -> Result<()> {
+        ensure!(
+            self.device
+                .certificate(&self.device.me().certificate.unwrap_or_default())
+                .is_some_and(|certificate| certificate.role == Role::Admin),
+            "only a device that can add devices reissues the sheets"
+        );
+        ensure!(
+            !self.kit_pending(),
+            "the current sheets are not written down yet; write them down first: txc vault \
+             recovery print {}",
+            self.name
+        );
+        let authority = self
+            .device
+            .authority()
+            .context("the vault's genesis is not read yet")?;
+        let [(first, a), (second, b)] = root_keys(&authority.set, sheets, card)?;
+        let (kit, set, _) = new_kit()?;
+        let (kept_facts, kept_certificates) = self.device.carried_over();
+        let mut fact = crate::vault::control::Fact {
+            device: [0; 16],
+            kind: crate::vault::control::FactKind::Reissue(Box::new(
+                crate::vault::control::Reissue {
+                    set,
+                    kept_facts,
+                    kept_certificates,
+                },
+            )),
+            endorsements: Vec::new(),
+        };
+        let statement = fact.statement();
+        fact.endorsements = vec![
+            crate::vault::authority::Endorsement::sign(&first, a, &statement)?,
+            crate::vault::authority::Endorsement::sign(&second, b, &statement)?,
+        ];
+        drop((first, second));
+        self.device.publish_root_fact(&self.store, fact)?;
+        Entries::read(&self.device)?.snapshot(&mut self.device, &self.store, now(), RETENTION)?;
+        self.device.publish_recovery_package(&self.store)?;
+        self.seal_kit(&kit)?;
+        self.save()
+    }
+
     /// The vault's genesis, once known.
     #[must_use]
     pub const fn genesis(&self) -> Option<&Genesis> {
@@ -1327,9 +1422,9 @@ pub(crate) mod tests {
         assert_eq!(kit.sheets.len(), 3);
         let genesis = first.genesis().unwrap().clone();
         for sheet in &kit.sheets {
-            check_sheet(&genesis, sheet, &kit.card).unwrap();
+            check_sheet(&genesis.root_set(), sheet, &kit.card).unwrap();
         }
-        assert!(check_sheet(&genesis, &kit.sheets[0], "wrong card words").is_err());
+        assert!(check_sheet(&genesis.root_set(), &kit.sheets[0], "wrong card words").is_err());
         let recovered = slip39::combine(&[&kit.sheets[0], &kit.sheets[2]], &kit.card).unwrap();
         let identity = recovery_identity(&<[u8; 32]>::try_from(&recovered[..]).unwrap());
         assert_eq!(identity.to_public(), genesis.recovery);
@@ -1456,6 +1551,95 @@ pub(crate) mod tests {
             )
             .is_err(),
             "another vault's sheets read nothing here"
+        );
+    }
+
+    #[test]
+    fn after_a_reissue_every_device_writes_for_the_new_sheets_only() {
+        with_keystore();
+        let (home_a, home_b, folder) = (
+            scratch("reissue-a"),
+            scratch("reissue-b"),
+            scratch("reissue-folder"),
+        );
+        let (home_a, home_b) = (Home::at(&home_a.0), Home::at(&home_b.0));
+        let passphrase = SecretString::from("correct horse battery staple".to_owned());
+        let mut first =
+            Synced::create(&home_a, "work", &folder.0, &passphrase, TEST_PARAMS).unwrap();
+        let old = first.kit().unwrap();
+        first.kit_done().unwrap();
+        let (start, commit) = first.pair().unwrap();
+        let (me, reply_state, reply) = Synced::join_reply(&commit).unwrap();
+        let (on_admin, reveal) = start.reveal(&reply).unwrap();
+        let on_device = reply_state.check(&reveal).unwrap();
+        first.add(&on_admin, Role::Writer).unwrap();
+        let mut second = Synced::joined(
+            &home_b,
+            "work",
+            &folder.0,
+            me,
+            &on_device,
+            &passphrase,
+            TEST_PARAMS,
+        )
+        .unwrap();
+        second.sync().unwrap();
+
+        // A writer cannot reissue; the admin can, with two old sheets.
+        assert!(
+            second
+                .reissue([&old.sheets[0], &old.sheets[1]], &old.card)
+                .is_err()
+        );
+        assert!(
+            first
+                .reissue([&old.sheets[0], &old.sheets[0]], &old.card)
+                .is_err(),
+            "two different sheets"
+        );
+        first
+            .reissue([&old.sheets[0], &old.sheets[2]], &old.card)
+            .unwrap();
+        let new = first.kit().unwrap();
+        first.kit_done().unwrap();
+
+        second.sync().unwrap();
+        assert_eq!(
+            second.device().authority().unwrap().set,
+            first.device().authority().unwrap().set
+        );
+        assert_eq!(second.device().members().len(), 2, "the admin stays valid");
+        let entries = second.entries().unwrap();
+        let mut changes = Changes::new(&entries, now());
+        let entry = changes.create("from-second").unwrap();
+        changes
+            .add_field(&entry, FieldKind::Secret, "password", b"two")
+            .unwrap();
+        second.write(changes).unwrap();
+
+        let names = |sheets: [&str; 2], card: &str| -> Vec<String> {
+            let recovered = recover(&folder.0, &sheets, card).unwrap();
+            Entries::read(&recovered.device)
+                .unwrap()
+                .list()
+                .into_iter()
+                .flat_map(|view| view.names)
+                .collect()
+        };
+        assert_eq!(
+            names([&new.sheets[1], &new.sheets[2]], &new.card),
+            vec!["from-second".to_owned()]
+        );
+        assert!(
+            !names([&old.sheets[1], &old.sheets[2]], &old.card).contains(&"from-second".to_owned())
+        );
+        assert!(
+            check_sheet(
+                &first.device().authority().unwrap().set,
+                &old.sheets[0],
+                &old.card
+            )
+            .is_err()
         );
     }
 

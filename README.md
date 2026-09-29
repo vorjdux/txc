@@ -431,7 +431,9 @@ the command to run.
   nothing, and after losing every device `txc vault recovery restore NAME
   --from OLD --folder NEW` rebuilds the vault from its folder with two sheets
   and the card. `status` reminds you to check a sheet twice a year and to
-  drill once a year.
+  drill once a year. If a sheet is lost or the card was seen, `txc vault
+  recovery reissue` replaces all of them, signed by two of the old sheets
+  and the card; the old ones then sign nothing and read nothing new.
 - **Removed entries** come back for 30 days: `txc vault list VAULT
   --removed`, then `txc vault restore VAULT/ENTRY`.
 - **Removing a device** (`txc vault device remove`) means it reads nothing

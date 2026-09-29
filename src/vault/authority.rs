@@ -217,7 +217,67 @@ pub struct Genesis {
     pub policy: Policy,
 }
 
+/// The root keys, recovery recipient and share commitments in force:
+/// genesis's, until a reissue of the recovery sheets replaces them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RootSet {
+    /// The three composite root public keys.
+    pub roots: [VerifyingKey; ROOTS],
+    /// The recovery recipient, a recipient of every control object.
+    pub recovery: pq::Recipient,
+    /// A commitment to each recovery share.
+    pub commitments: [Hash; ROOTS],
+}
+
+impl RootSet {
+    /// Writes it, for a reissue fact.
+    pub fn write(&self, out: &mut Writer) {
+        for root in &self.roots {
+            out.bytes(&root.to_bytes());
+        }
+        out.str(&self.recovery.to_string());
+        for commitment in &self.commitments {
+            out.fixed(commitment);
+        }
+    }
+
+    /// Reads it back.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when it is malformed.
+    pub fn read(input: &mut Reader<'_>) -> Result<Self> {
+        let mut roots = Vec::with_capacity(ROOTS);
+        for _ in 0..ROOTS {
+            roots.push(VerifyingKey::from_bytes(input.bytes()?)?);
+        }
+        let roots: [VerifyingKey; ROOTS] = roots
+            .try_into()
+            .map_err(|_roots| anyhow!("three root keys are needed"))?;
+        let recovery = input
+            .str(MAX_RECIPIENT)?
+            .parse()
+            .map_err(|error: &str| anyhow!("recovery recipient: {error}"))?;
+        let commitments = [input.fixed()?, input.fixed()?, input.fixed()?];
+        Ok(Self {
+            roots,
+            recovery,
+            commitments,
+        })
+    }
+}
+
 impl Genesis {
+    /// The roots, recovery recipient and commitments genesis starts with.
+    #[must_use]
+    pub fn root_set(&self) -> RootSet {
+        RootSet {
+            roots: self.roots.clone(),
+            recovery: self.recovery.clone(),
+            commitments: self.commitments,
+        }
+    }
+
     /// The canonical encoding the roots sign.
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
@@ -823,8 +883,25 @@ impl IssuedCertificate {
         genesis: &Genesis,
         known: &dyn Fn(&Id) -> Option<Certificate>,
     ) -> Result<()> {
+        self.verify_with(genesis.hash(), &genesis.roots, false, known)
+    }
+
+    /// The same, against the roots in force, which a reissue of the sheets
+    /// may have replaced; `kept` says the reissue carried this certificate
+    /// over, signed by the roots before it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming what does not hold.
+    pub fn verify_with(
+        &self,
+        genesis: Hash,
+        roots: &[VerifyingKey; ROOTS],
+        kept: bool,
+        known: &dyn Fn(&Id) -> Option<Certificate>,
+    ) -> Result<()> {
         let certificate = &self.certificate;
-        certificate.check_shape(genesis.hash())?;
+        certificate.check_shape(genesis)?;
         let message = certificate.encode();
         match (&self.issuance, certificate.issuer) {
             (Issuance::Root(endorsements), Issuer::Root) => {
@@ -833,7 +910,7 @@ impl IssuedCertificate {
                     "roots issue admin certificates only"
                 );
                 ensure!(
-                    quorum(&genesis.roots, &message, endorsements),
+                    kept || quorum(roots, &message, endorsements),
                     "the certificate lacks two root signatures"
                 );
             }

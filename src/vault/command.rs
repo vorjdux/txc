@@ -762,6 +762,20 @@ pub fn command() -> Command {
                         .arg(Arg::new("VAULT").help("The synced vault")),
                 )
                 .subcommand(
+                    Command::new("reissue")
+                        .about("Replace the sheets and the card, after one was lost or seen by someone else")
+                        .long_about(
+                            "Replace the sheets and the card, after one was lost or seen by \
+                             someone else.\n\n\
+                             Two of the current sheets and the card sign new ones; from then on \
+                             the old ones sign nothing and read nothing written afterwards. At a \
+                             terminal they are asked for one at a time; otherwise they are read \
+                             from standard input, one per line. Write the new ones down with \
+                             txc vault recovery print.",
+                        )
+                        .arg(Arg::new("VAULT").help("The synced vault")),
+                )
+                .subcommand(
                     Command::new("restore")
                         .about("Rebuild a vault from its folder with two sheets and the card, after losing every device")
                         .long_about(

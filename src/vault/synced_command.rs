@@ -1342,27 +1342,32 @@ fn ssh_program() -> String {
 
 /// Two sheets and the card: typed at a terminal, one at a time, or three
 /// lines on standard input.
-fn read_sheets() -> Result<(Vec<SecretString>, SecretString)> {
+fn read_sheets() -> Result<([SecretString; 2], SecretString)> {
     if io::stdin().is_terminal() {
         let first = prompt::secret_from_terminal("One sheet's words")?;
         let second = prompt::secret_from_terminal("Another sheet's words")?;
         let card = prompt::secret_from_terminal("Card words")?;
-        return Ok((vec![first, second], card));
+        return Ok(([first, second], card));
     }
+    let [first, second, card]: [SecretString; 3] = read_lines(3)?
+        .try_into()
+        .map_err(|_lines| anyhow!("give two sheets and the card, one per line"))?;
+    Ok(([first, second], card))
+}
+
+/// Up to `count` non-empty lines of standard input, as secrets.
+fn read_lines(count: usize) -> Result<Vec<SecretString>> {
     let mut lines = Vec::new();
     for line in io::stdin().lock().lines() {
         let line = Zeroizing::new(line?);
         if !line.trim().is_empty() {
             lines.push(SecretString::from(line.trim().to_owned()));
         }
-        if lines.len() == 3 {
+        if lines.len() == count {
             break;
         }
     }
-    let [first, second, card]: [SecretString; 3] = lines
-        .try_into()
-        .map_err(|_lines| anyhow!("give two sheets and the card, one per line"))?;
-    Ok((vec![first, second], card))
+    Ok(lines)
 }
 
 /// Reads a folder back with two sheets and the card.
@@ -1536,7 +1541,35 @@ fn drill(context: &Context<'_>, args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-/// `txc vault recovery print | check | restore | drill`.
+/// `txc vault recovery reissue [VAULT]`: new sheets and card, signed by
+/// two of the current sheets and the card; the old ones stop counting.
+fn reissue(context: &Context<'_>, args: &ArgMatches) -> Result<()> {
+    let name = context.which(args.get_one::<String>("VAULT"))?;
+    let mut vault = context.open(&name)?;
+    eprintln!(
+        "Reissuing replaces all three sheets and the card. Two of the current sheets and the card \
+         sign the new ones; afterwards the old ones sign nothing and read nothing new."
+    );
+    let ([first, second], card) = read_sheets()?;
+    working("Signing the new roots...", || {
+        vault.reissue(
+            [first.expose_secret(), second.expose_secret()],
+            card.expose_secret(),
+        )
+    })?;
+    synced::record_checks(context.home, &name, |checks| {
+        *checks = synced::Checks::default();
+    })?;
+    eprintln!(
+        "New sheets and a new card are ready. Write them down, then destroy the old ones:\n  \
+         txc vault recovery print {name}\n\
+         History written before now stays readable with the old sheets until the sync \
+         provider's version history of this folder is purged."
+    );
+    Ok(())
+}
+
+/// `txc vault recovery print | check | restore | drill | reissue`.
 ///
 /// # Errors
 ///
@@ -1548,6 +1581,7 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     match verb {
         "restore" => return restore(context, args),
         "drill" => return drill(context, args),
+        "reissue" => return reissue(context, args),
         _ => {}
     }
     let name = context.which(args.get_one::<String>("VAULT"))?;
@@ -1606,13 +1640,24 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             Ok(())
         }
         "check" => {
-            let genesis = vault
-                .genesis()
+            let set = vault
+                .device()
+                .authority()
                 .context("this device has not read the vault's genesis yet")?
-                .clone();
-            let sheet = prompt::secret_from_terminal("Sheet words")?;
-            let card = prompt::secret_from_terminal("Card words")?;
-            let index = synced::check_sheet(&genesis, sheet.expose_secret(), card.expose_secret())?;
+                .set;
+            let (sheet, card) = if io::stdin().is_terminal() {
+                (
+                    prompt::secret_from_terminal("Sheet words")?,
+                    prompt::secret_from_terminal("Card words")?,
+                )
+            } else {
+                let lines = read_lines(2)?;
+                let [sheet, card]: [SecretString; 2] = lines
+                    .try_into()
+                    .map_err(|_lines| anyhow!("give the sheet and the card, one per line"))?;
+                (sheet, card)
+            };
+            let index = synced::check_sheet(&set, sheet.expose_secret(), card.expose_secret())?;
             let at = now();
             synced::record_checks(context.home, &name, |checks| {
                 if let Some(slot) = checks.sheets.get_mut(usize::from(index)) {

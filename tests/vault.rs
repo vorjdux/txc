@@ -2228,3 +2228,55 @@ fn two_sheets_and_the_card_rehearse_and_restore_a_vault_from_its_folder() {
         &format!("{}\n{}\n{card}\n", sheets[0], sheets[1]),
     ));
 }
+
+#[test]
+fn reissued_sheets_replace_the_old_ones_for_everything_written_afterwards() {
+    let sandbox = Sandbox::new("synced-reissue");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2"));
+    let old = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let old: Vec<String> = old.lines().map(str::to_owned).collect();
+    let old_card = old[3].clone();
+    succeeds(&sandbox.vault_piped(&["recovery", "check"], &format!("{}\n{old_card}\n", old[1])));
+
+    succeeds(&sandbox.vault_piped(
+        &["recovery", "reissue"],
+        &format!("{}\n{}\n{old_card}\n", old[0], old[2]),
+    ));
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("recovery sheets not written down"),
+        "{status}"
+    );
+    let new = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let new: Vec<String> = new.lines().map(str::to_owned).collect();
+    assert_eq!(new.len(), 4);
+    assert!(new.iter().all(|line| !old.contains(line)));
+    let new_card = new[3].clone();
+
+    // The old sheets no longer check, sign or read what comes next.
+    fails(&sandbox.vault_piped(&["recovery", "check"], &format!("{}\n{old_card}\n", old[1])));
+    succeeds(&sandbox.vault_piped(&["recovery", "check"], &format!("{}\n{new_card}\n", new[1])));
+    fails(&sandbox.vault_piped(
+        &["recovery", "reissue"],
+        &format!("{}\n{}\n{old_card}\n", old[0], old[1]),
+    ));
+    succeeds(&sandbox.vault_piped(&["add", "later", "--secret-from-stdin"], "s3cret"));
+
+    let with_new = stderr(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{new_card}\n", new[0], new[2]),
+    ));
+    assert!(with_new.contains("of 2 entries"), "{with_new}");
+    let with_old = stderr(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{old_card}\n", old[0], old[2]),
+    ));
+    // At most what came before; once the snapshot the reissue wrote is
+    // collected, not even that.
+    assert!(
+        !with_old.contains("of 2 entries"),
+        "the old sheets never read what came after: {with_old}"
+    );
+}

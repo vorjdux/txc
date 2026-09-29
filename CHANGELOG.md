@@ -22,6 +22,13 @@ All notable changes to txc are recorded here. The format follows
   yearly rehearsal. Sheet checks and drills are dated, and `status` reminds
   you when one is due, folding several reminders into one line that
   `status --all` expands.
+- **`txc vault recovery reissue`** replaces the sheets and the card after one
+  was lost or seen. Two current sheets and the card sign a root fact naming
+  new root keys, a new recovery recipient and new share commitments, and
+  carrying over what the old roots had signed; every device then seals to
+  the new recovery recipient and changes its sender key, and a recovery
+  package gives the new sheets the history. The old sheets sign nothing and
+  read nothing written afterwards.
 
 ## [0.8.0] - 2026-09-29
 

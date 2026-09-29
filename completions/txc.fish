@@ -1579,6 +1579,7 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "print" -d 'Show the three sheets and the card, one at a time, to write down'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "check" -d 'Check one sheet and the card against the vault'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "drill" -d 'Rehearse a full recovery with two sheets and the card, keeping nothing'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "reissue" -d 'Replace the sheets and the card, after one was lost or seen by someone else'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "restore" -d 'Rebuild a vault from its folder with two sheets and the card, after losing every device'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from recovery" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from resolve" -l field -d 'The field to settle' -r

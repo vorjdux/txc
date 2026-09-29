@@ -2932,6 +2932,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -2963,6 +2964,15 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;recovery;reissue' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;recovery;restore' {
             [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The old vault''s sync folder, or a copy of it')
             [CompletionResult]::new('--folder', '--folder', [CompletionResultType]::ParameterName, 'A new, empty folder for the restored vault')
@@ -2978,6 +2988,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -2989,6 +3000,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;recovery;help;drill' {
+            break
+        }
+        'txc;vault;recovery;help;reissue' {
             break
         }
         'txc;vault;recovery;help;restore' {
@@ -3467,6 +3481,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             break
         }
@@ -3477,6 +3492,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;recovery;drill' {
+            break
+        }
+        'txc;vault;help;recovery;reissue' {
             break
         }
         'txc;vault;help;recovery;restore' {
@@ -4329,6 +4347,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             break
         }
@@ -4339,6 +4358,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;recovery;drill' {
+            break
+        }
+        'txc;help;vault;recovery;reissue' {
             break
         }
         'txc;help;vault;recovery;restore' {

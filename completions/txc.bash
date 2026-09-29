@@ -1096,6 +1096,9 @@ _txc() {
             txc__subcmd__help__subcmd__vault__subcmd__recovery,print)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__recovery__subcmd__print"
                 ;;
+            txc__subcmd__help__subcmd__vault__subcmd__recovery,reissue)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__recovery__subcmd__reissue"
+                ;;
             txc__subcmd__help__subcmd__vault__subcmd__recovery,restore)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__recovery__subcmd__restore"
                 ;;
@@ -1549,6 +1552,9 @@ _txc() {
             txc__subcmd__vault__subcmd__help__subcmd__recovery,print)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__recovery__subcmd__print"
                 ;;
+            txc__subcmd__vault__subcmd__help__subcmd__recovery,reissue)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__recovery__subcmd__reissue"
+                ;;
             txc__subcmd__vault__subcmd__help__subcmd__recovery,restore)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__recovery__subcmd__restore"
                 ;;
@@ -1564,6 +1570,9 @@ _txc() {
             txc__subcmd__vault__subcmd__recovery,print)
                 cmd="txc__subcmd__vault__subcmd__recovery__subcmd__print"
                 ;;
+            txc__subcmd__vault__subcmd__recovery,reissue)
+                cmd="txc__subcmd__vault__subcmd__recovery__subcmd__reissue"
+                ;;
             txc__subcmd__vault__subcmd__recovery,restore)
                 cmd="txc__subcmd__vault__subcmd__recovery__subcmd__restore"
                 ;;
@@ -1578,6 +1587,9 @@ _txc() {
                 ;;
             txc__subcmd__vault__subcmd__recovery__subcmd__help,print)
                 cmd="txc__subcmd__vault__subcmd__recovery__subcmd__help__subcmd__print"
+                ;;
+            txc__subcmd__vault__subcmd__recovery__subcmd__help,reissue)
+                cmd="txc__subcmd__vault__subcmd__recovery__subcmd__help__subcmd__reissue"
                 ;;
             txc__subcmd__vault__subcmd__recovery__subcmd__help,restore)
                 cmd="txc__subcmd__vault__subcmd__recovery__subcmd__help__subcmd__restore"
@@ -5653,7 +5665,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault__subcmd__recovery)
-            opts="print check drill restore"
+            opts="print check drill reissue restore"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -5695,6 +5707,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault__subcmd__recovery__subcmd__print)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__recovery__subcmd__reissue)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -11393,7 +11419,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help__subcmd__recovery)
-            opts="print check drill restore"
+            opts="print check drill reissue restore"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11435,6 +11461,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help__subcmd__recovery__subcmd__print)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__recovery__subcmd__reissue)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -12027,7 +12067,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__recovery)
-            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help print check drill restore help"
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help print check drill reissue restore help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12105,7 +12145,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__recovery__subcmd__help)
-            opts="print check drill restore help"
+            opts="print check drill reissue restore help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -12174,6 +12214,20 @@ _txc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        txc__subcmd__vault__subcmd__recovery__subcmd__help__subcmd__reissue)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         txc__subcmd__vault__subcmd__recovery__subcmd__help__subcmd__restore)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
@@ -12189,6 +12243,32 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__recovery__subcmd__print)
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__recovery__subcmd__reissue)
             opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

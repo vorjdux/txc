@@ -9,7 +9,7 @@ use anyhow::{Result, anyhow, bail, ensure};
 use sha2::{Digest, Sha384};
 use zeroize::Zeroizing;
 
-use crate::vault::authority::Endorsement;
+use crate::vault::authority::{Endorsement, RootSet};
 use crate::vault::core::membership;
 use crate::vault::object::{Hash, Id, SenderKey, Signed};
 use crate::vault::wire::{Reader, Writer};
@@ -50,6 +50,23 @@ pub enum FactKind {
     MintAllowance(u32),
     /// An authenticator was removed; rotation excludes it.
     AuthenticatorRemove(Id),
+    /// The recovery sheets were reissued: new root keys, recovery recipient
+    /// and share commitments replace those in force (study section 12).
+    Reissue(Box<Reissue>),
+}
+
+/// What a reissue of the recovery sheets states. The roots before it sign
+/// it; from then on only the new roots act, and the root-signed facts and
+/// certificates it lists stay valid, signed by roots that no longer are.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reissue {
+    /// The roots, recovery recipient and commitments from now on.
+    pub set: RootSet,
+    /// Root facts, by object hash, carried over.
+    pub kept_facts: BTreeSet<Hash>,
+    /// Root-issued certificates, by the hash of their encoding, carried
+    /// over.
+    pub kept_certificates: BTreeSet<Hash>,
 }
 
 /// A membership fact about one device: the body of a fact object.
@@ -69,7 +86,7 @@ impl Fact {
     pub const fn needs_root(&self) -> bool {
         matches!(
             self.kind,
-            FactKind::AdminRevoke(_) | FactKind::MintAllowance(_)
+            FactKind::AdminRevoke(_) | FactKind::MintAllowance(_) | FactKind::Reissue(_)
         )
     }
 
@@ -134,6 +151,16 @@ impl Fact {
                 out.u8(8);
                 out.fixed(id);
             }
+            FactKind::Reissue(reissue) => {
+                out.u8(9);
+                reissue.set.write(&mut out);
+                for kept in [&reissue.kept_facts, &reissue.kept_certificates] {
+                    out.count(kept.len());
+                    for hash in kept {
+                        out.fixed(hash);
+                    }
+                }
+            }
         }
         out.finish()
     }
@@ -195,6 +222,21 @@ impl Fact {
                     .map_err(|_count| anyhow!("a mint allowance is out of range"))?,
             ),
             8 => FactKind::AuthenticatorRemove(input.fixed()?),
+            9 => {
+                let set = RootSet::read(&mut input)?;
+                let mut kept = [BTreeSet::new(), BTreeSet::new()];
+                for list in &mut kept {
+                    for _ in 0..input.count(MAX_ITEMS)? {
+                        list.insert(input.fixed()?);
+                    }
+                }
+                let [kept_facts, kept_certificates] = kept;
+                FactKind::Reissue(Box::new(Reissue {
+                    set,
+                    kept_facts,
+                    kept_certificates,
+                }))
+            }
             other => bail!("unknown membership fact {other}"),
         };
         input.finish()?;
