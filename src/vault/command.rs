@@ -357,7 +357,13 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("passwd")
-                .about("Change the passphrase protecting your identity")
+                .about("Change the passphrase of your identity and of the synced vaults it opens")
+                .arg(
+                    Arg::new("vault")
+                        .long("vault")
+                        .value_name("VAULT")
+                        .help("Change only this synced vault's passphrase"),
+                )
                 .arg(
                     Arg::new("new-passphrase-file")
                         .long("new-passphrase-file")
@@ -1835,7 +1841,48 @@ impl Session {
     }
 
     fn passwd(&self, sub: &ArgMatches) -> Result<()> {
-        let keyring = self.unlock()?;
+        // The current passphrase, asked once: it opens the identity when
+        // this device has one, and every synced vault it opens.
+        let current = self.passphrase.ask("Current passphrase: ")?;
+        let only = sub.get_one::<String>("vault");
+        let keyring = if self.home.has_identity() && only.is_none() {
+            Some(working("Unlocking...", || {
+                Keyring::unlock(&self.home, &current)
+            })?)
+        } else {
+            None
+        };
+        let names = match only {
+            Some(name) => {
+                ensure!(
+                    synced::exists(&self.home, name),
+                    "there is no synced vault named \"{name}\" on this device"
+                );
+                vec![name.clone()]
+            }
+            None => synced::names(&self.home)?,
+        };
+        let mut vaults = Vec::new();
+        for name in names {
+            match working(&format!("Unlocking {name}..."), || {
+                Synced::open(
+                    &self.home,
+                    &name,
+                    &current,
+                    &crate::vault::hardware::Terminal,
+                )
+            }) {
+                Ok(vault) => vaults.push(vault),
+                Err(error) if only.is_none() => {
+                    eprintln!("The synced vault {name} keeps its own passphrase: {error:#}");
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        ensure!(
+            keyring.is_some() || !vaults.is_empty(),
+            "that passphrase opens nothing here"
+        );
         let source = if let Some(path) = sub.get_one::<String>("new-passphrase-file") {
             Passphrase::File(path.into())
         } else {
@@ -1846,10 +1893,33 @@ impl Session {
             Passphrase::Terminal
         };
         let passphrase = source.ask_new("New passphrase: ")?;
-        working("Protecting your identity...", || {
-            keyring.change_passphrase(&passphrase)
-        })?;
-        eprintln!("Passphrase changed.");
+        if let Some(keyring) = &keyring {
+            working("Protecting your identity...", || {
+                keyring.change_passphrase(&passphrase)
+            })?;
+        }
+        for vault in &mut vaults {
+            working(&format!("Protecting {}...", vault.name), || {
+                vault.change_passphrase(&current, &passphrase, &crate::vault::hardware::Terminal)
+            })?;
+        }
+        let mut changed: Vec<String> = keyring.iter().map(|_| "your identity".to_owned()).collect();
+        changed.extend(
+            vaults
+                .iter()
+                .map(|vault| format!("the synced vault {}", vault.name)),
+        );
+        // A session holds keys made from the old passphrase.
+        let ended = session::end(&self.home);
+        eprintln!(
+            "Passphrase changed for {}.{}",
+            changed.join(", "),
+            if ended {
+                " The session was ended; unlock again with: txc vault unlock"
+            } else {
+                ""
+            }
+        );
         Ok(())
     }
 

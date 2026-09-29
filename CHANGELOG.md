@@ -14,6 +14,9 @@ All notable changes to txc are recorded here. The format follows
   their old spellings still work but are no longer listed. `txc vault create
   NAME --folder DIR` makes another synced vault, `device approve` also covers
   what `device ack` did, and `status` replaces `sync`.
+- **`txc vault passwd` covers synced vaults.** It changes the passphrase of the
+  identity and of every synced vault the current passphrase opens, keeping
+  each vault's second factor, keystore or hardware; `--vault NAME` changes one.
 - **Synced vaults.** `txc vault init --folder DIR` creates a vault in a sync
   folder that several devices share: signed, encrypted objects with random
   names, post-quantum from end to end (age `mlkem768x25519`, composite

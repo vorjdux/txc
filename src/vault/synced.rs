@@ -837,6 +837,39 @@ impl Synced {
         hardware.open(sealed, prompter)
     }
 
+    /// Seals this device's keys again under a new passphrase, with the same
+    /// second factor. The current passphrase is checked first.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the current passphrase is wrong or a write
+    /// fails.
+    pub fn change_passphrase(
+        &mut self,
+        current: &SecretString,
+        new: &SecretString,
+        prompter: &dyn Prompter,
+    ) -> Result<()> {
+        let keys = home::read_private(&self.dir.join(KEYS), KEY_LIMIT, PRIVATE)?;
+        let device = self.device.me().device;
+        let second = second_factors(&self.dir, &device, prompter)?
+            .into_iter()
+            .find(|second| {
+                local::key_file_kek(&keys, current.expose_secret().as_bytes(), second)
+                    .is_ok_and(|kek| *kek == *self.kek)
+            })
+            .context("that is not this vault's passphrase")?;
+        let (file, kek) = local::new_key_file(
+            device,
+            new.expose_secret().as_bytes(),
+            &second,
+            self.file.params,
+        )?;
+        self.file = file;
+        self.kek = kek;
+        self.save()
+    }
+
     /// The hardware holding this device's second factor, if any.
     ///
     /// # Errors

@@ -412,6 +412,25 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         assert_eq!(shown, "pin-4321", "still opens after rewrapping");
     }
 
+    // The passphrase changes with the hardware still holding the factor.
+    let new_pass = scratch.0.join("new-pass");
+    std::fs::write(&new_pass, "an entirely new passphrase here\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&new_pass, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    ok(txc(
+        &[
+            "passwd",
+            "--new-passphrase-file",
+            new_pass.to_str().unwrap(),
+        ],
+        b"",
+    ));
+    std::fs::copy(&new_pass, &pass).unwrap();
+    assert_eq!(ok(txc(&["copy", "--print", "mail"], b"")), "s3cret");
+
     std::fs::OpenOptions::new()
         .append(true)
         .open(&plugin)

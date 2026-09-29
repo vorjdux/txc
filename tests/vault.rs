@@ -2064,3 +2064,62 @@ fn format_details_live_under_advanced_and_create_makes_a_second_synced_vault() {
         "{listed}"
     );
 }
+
+#[test]
+fn passwd_changes_the_identity_and_the_synced_vaults_it_opens() {
+    let sandbox = Sandbox::new("passwd-synced");
+    sandbox.init();
+    let (one, two) = (sandbox.root.join("sync-one"), sandbox.root.join("sync-two"));
+    std::fs::create_dir_all(&one).unwrap();
+    std::fs::create_dir_all(&two).unwrap();
+    succeeds(&sandbox.vault(&["create", "home", "--folder", one.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "home/mail", "--secret-from-stdin"], "s3cret"));
+    let other = sandbox.passphrase_file("other-pass", "a different passphrase for work");
+    succeeds(&sandbox.vault_with(
+        &sandbox.home(),
+        &other,
+        &["create", "work", "--folder", two.to_str().unwrap()],
+        None,
+    ));
+
+    let new = sandbox.passphrase_file("new-pass", "a brand new passphrase for both");
+    let changed = sandbox.vault(&["passwd", "--new-passphrase-file", new.to_str().unwrap()]);
+    succeeds(&changed);
+    let said = stderr(&changed);
+    assert!(
+        said.contains("your identity")
+            && said.contains("home")
+            && said.contains("work keeps its own"),
+        "{said}"
+    );
+
+    let home = sandbox.home();
+    fails(&sandbox.vault(&["copy", "--print", "--no-session", "home/mail"]));
+    assert_eq!(
+        succeeds(&sandbox.vault_with(
+            &home,
+            &new,
+            &["copy", "--print", "--no-session", "home/mail"],
+            None
+        )),
+        "s3cret"
+    );
+    succeeds(&sandbox.vault_with(&home, &new, &["advanced", "identity"], None));
+    // The vault with its own passphrase is unchanged, and --vault changes only it.
+    succeeds(&sandbox.vault_with(&home, &other, &["list", "work", "--no-session"], None));
+    let third = sandbox.passphrase_file("third-pass", "yet another passphrase for work");
+    succeeds(&sandbox.vault_with(
+        &home,
+        &other,
+        &[
+            "passwd",
+            "--vault",
+            "work",
+            "--new-passphrase-file",
+            third.to_str().unwrap(),
+        ],
+        None,
+    ));
+    succeeds(&sandbox.vault_with(&home, &third, &["list", "work", "--no-session"], None));
+    fails(&sandbox.vault_with(&home, &other, &["list", "work", "--no-session"], None));
+}

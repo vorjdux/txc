@@ -2640,6 +2640,7 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (passwd)
 _arguments "${_arguments_options[@]}" : \
+'--vault=[Change only this synced vault'\''s passphrase]:VAULT:_default' \
 '--new-passphrase-file=[Read the new passphrase from a file rather than asking]:PATH:_default' \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
 '--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
@@ -6126,7 +6127,7 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'import:Bring in entries from another password manager or a .env file' \
 'export:Write a copy of vaults as one age file, readable with age -d' \
 'run:Run a program with secrets in its environment or as files, never in your shell' \
-'passwd:Change the passphrase protecting your identity' \
+'passwd:Change the passphrase of your identity and of the synced vaults it opens' \
 'create:Create a new, empty vault; with --folder, a synced one shared between your devices' \
 'list:List the vaults, or entries\: of one vault, favourites, or recently used' \
 'add:Add an entry; its secret is typed, generated or piped in' \
@@ -7022,7 +7023,7 @@ _txc__subcmd__vault_commands() {
 'import:Bring in entries from another password manager or a .env file' \
 'export:Write a copy of vaults as one age file, readable with age -d' \
 'run:Run a program with secrets in its environment or as files, never in your shell' \
-'passwd:Change the passphrase protecting your identity' \
+'passwd:Change the passphrase of your identity and of the synced vaults it opens' \
 'create:Create a new, empty vault; with --folder, a synced one shared between your devices' \
 'list:List the vaults, or entries\: of one vault, favourites, or recently used' \
 'add:Add an entry; its secret is typed, generated or piped in' \
@@ -7407,7 +7408,7 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'import:Bring in entries from another password manager or a .env file' \
 'export:Write a copy of vaults as one age file, readable with age -d' \
 'run:Run a program with secrets in its environment or as files, never in your shell' \
-'passwd:Change the passphrase protecting your identity' \
+'passwd:Change the passphrase of your identity and of the synced vaults it opens' \
 'create:Create a new, empty vault; with --folder, a synced one shared between your devices' \
 'list:List the vaults, or entries\: of one vault, favourites, or recently used' \
 'add:Add an entry; its secret is typed, generated or piped in' \

@@ -11842,12 +11842,16 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__passwd)
-            opts="-h --new-passphrase-file --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --vault --new-passphrase-file --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --vault)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --new-passphrase-file)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

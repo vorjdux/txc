@@ -2426,7 +2426,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Bring in entries from another password manager or a .env file')
             [CompletionResult]::new('export', 'export', [CompletionResultType]::ParameterValue, 'Write a copy of vaults as one age file, readable with age -d')
             [CompletionResult]::new('run', 'run', [CompletionResultType]::ParameterValue, 'Run a program with secrets in its environment or as files, never in your shell')
-            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
+            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase of your identity and of the synced vaults it opens')
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault; with --folder, a synced one shared between your devices')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
@@ -2536,6 +2536,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;passwd' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'Change only this synced vault''s passphrase')
             [CompletionResult]::new('--new-passphrase-file', '--new-passphrase-file', [CompletionResultType]::ParameterName, 'Read the new passphrase from a file rather than asking')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
@@ -3274,7 +3275,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Bring in entries from another password manager or a .env file')
             [CompletionResult]::new('export', 'export', [CompletionResultType]::ParameterValue, 'Write a copy of vaults as one age file, readable with age -d')
             [CompletionResult]::new('run', 'run', [CompletionResultType]::ParameterValue, 'Run a program with secrets in its environment or as files, never in your shell')
-            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
+            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase of your identity and of the synced vaults it opens')
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault; with --folder, a synced one shared between your devices')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
@@ -4125,7 +4126,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Bring in entries from another password manager or a .env file')
             [CompletionResult]::new('export', 'export', [CompletionResultType]::ParameterValue, 'Write a copy of vaults as one age file, readable with age -d')
             [CompletionResult]::new('run', 'run', [CompletionResultType]::ParameterValue, 'Run a program with secrets in its environment or as files, never in your shell')
-            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
+            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase of your identity and of the synced vaults it opens')
             [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault; with --folder, a synced one shared between your devices')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
