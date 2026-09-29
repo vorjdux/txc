@@ -525,6 +525,7 @@ fn wipe(dir: &Path, device: &Id) {
         CHECKS,
         SNOOZED,
         REMINDED,
+        "backup",
         PLUGINS,
         ACKNOWLEDGED,
         FOLDER,
@@ -1674,10 +1675,14 @@ impl Synced {
             .context("the recovery sheets were already written down")?;
         let decryptor = age::Decryptor::new(sealed.as_slice())
             .map_err(|_error| anyhow!("the recovery kit is damaged"))?;
+        // Sealed to the identity the device had then, which a renewal since
+        // may have retired.
+        let me = self.device.me();
+        let identities = std::iter::once(&me.identity)
+            .chain(&me.retired)
+            .map(|identity| identity as &dyn age::Identity);
         let mut reader = decryptor
-            .decrypt(std::iter::once(
-                &self.device.me().identity as &dyn age::Identity,
-            ))
+            .decrypt(identities)
             .map_err(|_error| anyhow!("the recovery kit is not this device's"))?;
         let mut plain = Zeroizing::new(Vec::new());
         std::io::Read::read_to_end(&mut reader, &mut plain)?;

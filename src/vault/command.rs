@@ -819,6 +819,33 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("backup")
+                .about("Write an offline backup of a synced vault, readable with age and the recovery sheets")
+                .long_about(
+                    "Write an offline backup of a synced vault, readable with age and the \
+                     recovery sheets.\n\n\
+                     The backup is one age file, sealed to the vault's recovery key and this \
+                     device, holding the whole vault as JSON, with a signature beside it. The \
+                     folder is remembered: while it is there, as a backup drive plugged in, a \
+                     new backup is written on its own once a week. Read one with: txc vault \
+                     recovery key > key.txt; age -d -i key.txt BACKUP",
+                )
+                .arg(Arg::new("VAULT").help("The synced vault"))
+                .arg(
+                    Arg::new("to")
+                        .long("to")
+                        .value_name("DIR")
+                        .conflicts_with("verify")
+                        .help("The folder to write it into, as on separate media"),
+                )
+                .arg(
+                    Arg::new("verify")
+                        .long("verify")
+                        .value_name("FILE")
+                        .help("Check a backup's signature against this vault's devices"),
+                ),
+        )
+        .subcommand(
             Command::new("compare")
                 .about("Show digests to compare with another device, to see you share one history")
                 .arg(Arg::new("VAULT").help("The synced vault"))
@@ -852,6 +879,17 @@ pub fn command() -> Command {
                     Command::new("drill")
                         .about("Rehearse a full recovery with two sheets and the card, keeping nothing")
                         .arg(Arg::new("VAULT").help("The synced vault")),
+                )
+                .subcommand(
+                    Command::new("key")
+                        .about("Print the recovery key from two sheets and the card, to read a backup with age")
+                        .long_about(
+                            "Print the recovery key from two sheets and the card, to read a \
+                             backup with age.\n\n\
+                             It needs no vault on this device. It goes to standard output, which \
+                             must be a file or a pipe: txc vault recovery key > key.txt; then \
+                             age -d -i key.txt BACKUP. Delete the key file afterwards.",
+                        ),
                 )
                 .subcommand(
                     Command::new("reissue")
@@ -1352,6 +1390,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "ssh-ca" => synced_command::ssh_ca(&context.synced(), sub),
         "ssh" => synced_command::ssh(&context.synced(), sub),
         "doctor" => synced_command::doctor(&context.synced(), sub),
+        "backup" => synced_command::backup(&context.synced(), sub),
         "recovery" => synced_command::recovery(&context.synced(), sub),
         "resolve" => synced_command::entry(&context.synced(), "resolve", sub),
         "migrate" => {
@@ -3453,6 +3492,7 @@ mod tests {
             "from",
             "more",
             "receipt",
+            "verify",
             "output",
             "folder",
             "name",

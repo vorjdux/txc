@@ -210,6 +210,9 @@ pub enum Slot {
 /// One register: an entry, a field of it, and a slot.
 pub type Register = (Id, Id, Slot);
 
+/// A value a removal kept: its register, its kind, and the value.
+pub type KeptValue = (Register, FieldKind, Zeroizing<Vec<u8>>);
+
 /// An op's identity: the object it came in and its place there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OpId {
@@ -1296,6 +1299,62 @@ impl Entries {
         out
     }
 
+    /// What the removal of an entry kept: every register it deleted with
+    /// the value its tombstone holds, decrypted. Fields deleted earlier, on
+    /// their own, are not among them.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the entry was not removed, or its values are
+    /// past the retention window.
+    pub fn removed_values(&self, entry: &Id) -> Result<Vec<KeptValue>> {
+        let folded = fold_registers(&self.ops, &self.covered());
+        let (_, name_live, name_state) = folded
+            .get(&(*entry, NAME, Slot::Value))
+            .ok_or_else(|| anyhow!("no such entry"))?;
+        ensure!(
+            name_state.deleted && name_state.values.is_empty(),
+            "the entry was not removed"
+        );
+        let removal = name_live
+            .iter()
+            .find(|id| {
+                self.ops
+                    .get(*id)
+                    .is_some_and(|(op, _)| op.value.is_none() && !op.old.is_empty())
+            })
+            .map(|id| id.object)
+            .ok_or_else(|| anyhow!("the entry was removed too long ago to restore"))?;
+        let mut kept = Vec::new();
+        for (register, (_, live, state)) in
+            folded.range((*entry, [0; 16], Slot::Value)..=(*entry, [0xff; 16], Slot::Label))
+        {
+            if !state.deleted || !state.values.is_empty() {
+                continue;
+            }
+            let Some((op, source)) = live
+                .iter()
+                .filter(|id| id.object == removal)
+                .find_map(|id| self.ops.get(id))
+            else {
+                continue;
+            };
+            let Some(old) = op.old.first() else {
+                continue;
+            };
+            let plain = self.plain(
+                register,
+                op.kind,
+                &Stored {
+                    source: *source,
+                    bytes: old.clone(),
+                },
+            )?;
+            kept.push((*register, op.kind, plain));
+        }
+        Ok(kept)
+    }
+
     /// Decrypts the live values of one field: exactly one secret field per
     /// release. Several values mean a conflict the user must resolve.
     ///
@@ -1577,52 +1636,10 @@ impl<'a> Changes<'a> {
     /// Returns an error when the entry was not removed, or its values are
     /// past the retention window.
     pub fn restore_entry(&mut self, entry: &Id) -> Result<usize> {
-        let entries = self.entries;
-        let folded = fold_registers(&entries.ops, &entries.covered());
-        let (_, name_live, name_state) = folded
-            .get(&(*entry, NAME, Slot::Value))
-            .ok_or_else(|| anyhow!("no such entry"))?;
-        ensure!(
-            name_state.deleted && name_state.values.is_empty(),
-            "the entry was not removed"
-        );
-        let removal = name_live
-            .iter()
-            .find(|id| {
-                entries
-                    .ops
-                    .get(*id)
-                    .is_some_and(|(op, _)| op.value.is_none() && !op.old.is_empty())
-            })
-            .map(|id| id.object)
-            .ok_or_else(|| anyhow!("the entry was removed too long ago to restore"))?;
-        let mut restored = 0_usize;
-        for (register, (_, live, state)) in
-            folded.range((*entry, [0; 16], Slot::Value)..=(*entry, [0xff; 16], Slot::Label))
-        {
-            if !state.deleted || !state.values.is_empty() {
-                continue;
-            }
-            let Some((op, source)) = live
-                .iter()
-                .filter(|id| id.object == removal)
-                .find_map(|id| entries.ops.get(id))
-            else {
-                continue;
-            };
-            let Some(old) = op.old.first() else {
-                continue;
-            };
-            let plain = entries.plain(
-                register,
-                op.kind,
-                &Stored {
-                    source: *source,
-                    bytes: old.clone(),
-                },
-            )?;
-            self.set(*register, op.kind, &plain)?;
-            restored = restored.saturating_add(1);
+        let kept = self.entries.removed_values(entry)?;
+        let restored = kept.len();
+        for (register, kind, plain) in kept {
+            self.set(register, kind, &plain)?;
         }
         Ok(restored)
     }

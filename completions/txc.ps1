@@ -2443,6 +2443,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
             [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
             [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
+            [CompletionResult]::new('backup', 'backup', [CompletionResultType]::ParameterValue, 'Write an offline backup of a synced vault, readable with age and the recovery sheets')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, check one, rehearse or restore')
@@ -2974,6 +2975,17 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;hardware;help;help' {
             break
         }
+        'txc;vault;backup' {
+            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'The folder to write it into, as on separate media')
+            [CompletionResult]::new('--verify', '--verify', [CompletionResultType]::ParameterName, 'Check a backup''s signature against this vault''s devices')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;compare' {
             [CompletionResult]::new('--receipt', '--receipt', [CompletionResultType]::ParameterName, 'Check a receipt a device change printed: what it was, and who signed it')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
@@ -3003,6 +3015,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -3035,6 +3048,15 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;recovery;key' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;recovery;reissue' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
@@ -3059,6 +3081,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
@@ -3071,6 +3094,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;recovery;help;drill' {
+            break
+        }
+        'txc;vault;recovery;help;key' {
             break
         }
         'txc;vault;recovery;help;reissue' {
@@ -3443,6 +3469,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
             [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
             [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
+            [CompletionResult]::new('backup', 'backup', [CompletionResultType]::ParameterValue, 'Write an offline backup of a synced vault, readable with age and the recovery sheets')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, check one, rehearse or restore')
@@ -3586,6 +3613,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;help;hardware;remove' {
             break
         }
+        'txc;vault;help;backup' {
+            break
+        }
         'txc;vault;help;compare' {
             break
         }
@@ -3596,6 +3626,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             break
@@ -3607,6 +3638,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;recovery;drill' {
+            break
+        }
+        'txc;vault;help;recovery;key' {
             break
         }
         'txc;vault;help;recovery;reissue' {
@@ -4334,6 +4368,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
             [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
             [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
+            [CompletionResult]::new('backup', 'backup', [CompletionResultType]::ParameterValue, 'Write an offline backup of a synced vault, readable with age and the recovery sheets')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, check one, rehearse or restore')
@@ -4476,6 +4511,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;help;vault;hardware;remove' {
             break
         }
+        'txc;help;vault;backup' {
+            break
+        }
         'txc;help;vault;compare' {
             break
         }
@@ -4486,6 +4524,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault')
             [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
             [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
             [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
             break
@@ -4497,6 +4536,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;recovery;drill' {
+            break
+        }
+        'txc;help;vault;recovery;key' {
             break
         }
         'txc;help;vault;recovery;reissue' {

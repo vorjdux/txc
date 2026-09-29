@@ -59,6 +59,9 @@ impl Context<'_> {
     fn open(&self, name: &str) -> Result<Synced> {
         let mut vault = self.open_quiet(name)?;
         working("Syncing...", || vault.sync())?;
+        if let Some(path) = crate::vault::backup::when_due(self.home, &vault) {
+            eprintln!("Wrote an offline backup: {}", path.display());
+        }
         Ok(vault)
     }
 
@@ -792,6 +795,19 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
                 data_encoding::HEXLOWER.encode(&device[..4])
             ));
         }
+    }
+    let backups = crate::vault::backup::settings(home, name);
+    match backups.last {
+        Some(last) if now().saturating_sub(last) >= crate::vault::backup::OVERDUE => {
+            lines.push(format!(
+                "● yellow  no offline backup for {} days      → plug in the backup media, or: txc vault backup {name} --to DIR",
+                now().saturating_sub(last) / 86_400
+            ));
+        }
+        None if all.is_some() => lines.push(format!(
+            "● yellow  no offline backup yet               → txc vault backup {name} --to DIR"
+        )),
+        _ => {}
     }
     let filter_path = home.root().join(crate::vault::breach::FILE_NAME);
     if let Ok(mut filter) = crate::vault::breach::Filter::open(&filter_path) {
@@ -1852,7 +1868,70 @@ fn reissue(context: &Context<'_>, args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-/// `txc vault recovery print | check | restore | drill | reissue`.
+/// `txc vault recovery key`: the recovery identity from two sheets and the
+/// card, for `age -d` on an offline backup. Needs no vault here.
+fn recovery_key() -> Result<()> {
+    ensure!(
+        !io::stdout().is_terminal(),
+        "the recovery key is written only to a file or a pipe: txc vault recovery key > key.txt"
+    );
+    let ([first, second], card) = read_sheets()?;
+    let card = crate::vault::authority::normalize_card(card.expose_secret())?;
+    let secret =
+        crate::vault::slip39::combine(&[first.expose_secret(), second.expose_secret()], &card)
+            .context(
+                "the sheets and the card do not combine; check each with txc vault recovery check",
+            )?;
+    let secret: [u8; 32] = secret
+        .as_slice()
+        .try_into()
+        .map_err(|_length| anyhow!("these sheets do not hold a txc recovery secret"))?;
+    let identity = crate::vault::authority::recovery_identity(&secret);
+    let mut stdout = io::stdout().lock();
+    writeln!(stdout, "{}", identity.to_string().expose_secret())?;
+    stdout.flush()?;
+    eprintln!("Wrote the recovery key. Delete it once the backup is read.");
+    Ok(())
+}
+
+/// `txc vault backup [VAULT] --to DIR | --verify FILE`.
+///
+/// # Errors
+///
+/// Returns an error when the vault does not open or the write fails.
+pub fn backup(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let name = context.which(sub.get_one::<String>("VAULT"))?;
+    let vault = context.open(&name)?;
+    if let Some(file) = sub.get_one::<String>("verify") {
+        let device = crate::vault::backup::verify(&vault, Path::new(file))?;
+        eprintln!("The backup is intact, signed by device {device} of this vault.");
+        return Ok(());
+    }
+    let mut settings = crate::vault::backup::settings(context.home, &name);
+    let dir = match sub.get_one::<String>("to") {
+        Some(dir) => std::fs::canonicalize(dir)
+            .with_context(|| format!("the folder {dir} does not exist"))?,
+        None => settings
+            .dir
+            .clone()
+            .context("say where the backup goes: txc vault backup --to DIR")?,
+    };
+    let path = working("Writing the backup...", || {
+        crate::vault::backup::write(&vault, &dir)
+    })?;
+    settings.dir = Some(dir);
+    settings.last = Some(now());
+    crate::vault::backup::record(context.home, &name, &settings)?;
+    eprintln!(
+        "Wrote {}, and a signature beside it. While that folder is here, a new backup is \
+         written on its own once a week. Read it with the recovery sheets: txc vault recovery \
+         key > key.txt; age -d -i key.txt FILE",
+        path.display()
+    );
+    Ok(())
+}
+
+/// `txc vault recovery print | check | restore | drill | reissue | key`.
 ///
 /// # Errors
 ///
@@ -1865,6 +1944,7 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         "restore" => return restore(context, args),
         "drill" => return drill(context, args),
         "reissue" => return reissue(context, args),
+        "key" => return recovery_key(),
         _ => {}
     }
     let name = context.which(args.get_one::<String>("VAULT"))?;

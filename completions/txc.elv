@@ -2296,6 +2296,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand breach 'Check passwords against a breach list, offline'
             cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
+            cand backup 'Write an offline backup of a synced vault, readable with age and the recovery sheets'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand recovery 'Write down the recovery sheets, check one, rehearse or restore'
@@ -2771,6 +2772,16 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;hardware;help;help'= {
         }
+        &'txc;vault;backup'= {
+            cand --to 'The folder to write it into, as on separate media'
+            cand --verify 'Check a backup''s signature against this vault''s devices'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'txc;vault;compare'= {
             cand --receipt 'Check a receipt a device change printed: what it was, and who signed it'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
@@ -2798,6 +2809,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand print 'Show the three sheets and the card, one at a time, to write down'
             cand check 'Check one sheet and the card against the vault'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
+            cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'
             cand restore 'Rebuild a vault from its folder with two sheets and the card, after losing every device'
             cand help 'Print this message or the help of the given subcommand(s)'
@@ -2826,6 +2838,14 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'txc;vault;recovery;key'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'txc;vault;recovery;reissue'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
@@ -2848,6 +2868,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand print 'Show the three sheets and the card, one at a time, to write down'
             cand check 'Check one sheet and the card against the vault'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
+            cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'
             cand restore 'Rebuild a vault from its folder with two sheets and the card, after losing every device'
             cand help 'Print this message or the help of the given subcommand(s)'
@@ -2857,6 +2878,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;recovery;help;check'= {
         }
         &'txc;vault;recovery;help;drill'= {
+        }
+        &'txc;vault;recovery;help;key'= {
         }
         &'txc;vault;recovery;help;reissue'= {
         }
@@ -3187,6 +3210,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand breach 'Check passwords against a breach list, offline'
             cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
+            cand backup 'Write an offline backup of a synced vault, readable with age and the recovery sheets'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand recovery 'Write down the recovery sheets, check one, rehearse or restore'
@@ -3294,6 +3318,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;help;hardware;remove'= {
         }
+        &'txc;vault;help;backup'= {
+        }
         &'txc;vault;help;compare'= {
         }
         &'txc;vault;help;doctor'= {
@@ -3302,6 +3328,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand print 'Show the three sheets and the card, one at a time, to write down'
             cand check 'Check one sheet and the card against the vault'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
+            cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'
             cand restore 'Rebuild a vault from its folder with two sheets and the card, after losing every device'
         }
@@ -3310,6 +3337,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;recovery;check'= {
         }
         &'txc;vault;help;recovery;drill'= {
+        }
+        &'txc;vault;help;recovery;key'= {
         }
         &'txc;vault;help;recovery;reissue'= {
         }
@@ -3858,6 +3887,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
             cand breach 'Check passwords against a breach list, offline'
             cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
+            cand backup 'Write an offline backup of a synced vault, readable with age and the recovery sheets'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
             cand recovery 'Write down the recovery sheets, check one, rehearse or restore'
@@ -3964,6 +3994,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;help;vault;hardware;remove'= {
         }
+        &'txc;help;vault;backup'= {
+        }
         &'txc;help;vault;compare'= {
         }
         &'txc;help;vault;doctor'= {
@@ -3972,6 +4004,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand print 'Show the three sheets and the card, one at a time, to write down'
             cand check 'Check one sheet and the card against the vault'
             cand drill 'Rehearse a full recovery with two sheets and the card, keeping nothing'
+            cand key 'Print the recovery key from two sheets and the card, to read a backup with age'
             cand reissue 'Replace the sheets and the card, after one was lost or seen by someone else'
             cand restore 'Rebuild a vault from its folder with two sheets and the card, after losing every device'
         }
@@ -3980,6 +4013,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;recovery;check'= {
         }
         &'txc;help;vault;recovery;drill'= {
+        }
+        &'txc;help;vault;recovery;key'= {
         }
         &'txc;help;vault;recovery;reissue'= {
         }

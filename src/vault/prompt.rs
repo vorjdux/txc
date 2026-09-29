@@ -130,9 +130,15 @@ const WEAK_BITS: u32 = 50;
 #[must_use]
 pub fn strength_bits(passphrase: &str) -> u32 {
     let words: Vec<&str> = passphrase.split_whitespace().collect();
-    if words.len() >= 3 && words.iter().all(|word| word.chars().all(char::is_alphabetic)) {
+    if words.len() >= 3
+        && words
+            .iter()
+            .all(|word| word.chars().all(char::is_alphabetic))
+    {
         // As if drawn from a list of about two thousand words.
-        return u32::try_from(words.len()).unwrap_or(u32::MAX).saturating_mul(11);
+        return u32::try_from(words.len())
+            .unwrap_or(u32::MAX)
+            .saturating_mul(11);
     }
     let mut pool = 0_u32;
     let chars: Vec<char> = passphrase.chars().collect();

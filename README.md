@@ -436,6 +436,10 @@ the command to run.
   drill once a year. If a sheet is lost or the card was seen, `txc vault
   recovery reissue` replaces all of them, signed by two of the old sheets
   and the card; the old ones then sign nothing and read nothing new.
+- **Offline backups**: `txc vault backup --to /media/usb` writes an age file
+  that two sheets and the card open with age alone (`txc vault recovery key
+  > key.txt; age -d -i key.txt BACKUP`); while that folder is there, a new
+  one is written each week.
 - **Removed entries** come back for 30 days: `txc vault list VAULT
   --removed`, then `txc vault restore VAULT/ENTRY`.
 - **Removing a device** (`txc vault device remove`) means it reads nothing

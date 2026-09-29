@@ -44,6 +44,7 @@
 //! seconds a secret is on it.
 
 pub mod authority;
+pub mod backup;
 pub mod breach;
 pub mod clipboard;
 pub mod command;

@@ -8,6 +8,10 @@ All notable changes to txc are recorded here. The format follows
 
 ### Fixed
 
+- A synced vault's recovery kit, sealed on the device until it is written
+  down, could no longer be opened once the device had renewed its keys, as
+  on adding a security key; it now opens with the retired keys too.
+
 - `txc vault add --protect` on a vault that is not synced ignored the flag
   and stored a normal entry; it now refuses, pointing at `txc vault migrate`.
 
@@ -25,6 +29,15 @@ All notable changes to txc are recorded here. The format follows
   their own before it stay removed. `txc vault list VAULT --removed` lists
   what can come back. After the 30 days a snapshot drops the removed values,
   so they no longer outlive the window.
+- **Offline backups.** `txc vault backup --to DIR` writes one age file,
+  sealed to the vault's recovery key and this device, holding the whole
+  vault as documented JSON (`txc-backup-v1`), removed entries still inside
+  their window included, and a signature beside it that `backup --verify`
+  checks. The folder is remembered: while it is there, as a backup drive
+  plugged in, a new backup is written on its own once a week, and `status`
+  says when the last one is a month old. `txc vault recovery key` gives the
+  recovery key from two sheets and the card, with no vault needed, so
+  `age -d -i key.txt BACKUP` reads a backup with age alone.
 - **Recovery without any device.** `txc vault recovery restore NAME --from
   OLD --folder NEW` reads a vault's folder with two sheets and the card alone
   (the recovery key is a recipient of every control object, so it holds every

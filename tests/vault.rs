@@ -1560,7 +1560,8 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
         // that no security key holds this device's keys, and how many
         // devices this admin may still add.
         let all = succeeds(&sandbox.vault(&["status", "--all"]));
-        assert_eq!(all.lines().count(), 4, "{all}");
+        assert_eq!(all.lines().count(), 5, "{all}");
+        assert!(all.contains("no offline backup yet"), "{all}");
         assert!(all.contains("no security key"), "{all}");
         assert!(all.contains("has added 0 of 4"), "{all}");
     }
@@ -2466,4 +2467,81 @@ fn a_yellow_line_snoozes_for_a_month_and_unlock_reminds_once_a_day() {
         "{all}"
     );
     assert!(all.contains("has added 0 of 4"), "{all}");
+}
+
+#[test]
+fn an_offline_backup_opens_with_the_recovery_key_alone() {
+    use std::io::Read as _;
+    let sandbox = Sandbox::new("synced-backup");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    succeeds(&sandbox.vault_piped(&["add", "old", "--secret-from-stdin"], "gone-soon"));
+    succeeds(&sandbox.vault(&["rm", "--yes", "old"]));
+    let kit = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let kit: Vec<&str> = kit.lines().collect();
+
+    let media = sandbox.root.join("usb");
+    std::fs::create_dir_all(&media).unwrap();
+    succeeds(&sandbox.vault(&["backup", "--to", media.to_str().unwrap()]));
+    let backup = std::fs::read_dir(&media)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "age"))
+        .unwrap();
+    assert!(backup.with_extension("age.sig").exists());
+    let checked = stderr(&sandbox.vault(&["backup", "--verify", backup.to_str().unwrap()]));
+    assert!(checked.contains("intact"), "{checked}");
+    let tampered = sandbox.root.join("tampered.age");
+    let mut bytes = std::fs::read(&backup).unwrap();
+    bytes.push(0);
+    std::fs::write(&tampered, &bytes).unwrap();
+    std::fs::copy(
+        backup.with_extension("age.sig"),
+        sandbox.root.join("tampered.age.sig"),
+    )
+    .unwrap();
+    fails(&sandbox.vault(&["backup", "--verify", tampered.to_str().unwrap()]));
+
+    // No vault needed: two sheets and the card give the key, and age reads it.
+    let key = succeeds(&sandbox.vault_piped(
+        &["recovery", "key"],
+        &format!("{}\n{}\n{}\n", kit[0], kit[1], kit[3]),
+    ));
+    let identity: txc::vault::pq::Identity = key.trim().parse().unwrap();
+    let sealed = std::fs::read(&backup).unwrap();
+    let decryptor = age::Decryptor::new(sealed.as_slice()).unwrap();
+    let mut plain = String::new();
+    decryptor
+        .decrypt(std::iter::once(&identity as &dyn age::Identity))
+        .unwrap()
+        .read_to_string(&mut plain)
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&plain).unwrap();
+    assert_eq!(json["format"], "txc-backup-v1");
+    let github = &json["entries"][0];
+    assert_eq!(github["name"], "github");
+    let fields = github["fields"].as_array().unwrap();
+    assert!(
+        fields
+            .iter()
+            .any(|field| field["name"] == "password" && field["value"] == "hunter2")
+    );
+    assert_eq!(json["removed"][0]["name"], "old");
+    assert!(
+        plain.contains("gone-soon"),
+        "tombstones inside the window are kept"
+    );
+    // Remembered: the next backup needs no --to.
+    succeeds(&sandbox.vault(&["backup"]));
 }

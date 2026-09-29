@@ -304,6 +304,7 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
             .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
             .env("TXC_VAULT_TEST_KEYSTORE", &keystore)
             .env("TXC_VAULT_TEST_SWAP", swap)
+            .env("TXC_VAULT_TEST_KIT", "1")
             .env("XDG_RUNTIME_DIR", &run_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -479,6 +480,44 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
     ));
     std::fs::copy(&new_pass, &pass).unwrap();
     assert_eq!(ok(txc(&["copy", "--print", "mail"], b"")), "s3cret");
+
+    // An offline backup opens with Go age and the key two sheets and the
+    // card give, and holds the protected entry still sealed.
+    let kit = ok(txc(&["recovery", "print"], b""));
+    let kit: Vec<&str> = kit.lines().collect();
+    let media = scratch.0.join("usb");
+    std::fs::create_dir_all(&media).unwrap();
+    ok(txc(&["backup", "--to", media.to_str().unwrap()], b""));
+    let backup = std::fs::read_dir(&media)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "age"))
+        .unwrap();
+    let key = ok(txc(
+        &["recovery", "key"],
+        format!("{}\n{}\n{}\n", kit[1], kit[2], kit[3]).as_bytes(),
+    ));
+    let key_file = scratch.0.join("recovery.txt");
+    std::fs::write(&key_file, key).unwrap();
+    let plain = run(
+        &dir,
+        "age",
+        &[
+            "-d",
+            "-i",
+            key_file.to_str().unwrap(),
+            backup.to_str().unwrap(),
+        ],
+        b"",
+    );
+    let json: serde_json::Value = serde_json::from_slice(&plain).unwrap();
+    assert_eq!(json["format"], "txc-backup-v1");
+    let text = String::from_utf8_lossy(&plain);
+    assert!(
+        text.contains("s3cret") && text.contains("\"protected\""),
+        "{text}"
+    );
 
     std::fs::OpenOptions::new()
         .append(true)
