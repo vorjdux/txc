@@ -2438,7 +2438,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and show what is fine and what needs you')
             [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
             [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
@@ -2446,10 +2446,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
-            [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, or check one')
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
-            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault; the old one is left as it is')
+            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('mv', 'mv', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
@@ -2459,7 +2458,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
             [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
-            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
             [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
@@ -2683,8 +2682,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
-            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
-            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -2721,16 +2719,6 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'txc;vault;device;ack' {
-            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
-            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
-            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
-            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
-            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
-            break
-        }
         'txc;vault;device;remove' {
             [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
@@ -2745,8 +2733,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;device;help' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
-            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
-            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -2758,9 +2745,6 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;device;help;approve' {
-            break
-        }
-        'txc;vault;device;help;ack' {
             break
         }
         'txc;vault;device;help;remove' {
@@ -2934,15 +2918,6 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;doctor' {
-            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
-            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
-            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
-            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
-            break
-        }
-        'txc;vault;sync' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
@@ -3171,7 +3146,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and show what is fine and what needs you')
             [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
             [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
@@ -3179,10 +3154,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
-            [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, or check one')
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
-            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault; the old one is left as it is')
+            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
@@ -3191,7 +3165,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
             [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
-            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
             [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
@@ -3249,8 +3223,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;help;device' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
-            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
-            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             break
         }
@@ -3261,9 +3234,6 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;device;approve' {
-            break
-        }
-        'txc;vault;help;device;ack' {
             break
         }
         'txc;vault;help;device;remove' {
@@ -3311,9 +3281,6 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;doctor' {
-            break
-        }
-        'txc;vault;help;sync' {
             break
         }
         'txc;vault;help;recovery' {
@@ -3994,7 +3961,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
             [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
             [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
-            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'One screen: what is fine, and what needs you')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and show what is fine and what needs you')
             [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
             [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
             [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
@@ -4002,10 +3969,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
             [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
             [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
-            [CompletionResult]::new('sync', 'sync', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and note what this one has seen')
             [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, or check one')
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
-            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault; the old one is left as it is')
+            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
@@ -4014,7 +3980,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
             [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
-            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
             [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
@@ -4071,8 +4037,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;help;vault;device' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
-            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
-            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             break
         }
@@ -4083,9 +4048,6 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;device;approve' {
-            break
-        }
-        'txc;help;vault;device;ack' {
             break
         }
         'txc;help;vault;device;remove' {
@@ -4133,9 +4095,6 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;doctor' {
-            break
-        }
-        'txc;help;vault;sync' {
             break
         }
         'txc;help;vault;recovery' {

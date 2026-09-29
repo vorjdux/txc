@@ -15,7 +15,8 @@ All notable changes to txc are recorded here. The format follows
   add | list | remove` pair devices through two pasted lines and a six-digit
   code; removing a device keeps it out of everything written afterwards.
   Concurrent edits keep both versions until `txc vault resolve`.
-  `txc vault status` shows what needs doing, one line each. Keys at rest need
+  `txc vault status` reads what other devices wrote and shows what needs
+  doing, one line each. Keys at rest need
   the passphrase and a second factor from the system keystore. Recovery is
   three SLIP-39 sheets and a card (`txc vault recovery print | check`), and a
   second device waits until they are written down. `txc vault migrate` copies
@@ -38,8 +39,8 @@ All notable changes to txc are recorded here. The format follows
   device's second key factor to a security key, the Secure Enclave or a TPM
   through its age plugin, pinned by path and hash and never looked up again,
   and registers it as an authenticator; others see a red line until they
-  acknowledge it (`txc vault device ack`), and `txc vault device approve`
-  handles what waits for approval. `txc vault add --protect` seals an entry
+  approve it (`txc vault device approve`, which also handles renewals
+  waiting for approval). `txc vault add --protect` seals an entry
   to every registered security key and the recovery sheets: each use needs a
   touch, and it goes only to programs as a file, never to the clipboard, the
   screen, an environment variable, a grant or an export.

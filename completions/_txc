@@ -2873,17 +2873,6 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help]' \
 && ret=0
 ;;
-(ack)
-_arguments "${_arguments_options[@]}" : \
-'--vault=[The synced vault]:VAULT:_default' \
-'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
-'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
-'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
-'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
-'-h[Print help]' \
-'--help[Print help]' \
-&& ret=0
-;;
 (remove)
 _arguments "${_arguments_options[@]}" : \
 '--vault=[The synced vault]:VAULT:_default' \
@@ -2918,10 +2907,6 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (approve)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(ack)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3169,17 +3154,6 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (doctor)
-_arguments "${_arguments_options[@]}" : \
-'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
-'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
-'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
-'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
-'-h[Print help]' \
-'--help[Print help]' \
-'::VAULT -- The synced vault:_default' \
-&& ret=0
-;;
-(sync)
 _arguments "${_arguments_options[@]}" : \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
 '--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
@@ -3549,10 +3523,6 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(ack)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
 (remove)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -3634,10 +3604,6 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (doctor)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(sync)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4445,10 +4411,6 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(ack)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
 (remove)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4530,10 +4492,6 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (doctor)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(sync)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -5915,7 +5873,7 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'edit:Change an entry' \
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
-'status:One screen\: what is fine, and what needs you' \
+'status:Read what other devices wrote, and show what is fine and what needs you' \
 'ssh-ca:Make an SSH certificate authority whose key never leaves txc' \
 'ssh:Connect with a fresh key and a certificate that lives for minutes' \
 'keyholder:Hold one synced vault'\''s keys for the interactive screen' \
@@ -5923,10 +5881,9 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'hardware:Keep this device'\''s keys behind a security key, the Secure Enclave or a TPM' \
 'compare:Show digests to compare with another device, to see you share one history' \
 'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
-'sync:Read what other devices wrote, and note what this one has seen' \
 'recovery:Write down the recovery sheets, or check one' \
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
-'migrate:Copy a vault into a synced vault; the old one is left as it is' \
+'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'recipients:Show or change which public keys a vault is encrypted to' \
@@ -5935,7 +5892,7 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'history:Show this device'\''s trust decisions for a vault' \
 'writer:Print this device'\''s writer public key, or rotate the write key' \
 'writers:List, pin or unpin the writer keys this device trusts' \
-'upgrade:Re-sign vaults still in the old format, without other changes' \
+'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
 'grant:Seal one secret to another key, for a host to redeem' \
 'redeem:Open a grant, printing its secret to a pipe' \
@@ -5990,16 +5947,10 @@ _txc__subcmd__help__subcmd__vault__subcmd__device_commands() {
     local commands; commands=(
 'add:Pair a new device; it runs txc vault join' \
 'list:List the devices' \
-'approve:Approve renewals and new authenticators waiting for this device' \
-'ack:Acknowledge the authenticators status shows as newly added' \
+'approve:Approve what waits for you\: renewals, and security keys other devices added' \
 'remove:Remove a device; it reads nothing written afterwards' \
     )
     _describe -t commands 'txc help vault device commands' commands "$@"
-}
-(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__device__subcmd__ack_commands] )) ||
-_txc__subcmd__help__subcmd__vault__subcmd__device__subcmd__ack_commands() {
-    local commands; commands=()
-    _describe -t commands 'txc help vault device ack commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__device__subcmd__add_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__device__subcmd__add_commands() {
@@ -6192,11 +6143,6 @@ _txc__subcmd__help__subcmd__vault__subcmd__ssh-ca_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__status_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault status commands' commands "$@"
-}
-(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__sync_commands] )) ||
-_txc__subcmd__help__subcmd__vault__subcmd__sync_commands() {
-    local commands; commands=()
-    _describe -t commands 'txc help vault sync commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__trust_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__trust_commands() {
@@ -6769,7 +6715,7 @@ _txc__subcmd__vault_commands() {
 'edit:Change an entry' \
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
-'status:One screen\: what is fine, and what needs you' \
+'status:Read what other devices wrote, and show what is fine and what needs you' \
 'ssh-ca:Make an SSH certificate authority whose key never leaves txc' \
 'ssh:Connect with a fresh key and a certificate that lives for minutes' \
 'keyholder:Hold one synced vault'\''s keys for the interactive screen' \
@@ -6777,10 +6723,9 @@ _txc__subcmd__vault_commands() {
 'hardware:Keep this device'\''s keys behind a security key, the Secure Enclave or a TPM' \
 'compare:Show digests to compare with another device, to see you share one history' \
 'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
-'sync:Read what other devices wrote, and note what this one has seen' \
 'recovery:Write down the recovery sheets, or check one' \
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
-'migrate:Copy a vault into a synced vault; the old one is left as it is' \
+'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'mv:Move an entry into another vault, re-sealing its secrets there' \
@@ -6790,7 +6735,7 @@ _txc__subcmd__vault_commands() {
 'history:Show this device'\''s trust decisions for a vault' \
 'writer:Print this device'\''s writer public key, or rotate the write key' \
 'writers:List, pin or unpin the writer keys this device trusts' \
-'upgrade:Re-sign vaults still in the old format, without other changes' \
+'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
 'grant:Seal one secret to another key, for a host to redeem' \
 'redeem:Open a grant, printing its secret to a pipe' \
@@ -6871,17 +6816,11 @@ _txc__subcmd__vault__subcmd__device_commands() {
     local commands; commands=(
 'add:Pair a new device; it runs txc vault join' \
 'list:List the devices' \
-'approve:Approve renewals and new authenticators waiting for this device' \
-'ack:Acknowledge the authenticators status shows as newly added' \
+'approve:Approve what waits for you\: renewals, and security keys other devices added' \
 'remove:Remove a device; it reads nothing written afterwards' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc vault device commands' commands "$@"
-}
-(( $+functions[_txc__subcmd__vault__subcmd__device__subcmd__ack_commands] )) ||
-_txc__subcmd__vault__subcmd__device__subcmd__ack_commands() {
-    local commands; commands=()
-    _describe -t commands 'txc vault device ack commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__device__subcmd__add_commands] )) ||
 _txc__subcmd__vault__subcmd__device__subcmd__add_commands() {
@@ -6898,17 +6837,11 @@ _txc__subcmd__vault__subcmd__device__subcmd__help_commands() {
     local commands; commands=(
 'add:Pair a new device; it runs txc vault join' \
 'list:List the devices' \
-'approve:Approve renewals and new authenticators waiting for this device' \
-'ack:Acknowledge the authenticators status shows as newly added' \
+'approve:Approve what waits for you\: renewals, and security keys other devices added' \
 'remove:Remove a device; it reads nothing written afterwards' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc vault device help commands' commands "$@"
-}
-(( $+functions[_txc__subcmd__vault__subcmd__device__subcmd__help__subcmd__ack_commands] )) ||
-_txc__subcmd__vault__subcmd__device__subcmd__help__subcmd__ack_commands() {
-    local commands; commands=()
-    _describe -t commands 'txc vault device help ack commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__device__subcmd__help__subcmd__add_commands] )) ||
 _txc__subcmd__vault__subcmd__device__subcmd__help__subcmd__add_commands() {
@@ -7050,7 +6983,7 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'edit:Change an entry' \
 'join:Join a synced vault from another of your devices' \
 'device:Add, list and remove the devices of a synced vault' \
-'status:One screen\: what is fine, and what needs you' \
+'status:Read what other devices wrote, and show what is fine and what needs you' \
 'ssh-ca:Make an SSH certificate authority whose key never leaves txc' \
 'ssh:Connect with a fresh key and a certificate that lives for minutes' \
 'keyholder:Hold one synced vault'\''s keys for the interactive screen' \
@@ -7058,10 +6991,9 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'hardware:Keep this device'\''s keys behind a security key, the Secure Enclave or a TPM' \
 'compare:Show digests to compare with another device, to see you share one history' \
 'doctor:Print a diagnostic report for a bug report; it holds no secret and no entry name' \
-'sync:Read what other devices wrote, and note what this one has seen' \
 'recovery:Write down the recovery sheets, or check one' \
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
-'migrate:Copy a vault into a synced vault; the old one is left as it is' \
+'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'recipients:Show or change which public keys a vault is encrypted to' \
@@ -7070,7 +7002,7 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'history:Show this device'\''s trust decisions for a vault' \
 'writer:Print this device'\''s writer public key, or rotate the write key' \
 'writers:List, pin or unpin the writer keys this device trusts' \
-'upgrade:Re-sign vaults still in the old format, without other changes' \
+'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
 'grant:Seal one secret to another key, for a host to redeem' \
 'redeem:Open a grant, printing its secret to a pipe' \
@@ -7126,16 +7058,10 @@ _txc__subcmd__vault__subcmd__help__subcmd__device_commands() {
     local commands; commands=(
 'add:Pair a new device; it runs txc vault join' \
 'list:List the devices' \
-'approve:Approve renewals and new authenticators waiting for this device' \
-'ack:Acknowledge the authenticators status shows as newly added' \
+'approve:Approve what waits for you\: renewals, and security keys other devices added' \
 'remove:Remove a device; it reads nothing written afterwards' \
     )
     _describe -t commands 'txc vault help device commands' commands "$@"
-}
-(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__device__subcmd__ack_commands] )) ||
-_txc__subcmd__vault__subcmd__help__subcmd__device__subcmd__ack_commands() {
-    local commands; commands=()
-    _describe -t commands 'txc vault help device ack commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__device__subcmd__add_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__device__subcmd__add_commands() {
@@ -7334,11 +7260,6 @@ _txc__subcmd__vault__subcmd__help__subcmd__status_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help status commands' commands "$@"
 }
-(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__sync_commands] )) ||
-_txc__subcmd__vault__subcmd__help__subcmd__sync_commands() {
-    local commands; commands=()
-    _describe -t commands 'txc vault help sync commands' commands "$@"
-}
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__trust_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__trust_commands() {
     local commands; commands=()
@@ -7506,11 +7427,6 @@ _txc__subcmd__vault__subcmd__ssh-ca_commands() {
 _txc__subcmd__vault__subcmd__status_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault status commands' commands "$@"
-}
-(( $+functions[_txc__subcmd__vault__subcmd__sync_commands] )) ||
-_txc__subcmd__vault__subcmd__sync_commands() {
-    local commands; commands=()
-    _describe -t commands 'txc vault sync commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__trust_commands] )) ||
 _txc__subcmd__vault__subcmd__trust_commands() {

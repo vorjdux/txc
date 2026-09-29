@@ -566,14 +566,9 @@ pub fn command() -> Command {
                 )
                 .subcommand(
                     Command::new("approve")
-                        .about("Approve renewals and new authenticators waiting for this device")
+                        .about("Approve what waits for you: renewals, and security keys other devices added")
                         .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
                         .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue).help("Approve all without asking")),
-                )
-                .subcommand(
-                    Command::new("ack")
-                        .about("Acknowledge the authenticators status shows as newly added")
-                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
                 )
                 .subcommand(
                     Command::new("remove")
@@ -585,7 +580,7 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("status")
-                .about("One screen: what is fine, and what needs you")
+                .about("Read what other devices wrote, and show what is fine and what needs you")
                 .arg(Arg::new("VAULT").help("The synced vault"))
                 .arg(
                     Arg::new("all")
@@ -727,11 +722,6 @@ pub fn command() -> Command {
                 .arg(Arg::new("VAULT").help("The synced vault")),
         )
         .subcommand(
-            Command::new("sync")
-                .about("Read what other devices wrote, and note what this one has seen")
-                .arg(Arg::new("VAULT").help("The synced vault")),
-        )
-        .subcommand(
             Command::new("recovery")
                 .about("Write down the recovery sheets, or check one")
                 .subcommand_required(true)
@@ -762,7 +752,7 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("migrate")
-                .about("Copy a vault into a synced vault; the old one is left as it is")
+                .about("Copy a vault into a synced vault, to share it between devices; the original stays as it is")
                 .arg(Arg::new("VAULT").required(true).help("The vault to copy"))
                 .arg(Arg::new("folder").long("folder").value_name("DIR").help("The sync folder, when the synced vault is new"))
                 .arg(Arg::new("name").long("name").value_name("VAULT").help("The synced vault (default: the same name)")),
@@ -912,7 +902,7 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("upgrade")
-                .about("Re-sign vaults still in the old format, without other changes")
+                .about("Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate")
                 .arg(
                     Arg::new("VAULT")
                         .help("Only this vault, rather than every one that needs it"),
@@ -1092,7 +1082,6 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "join" => synced_command::join(&context.synced(), sub),
         "device" => synced_command::device(&context.synced(), sub),
         "status" => synced_command::status(&context.synced(), sub),
-        "sync" => synced_command::sync(&context.synced(), sub),
         "compare" => synced_command::compare(&context.synced(), sub),
         "hardware" => synced_command::hardware(&context.synced(), sub),
         "breach" => synced_command::breach(&context.synced(), sub),
@@ -1246,13 +1235,19 @@ impl Session {
     /// synced vaults.
     fn names_synced(&self, verb: &str, sub: &ArgMatches) -> bool {
         if verb == "list" {
-            return match sub.get_one::<String>("VAULT") {
-                Some(vault) => synced_command::is_synced(&self.home, vault),
-                None => {
-                    !self.home.has_identity()
-                        && synced::names(&self.home).is_ok_and(|names| !names.is_empty())
-                }
-            };
+            if let Some(vault) = sub.get_one::<String>("VAULT") {
+                return synced_command::is_synced(&self.home, vault);
+            }
+            // Bare, it lists the vault names of both kinds, as the classic
+            // path does; with a filter and no identity, only the synced
+            // vault can answer.
+            let filtered = sub.get_flag("favourites")
+                || sub.get_flag("recent")
+                || sub.get_one::<String>("tag").is_some()
+                || sub.get_one::<String>("kind").is_some();
+            return filtered
+                && !self.home.has_identity()
+                && synced::names(&self.home).is_ok_and(|names| !names.is_empty());
         }
         sub.get_one::<String>("ENTRY")
             .and_then(|entry| entry.parse::<crate::vault::model::Reference>().ok())
@@ -1832,7 +1827,12 @@ impl Session {
         let recent = sub.get_flag("recent");
 
         if vault.is_none() && tag.is_none() && kind.is_none() && !favourites && !recent {
-            let names = self.home.vault_names()?;
+            let mut names = self.home.vault_names().unwrap_or_default();
+            names.extend(
+                synced::names(&self.home)?
+                    .into_iter()
+                    .map(|name| format!("{name} (synced)")),
+            );
             if names.is_empty() {
                 eprintln!("There are no vaults yet; start with: txc vault init");
                 return Ok(());

@@ -2291,7 +2291,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand edit 'Change an entry'
             cand join 'Join a synced vault from another of your devices'
             cand device 'Add, list and remove the devices of a synced vault'
-            cand status 'One screen: what is fine, and what needs you'
+            cand status 'Read what other devices wrote, and show what is fine and what needs you'
             cand ssh-ca 'Make an SSH certificate authority whose key never leaves txc'
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
@@ -2299,10 +2299,9 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
-            cand sync 'Read what other devices wrote, and note what this one has seen'
             cand recovery 'Write down the recovery sheets, or check one'
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
-            cand migrate 'Copy a vault into a synced vault; the old one is left as it is'
+            cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand mv 'Move an entry into another vault, re-sealing its secrets there'
@@ -2312,7 +2311,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand history 'Show this device''s trust decisions for a vault'
             cand writer 'Print this device''s writer public key, or rotate the write key'
             cand writers 'List, pin or unpin the writer keys this device trusts'
-            cand upgrade 'Re-sign vaults still in the old format, without other changes'
+            cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
             cand grant 'Seal one secret to another key, for a host to redeem'
             cand redeem 'Open a grant, printing its secret to a pipe'
@@ -2518,8 +2517,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --help 'Print help'
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
-            cand approve 'Approve renewals and new authenticators waiting for this device'
-            cand ack 'Acknowledge the authenticators status shows as newly added'
+            cand approve 'Approve what waits for you: renewals, and security keys other devices added'
             cand remove 'Remove a device; it reads nothing written afterwards'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -2552,15 +2550,6 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
-        &'txc;vault;device;ack'= {
-            cand --vault 'The synced vault'
-            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
-            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
-            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
-            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
-            cand -h 'Print help'
-            cand --help 'Print help'
-        }
         &'txc;vault;device;remove'= {
             cand --vault 'The synced vault'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
@@ -2574,8 +2563,7 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;device;help'= {
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
-            cand approve 'Approve renewals and new authenticators waiting for this device'
-            cand ack 'Acknowledge the authenticators status shows as newly added'
+            cand approve 'Approve what waits for you: renewals, and security keys other devices added'
             cand remove 'Remove a device; it reads nothing written afterwards'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -2584,8 +2572,6 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;device;help;list'= {
         }
         &'txc;vault;device;help;approve'= {
-        }
-        &'txc;vault;device;help;ack'= {
         }
         &'txc;vault;device;help;remove'= {
         }
@@ -2735,14 +2721,6 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --help 'Print help'
         }
         &'txc;vault;doctor'= {
-            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
-            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
-            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
-            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
-            cand -h 'Print help'
-            cand --help 'Print help'
-        }
-        &'txc;vault;sync'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2948,7 +2926,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand edit 'Change an entry'
             cand join 'Join a synced vault from another of your devices'
             cand device 'Add, list and remove the devices of a synced vault'
-            cand status 'One screen: what is fine, and what needs you'
+            cand status 'Read what other devices wrote, and show what is fine and what needs you'
             cand ssh-ca 'Make an SSH certificate authority whose key never leaves txc'
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
@@ -2956,10 +2934,9 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
-            cand sync 'Read what other devices wrote, and note what this one has seen'
             cand recovery 'Write down the recovery sheets, or check one'
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
-            cand migrate 'Copy a vault into a synced vault; the old one is left as it is'
+            cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
@@ -2968,7 +2945,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand history 'Show this device''s trust decisions for a vault'
             cand writer 'Print this device''s writer public key, or rotate the write key'
             cand writers 'List, pin or unpin the writer keys this device trusts'
-            cand upgrade 'Re-sign vaults still in the old format, without other changes'
+            cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
             cand grant 'Seal one secret to another key, for a host to redeem'
             cand redeem 'Open a grant, printing its secret to a pipe'
@@ -3009,8 +2986,7 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;device'= {
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
-            cand approve 'Approve renewals and new authenticators waiting for this device'
-            cand ack 'Acknowledge the authenticators status shows as newly added'
+            cand approve 'Approve what waits for you: renewals, and security keys other devices added'
             cand remove 'Remove a device; it reads nothing written afterwards'
         }
         &'txc;vault;help;device;add'= {
@@ -3018,8 +2994,6 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;device;list'= {
         }
         &'txc;vault;help;device;approve'= {
-        }
-        &'txc;vault;help;device;ack'= {
         }
         &'txc;vault;help;device;remove'= {
         }
@@ -3053,8 +3027,6 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;compare'= {
         }
         &'txc;vault;help;doctor'= {
-        }
-        &'txc;vault;help;sync'= {
         }
         &'txc;vault;help;recovery'= {
             cand print 'Show the three sheets and the card, one at a time, to write down'
@@ -3568,7 +3540,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand edit 'Change an entry'
             cand join 'Join a synced vault from another of your devices'
             cand device 'Add, list and remove the devices of a synced vault'
-            cand status 'One screen: what is fine, and what needs you'
+            cand status 'Read what other devices wrote, and show what is fine and what needs you'
             cand ssh-ca 'Make an SSH certificate authority whose key never leaves txc'
             cand ssh 'Connect with a fresh key and a certificate that lives for minutes'
             cand keyholder 'Hold one synced vault''s keys for the interactive screen'
@@ -3576,10 +3548,9 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand hardware 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM'
             cand compare 'Show digests to compare with another device, to see you share one history'
             cand doctor 'Print a diagnostic report for a bug report; it holds no secret and no entry name'
-            cand sync 'Read what other devices wrote, and note what this one has seen'
             cand recovery 'Write down the recovery sheets, or check one'
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
-            cand migrate 'Copy a vault into a synced vault; the old one is left as it is'
+            cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand recipients 'Show or change which public keys a vault is encrypted to'
@@ -3588,7 +3559,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand history 'Show this device''s trust decisions for a vault'
             cand writer 'Print this device''s writer public key, or rotate the write key'
             cand writers 'List, pin or unpin the writer keys this device trusts'
-            cand upgrade 'Re-sign vaults still in the old format, without other changes'
+            cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
             cand grant 'Seal one secret to another key, for a host to redeem'
             cand redeem 'Open a grant, printing its secret to a pipe'
@@ -3628,8 +3599,7 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;device'= {
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
-            cand approve 'Approve renewals and new authenticators waiting for this device'
-            cand ack 'Acknowledge the authenticators status shows as newly added'
+            cand approve 'Approve what waits for you: renewals, and security keys other devices added'
             cand remove 'Remove a device; it reads nothing written afterwards'
         }
         &'txc;help;vault;device;add'= {
@@ -3637,8 +3607,6 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;device;list'= {
         }
         &'txc;help;vault;device;approve'= {
-        }
-        &'txc;help;vault;device;ack'= {
         }
         &'txc;help;vault;device;remove'= {
         }
@@ -3672,8 +3640,6 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;compare'= {
         }
         &'txc;help;vault;doctor'= {
-        }
-        &'txc;help;vault;sync'= {
         }
         &'txc;help;vault;recovery'= {
             cand print 'Show the three sheets and the card, one at a time, to write down'

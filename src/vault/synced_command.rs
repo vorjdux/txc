@@ -253,7 +253,7 @@ pub fn join(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             }
             if started.elapsed() >= JOIN_WAIT {
                 bail!(
-                    "the other device has not added this one yet; once it has, run: txc vault sync {name}"
+                    "the other device has not added this one yet; once it has, run: txc vault status {name}"
                 );
             }
             std::thread::sleep(Duration::from_secs(1));
@@ -306,20 +306,6 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         }
         "list" => list_devices(&vault),
         "approve" => approve(&mut vault, args.get_flag("yes")),
-        "ack" => {
-            let pending = vault.unacknowledged()?;
-            let ids: Vec<Id> = pending
-                .iter()
-                .map(|(_, authenticator)| authenticator.id)
-                .collect();
-            vault.acknowledge(&ids)?;
-            eprintln!(
-                "Acknowledged {} authenticator{}.",
-                ids.len(),
-                if ids.len() == 1 { "" } else { "s" }
-            );
-            Ok(())
-        }
         "remove" => {
             let prefix = required(args, "DEVICE").to_lowercase();
             let matches: Vec<Id> = vault
@@ -356,8 +342,9 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     }
 }
 
-/// Approves what waits for this device: renewals of this owner's admin, and
-/// members' requests for new keys or new authenticators.
+/// Approves what waits for this device: renewals of this owner's admin,
+/// members' requests for new keys or new authenticators, and security keys
+/// other devices added, which status shows in red until approved here.
 fn approve(vault: &mut Synced, yes: bool) -> Result<()> {
     let ask = |question: &str| -> Result<bool> {
         if yes {
@@ -413,6 +400,26 @@ fn approve(vault: &mut Synced, yes: bool) -> Result<()> {
         if ask(&question)? {
             vault.renew(&request)?;
             done = done.saturating_add(1);
+        }
+    }
+    // Authenticators others added: each is a red line until someone here
+    // says it was expected.
+    let added = vault.unacknowledged()?;
+    for (device, authenticator) in added {
+        let question = format!(
+            "Device {} added the security key \"{}\" ({}). Was that you or someone you trust?",
+            data_encoding::HEXLOWER.encode(&device[..4]),
+            authenticator.nickname,
+            data_encoding::HEXLOWER.encode(&authenticator.fingerprint[..4])
+        );
+        if ask(&question)? {
+            vault.acknowledge(&[authenticator.id])?;
+            done = done.saturating_add(1);
+        } else {
+            eprintln!(
+                "Then remove that device from a device that can: txc vault device remove {}",
+                data_encoding::HEXLOWER.encode(&device[..4])
+            );
         }
     }
     eprintln!(
@@ -489,7 +496,7 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     }
     for (device, authenticator) in vault.unacknowledged()? {
         lines.push(format!(
-            "● red     device {} added the authenticator \"{}\" ({})\n          → if that was you: txc vault device ack; if not: txc vault device remove {}",
+            "● red     device {} added the authenticator \"{}\" ({})\n          → if that was you: txc vault device approve; if not: txc vault device remove {}",
             data_encoding::HEXLOWER.encode(&device[..4]),
             authenticator.nickname,
             data_encoding::HEXLOWER.encode(&authenticator.fingerprint[..4]),
@@ -554,19 +561,6 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         ),
     );
     output(&lines.join("\n"))
-}
-
-/// `txc vault sync`: reads what arrived and writes a checkpoint.
-///
-/// # Errors
-///
-/// Returns an error when the vault does not open.
-pub fn sync(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
-    let name = context.which(sub.get_one::<String>("VAULT"))?;
-    let (mut vault, _) = context.open_confined(&name)?;
-    vault.checkpoint()?;
-    eprintln!("Synced \"{name}\".");
-    Ok(())
 }
 
 // ---------------------------------------------------------- compare, doctor --

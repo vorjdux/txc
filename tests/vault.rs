@@ -1575,7 +1575,11 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
         shown.contains("octocat") && !shown.contains("hunter2"),
         "{shown}"
     );
-    assert!(succeeds(&sandbox.vault(&["list"])).contains("github"));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["list"])).trim(),
+        "personal (synced)"
+    );
+    assert!(succeeds(&sandbox.vault(&["list", "personal"])).contains("github"));
 
     succeeds(&sandbox.vault(&["edit", "github", "--username", "hubot"]));
     succeeds(&sandbox.vault(&["edit", "github", "--tag", "work"]));
