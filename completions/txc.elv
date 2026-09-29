@@ -2279,9 +2279,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand import 'Bring in entries from another password manager or a .env file'
             cand export 'Write a copy of vaults as one age file, readable with age -d'
             cand run 'Run a program with secrets in its environment or as files, never in your shell'
-            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
             cand passwd 'Change the passphrase protecting your identity'
-            cand create 'Create a new, empty vault'
+            cand create 'Create a new, empty vault; with --folder, a synced one shared between your devices'
             cand list 'List the vaults, or entries: of one vault, favourites, or recently used'
             cand add 'Add an entry; its secret is typed, generated or piped in'
             cand show 'Show an entry, with its secrets masked'
@@ -2305,16 +2304,18 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand rm 'Remove an entry'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand mv 'Move an entry into another vault, re-sealing its secrets there'
+            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
+            cand grant 'Seal one secret to another key, for a host to redeem'
+            cand redeem 'Open a grant, printing its secret to a pipe'
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand writer 'Print this device''s writer public key, or rotate the write key'
+            cand writers 'List, pin or unpin the writer keys this device trusts'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
             cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
             cand history 'Show this device''s trust decisions for a vault'
-            cand writer 'Print this device''s writer public key, or rotate the write key'
-            cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
-            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
-            cand grant 'Seal one secret to another key, for a host to redeem'
-            cand redeem 'Open a grant, printing its secret to a pipe'
+            cand advanced 'Keys, trust and format details of vaults that are not synced'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;init'= {
@@ -2380,14 +2381,6 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
-        &'txc;vault;identity'= {
-            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
-            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
-            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
-            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
-            cand -h 'Print help'
-            cand --help 'Print help'
-        }
         &'txc;vault;passwd'= {
             cand --new-passphrase-file 'Read the new passphrase from a file rather than asking'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
@@ -2399,6 +2392,7 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;create'= {
             cand --recipient 'Also encrypt to this public key, such as another device''s'
+            cand --folder 'Make it a synced vault in this sync folder, shared between your devices'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2811,6 +2805,67 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'txc;vault;delete'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --yes 'Delete without asking for the vault''s name'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;grant'= {
+            cand --field 'Grant this field rather than the main secret'
+            cand --to 'Seal to this age public key, the host''s own key'
+            cand --expires 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement'
+            cand --origin 'Where it may be used, signed into a grant from a synced vault'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --to-file 'Bundle a fresh key in the grant; the file then is the secret'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;redeem'= {
+            cand --identity 'The host''s age secret key file, unless the grant bundles one'
+            cand --vault-id 'For a grant from a synced vault: the vault id this runner trusts'
+            cand --min-version 'For a grant from a synced vault: refuse older versions of the secret'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;identity'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;writer'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --rotate 'Replace the write key with a fresh one and re-sign every vault'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;writers'= {
+            cand --add 'Pin this writer public key'
+            cand --remove 'Unpin this writer public key'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --yes 'Pin or unpin without asking'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'txc;vault;recipients'= {
             cand --add 'Encrypt to this public key too'
             cand --remove 'Stop encrypting to this public key'
@@ -2847,7 +2902,76 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
-        &'txc;vault;writer'= {
+        &'txc;vault;upgrade'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;advanced'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand recipients 'Show or change which public keys a vault is encrypted to'
+            cand trust 'Trust a vault that is new to this device, or that changed'
+            cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
+            cand history 'Show this device''s trust decisions for a vault'
+            cand writer 'Print this device''s writer public key, or rotate the write key'
+            cand writers 'List, pin or unpin the writer keys this device trusts'
+            cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'txc;vault;advanced;identity'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;advanced;recipients'= {
+            cand --add 'Encrypt to this public key too'
+            cand --remove 'Stop encrypting to this public key'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;advanced;trust'= {
+            cand --expect 'Trust without a terminal, only if the fingerprint matches this'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --yes 'Trust without asking, for a vault new to this device only'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;advanced;fingerprint'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'txc;vault;advanced;history'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;advanced;writer'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2856,7 +2980,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
-        &'txc;vault;writers'= {
+        &'txc;vault;advanced;writers'= {
             cand --add 'Pin this writer public key'
             cand --remove 'Unpin this writer public key'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
@@ -2867,7 +2991,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
-        &'txc;vault;upgrade'= {
+        &'txc;vault;advanced;upgrade'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2875,38 +2999,34 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
-        &'txc;vault;delete'= {
-            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
-            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
-            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
-            cand --yes 'Delete without asking for the vault''s name'
-            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
-            cand -h 'Print help (see more with ''--help'')'
-            cand --help 'Print help (see more with ''--help'')'
+        &'txc;vault;advanced;help'= {
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand recipients 'Show or change which public keys a vault is encrypted to'
+            cand trust 'Trust a vault that is new to this device, or that changed'
+            cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
+            cand history 'Show this device''s trust decisions for a vault'
+            cand writer 'Print this device''s writer public key, or rotate the write key'
+            cand writers 'List, pin or unpin the writer keys this device trusts'
+            cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
+            cand help 'Print this message or the help of the given subcommand(s)'
         }
-        &'txc;vault;grant'= {
-            cand --field 'Grant this field rather than the main secret'
-            cand --to 'Seal to this age public key, the host''s own key'
-            cand --expires 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement'
-            cand --origin 'Where it may be used, signed into a grant from a synced vault'
-            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
-            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
-            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
-            cand --to-file 'Bundle a fresh key in the grant; the file then is the secret'
-            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
-            cand -h 'Print help (see more with ''--help'')'
-            cand --help 'Print help (see more with ''--help'')'
+        &'txc;vault;advanced;help;identity'= {
         }
-        &'txc;vault;redeem'= {
-            cand --identity 'The host''s age secret key file, unless the grant bundles one'
-            cand --vault-id 'For a grant from a synced vault: the vault id this runner trusts'
-            cand --min-version 'For a grant from a synced vault: refuse older versions of the secret'
-            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
-            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
-            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
-            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
-            cand -h 'Print help'
-            cand --help 'Print help'
+        &'txc;vault;advanced;help;recipients'= {
+        }
+        &'txc;vault;advanced;help;trust'= {
+        }
+        &'txc;vault;advanced;help;fingerprint'= {
+        }
+        &'txc;vault;advanced;help;history'= {
+        }
+        &'txc;vault;advanced;help;writer'= {
+        }
+        &'txc;vault;advanced;help;writers'= {
+        }
+        &'txc;vault;advanced;help;upgrade'= {
+        }
+        &'txc;vault;advanced;help;help'= {
         }
         &'txc;vault;help'= {
             cand init 'Create your identity, write key and the personal vault'
@@ -2915,9 +3035,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand import 'Bring in entries from another password manager or a .env file'
             cand export 'Write a copy of vaults as one age file, readable with age -d'
             cand run 'Run a program with secrets in its environment or as files, never in your shell'
-            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
             cand passwd 'Change the passphrase protecting your identity'
-            cand create 'Create a new, empty vault'
+            cand create 'Create a new, empty vault; with --folder, a synced one shared between your devices'
             cand list 'List the vaults, or entries: of one vault, favourites, or recently used'
             cand add 'Add an entry; its secret is typed, generated or piped in'
             cand show 'Show an entry, with its secrets masked'
@@ -2939,16 +3058,18 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
+            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
+            cand grant 'Seal one secret to another key, for a host to redeem'
+            cand redeem 'Open a grant, printing its secret to a pipe'
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand writer 'Print this device''s writer public key, or rotate the write key'
+            cand writers 'List, pin or unpin the writer keys this device trusts'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
             cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
             cand history 'Show this device''s trust decisions for a vault'
-            cand writer 'Print this device''s writer public key, or rotate the write key'
-            cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
-            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
-            cand grant 'Seal one secret to another key, for a host to redeem'
-            cand redeem 'Open a grant, printing its secret to a pipe'
+            cand advanced 'Keys, trust and format details of vaults that are not synced'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;help;init'= {
@@ -2962,8 +3083,6 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;export'= {
         }
         &'txc;vault;help;run'= {
-        }
-        &'txc;vault;help;identity'= {
         }
         &'txc;vault;help;passwd'= {
         }
@@ -3044,6 +3163,18 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;help;move'= {
         }
+        &'txc;vault;help;delete'= {
+        }
+        &'txc;vault;help;grant'= {
+        }
+        &'txc;vault;help;redeem'= {
+        }
+        &'txc;vault;help;identity'= {
+        }
+        &'txc;vault;help;writer'= {
+        }
+        &'txc;vault;help;writers'= {
+        }
         &'txc;vault;help;recipients'= {
         }
         &'txc;vault;help;trust'= {
@@ -3052,17 +3183,33 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;help;history'= {
         }
-        &'txc;vault;help;writer'= {
-        }
-        &'txc;vault;help;writers'= {
-        }
         &'txc;vault;help;upgrade'= {
         }
-        &'txc;vault;help;delete'= {
+        &'txc;vault;help;advanced'= {
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand recipients 'Show or change which public keys a vault is encrypted to'
+            cand trust 'Trust a vault that is new to this device, or that changed'
+            cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
+            cand history 'Show this device''s trust decisions for a vault'
+            cand writer 'Print this device''s writer public key, or rotate the write key'
+            cand writers 'List, pin or unpin the writer keys this device trusts'
+            cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
         }
-        &'txc;vault;help;grant'= {
+        &'txc;vault;help;advanced;identity'= {
         }
-        &'txc;vault;help;redeem'= {
+        &'txc;vault;help;advanced;recipients'= {
+        }
+        &'txc;vault;help;advanced;trust'= {
+        }
+        &'txc;vault;help;advanced;fingerprint'= {
+        }
+        &'txc;vault;help;advanced;history'= {
+        }
+        &'txc;vault;help;advanced;writer'= {
+        }
+        &'txc;vault;help;advanced;writers'= {
+        }
+        &'txc;vault;help;advanced;upgrade'= {
         }
         &'txc;vault;help;help'= {
         }
@@ -3529,9 +3676,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand import 'Bring in entries from another password manager or a .env file'
             cand export 'Write a copy of vaults as one age file, readable with age -d'
             cand run 'Run a program with secrets in its environment or as files, never in your shell'
-            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
             cand passwd 'Change the passphrase protecting your identity'
-            cand create 'Create a new, empty vault'
+            cand create 'Create a new, empty vault; with --folder, a synced one shared between your devices'
             cand list 'List the vaults, or entries: of one vault, favourites, or recently used'
             cand add 'Add an entry; its secret is typed, generated or piped in'
             cand show 'Show an entry, with its secrets masked'
@@ -3553,16 +3699,18 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
+            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
+            cand grant 'Seal one secret to another key, for a host to redeem'
+            cand redeem 'Open a grant, printing its secret to a pipe'
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand writer 'Print this device''s writer public key, or rotate the write key'
+            cand writers 'List, pin or unpin the writer keys this device trusts'
             cand recipients 'Show or change which public keys a vault is encrypted to'
             cand trust 'Trust a vault that is new to this device, or that changed'
             cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
             cand history 'Show this device''s trust decisions for a vault'
-            cand writer 'Print this device''s writer public key, or rotate the write key'
-            cand writers 'List, pin or unpin the writer keys this device trusts'
             cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
-            cand delete 'Delete a whole vault, keeping a recovery copy beside it'
-            cand grant 'Seal one secret to another key, for a host to redeem'
-            cand redeem 'Open a grant, printing its secret to a pipe'
+            cand advanced 'Keys, trust and format details of vaults that are not synced'
         }
         &'txc;help;vault;init'= {
         }
@@ -3575,8 +3723,6 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;export'= {
         }
         &'txc;help;vault;run'= {
-        }
-        &'txc;help;vault;identity'= {
         }
         &'txc;help;vault;passwd'= {
         }
@@ -3657,6 +3803,18 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;help;vault;move'= {
         }
+        &'txc;help;vault;delete'= {
+        }
+        &'txc;help;vault;grant'= {
+        }
+        &'txc;help;vault;redeem'= {
+        }
+        &'txc;help;vault;identity'= {
+        }
+        &'txc;help;vault;writer'= {
+        }
+        &'txc;help;vault;writers'= {
+        }
         &'txc;help;vault;recipients'= {
         }
         &'txc;help;vault;trust'= {
@@ -3665,17 +3823,33 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;help;vault;history'= {
         }
-        &'txc;help;vault;writer'= {
-        }
-        &'txc;help;vault;writers'= {
-        }
         &'txc;help;vault;upgrade'= {
         }
-        &'txc;help;vault;delete'= {
+        &'txc;help;vault;advanced'= {
+            cand identity 'Print your public key, for encrypting a vault to you elsewhere'
+            cand recipients 'Show or change which public keys a vault is encrypted to'
+            cand trust 'Trust a vault that is new to this device, or that changed'
+            cand fingerprint 'Print a vault''s fingerprint, to verify it from another device'
+            cand history 'Show this device''s trust decisions for a vault'
+            cand writer 'Print this device''s writer public key, or rotate the write key'
+            cand writers 'List, pin or unpin the writer keys this device trusts'
+            cand upgrade 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate'
         }
-        &'txc;help;vault;grant'= {
+        &'txc;help;vault;advanced;identity'= {
         }
-        &'txc;help;vault;redeem'= {
+        &'txc;help;vault;advanced;recipients'= {
+        }
+        &'txc;help;vault;advanced;trust'= {
+        }
+        &'txc;help;vault;advanced;fingerprint'= {
+        }
+        &'txc;help;vault;advanced;history'= {
+        }
+        &'txc;help;vault;advanced;writer'= {
+        }
+        &'txc;help;vault;advanced;writers'= {
+        }
+        &'txc;help;vault;advanced;upgrade'= {
         }
         &'txc;help;list'= {
         }

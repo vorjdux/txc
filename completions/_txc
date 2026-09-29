@@ -2638,16 +2638,6 @@ _arguments "${_arguments_options[@]}" : \
 '*::COMMAND -- The program and its arguments, after --:_default' \
 && ret=0
 ;;
-(identity)
-_arguments "${_arguments_options[@]}" : \
-'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
-'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
-'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
-'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
-'-h[Print help]' \
-'--help[Print help]' \
-&& ret=0
-;;
 (passwd)
 _arguments "${_arguments_options[@]}" : \
 '--new-passphrase-file=[Read the new passphrase from a file rather than asking]:PATH:_default' \
@@ -2662,6 +2652,7 @@ _arguments "${_arguments_options[@]}" : \
 (create)
 _arguments "${_arguments_options[@]}" : \
 '*--recipient=[Also encrypt to this public key, such as another device'\''s]:AGE_KEY:_default' \
+'(--recipient)--folder=[Make it a synced vault in this sync folder, shared between your devices]:DIR:_default' \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
 '--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
 '--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
@@ -3298,6 +3289,169 @@ _arguments "${_arguments_options[@]}" : \
 ':TO -- The vault to move it into:_default' \
 && ret=0
 ;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--yes[Delete without asking for the vault'\''s name]' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':VAULT:_default' \
+&& ret=0
+;;
+(grant)
+_arguments "${_arguments_options[@]}" : \
+'--field=[Grant this field rather than the main secret]:NAME:_default' \
+'(--to-file)--to=[Seal to this age public key, the host'\''s own key]:RECIPIENT:_default' \
+'--expires=[How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement]:DURATION:_default' \
+'--origin=[Where it may be used, signed into a grant from a synced vault]:TEXT:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--to-file[Bundle a fresh key in the grant; the file then is the secret]' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':ENTRY:_default' \
+&& ret=0
+;;
+(redeem)
+_arguments "${_arguments_options[@]}" : \
+'--identity=[The host'\''s age secret key file, unless the grant bundles one]:PATH:_default' \
+'--vault-id=[For a grant from a synced vault\: the vault id this runner trusts]:ID:_default' \
+'--min-version=[For a grant from a synced vault\: refuse older versions of the secret]:VERSION:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':FILE:_default' \
+&& ret=0
+;;
+(identity)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(writer)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--rotate[Replace the write key with a fresh one and re-sign every vault]' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
+(writers)
+_arguments "${_arguments_options[@]}" : \
+'(--remove)--add=[Pin this writer public key]:KEY:_default' \
+'--remove=[Unpin this writer public key]:KEY:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--yes[Pin or unpin without asking]' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(recipients)
+_arguments "${_arguments_options[@]}" : \
+'*--add=[Encrypt to this public key too]:AGE_KEY:_default' \
+'*--remove=[Stop encrypting to this public key]:AGE_KEY:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':VAULT:_default' \
+&& ret=0
+;;
+(trust)
+_arguments "${_arguments_options[@]}" : \
+'--expect=[Trust without a terminal, only if the fingerprint matches this]:FINGERPRINT:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'(--expect)--yes[Trust without asking, for a vault new to this device only]' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':VAULT:_default' \
+&& ret=0
+;;
+(fingerprint)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':VAULT:_default' \
+&& ret=0
+;;
+(history)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+':VAULT:_default' \
+&& ret=0
+;;
+(upgrade)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'::VAULT -- Only this vault, rather than every one that needs it:_default' \
+&& ret=0
+;;
+(advanced)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_txc__subcmd__vault__subcmd__advanced_commands" \
+"*::: :->advanced" \
+&& ret=0
+
+    case $state in
+    (advanced)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:txc-vault-advanced-command-$line[1]:"
+        case $line[1] in
+            (identity)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (recipients)
 _arguments "${_arguments_options[@]}" : \
 '*--add=[Encrypt to this public key too]:AGE_KEY:_default' \
@@ -3381,47 +3535,61 @@ _arguments "${_arguments_options[@]}" : \
 '::VAULT -- Only this vault, rather than every one that needs it:_default' \
 && ret=0
 ;;
-(delete)
+(help)
 _arguments "${_arguments_options[@]}" : \
-'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
-'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
-'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
-'--yes[Delete without asking for the vault'\''s name]' \
-'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
-'-h[Print help (see more with '\''--help'\'')]' \
-'--help[Print help (see more with '\''--help'\'')]' \
-':VAULT:_default' \
+":: :_txc__subcmd__vault__subcmd__advanced__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:txc-vault-advanced-help-command-$line[1]:"
+        case $line[1] in
+            (identity)
+_arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(grant)
+(recipients)
 _arguments "${_arguments_options[@]}" : \
-'--field=[Grant this field rather than the main secret]:NAME:_default' \
-'(--to-file)--to=[Seal to this age public key, the host'\''s own key]:RECIPIENT:_default' \
-'--expires=[How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement]:DURATION:_default' \
-'--origin=[Where it may be used, signed into a grant from a synced vault]:TEXT:_default' \
-'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
-'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
-'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
-'--to-file[Bundle a fresh key in the grant; the file then is the secret]' \
-'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
-'-h[Print help (see more with '\''--help'\'')]' \
-'--help[Print help (see more with '\''--help'\'')]' \
-':ENTRY:_default' \
 && ret=0
 ;;
-(redeem)
+(trust)
 _arguments "${_arguments_options[@]}" : \
-'--identity=[The host'\''s age secret key file, unless the grant bundles one]:PATH:_default' \
-'--vault-id=[For a grant from a synced vault\: the vault id this runner trusts]:ID:_default' \
-'--min-version=[For a grant from a synced vault\: refuse older versions of the secret]:VERSION:_default' \
-'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
-'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
-'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
-'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
-'-h[Print help]' \
-'--help[Print help]' \
-':FILE:_default' \
 && ret=0
+;;
+(fingerprint)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(history)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(writer)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(writers)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(upgrade)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
 ;;
 (help)
 _arguments "${_arguments_options[@]}" : \
@@ -3456,10 +3624,6 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (run)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(identity)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -3647,6 +3811,66 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(grant)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(redeem)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(identity)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(writer)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(writers)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(recipients)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(trust)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(fingerprint)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(history)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(upgrade)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(advanced)
+_arguments "${_arguments_options[@]}" : \
+":: :_txc__subcmd__vault__subcmd__help__subcmd__advanced_commands" \
+"*::: :->advanced" \
+&& ret=0
+
+    case $state in
+    (advanced)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:txc-vault-help-advanced-command-$line[1]:"
+        case $line[1] in
+            (identity)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (recipients)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -3675,17 +3899,9 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(delete)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(grant)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(redeem)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
+        esac
+    ;;
+esac
 ;;
 (help)
 _arguments "${_arguments_options[@]}" : \
@@ -4347,10 +4563,6 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(identity)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
 (passwd)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4535,6 +4747,66 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(grant)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(redeem)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(identity)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(writer)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(writers)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(recipients)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(trust)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(fingerprint)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(history)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(upgrade)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(advanced)
+_arguments "${_arguments_options[@]}" : \
+":: :_txc__subcmd__help__subcmd__vault__subcmd__advanced_commands" \
+"*::: :->advanced" \
+&& ret=0
+
+    case $state in
+    (advanced)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:txc-help-vault-advanced-command-$line[1]:"
+        case $line[1] in
+            (identity)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (recipients)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -4563,17 +4835,9 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
-(delete)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(grant)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
-;;
-(redeem)
-_arguments "${_arguments_options[@]}" : \
-&& ret=0
+        esac
+    ;;
+esac
 ;;
         esac
     ;;
@@ -5862,9 +6126,8 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'import:Bring in entries from another password manager or a .env file' \
 'export:Write a copy of vaults as one age file, readable with age -d' \
 'run:Run a program with secrets in its environment or as files, never in your shell' \
-'identity:Print your public key, for encrypting a vault to you elsewhere' \
 'passwd:Change the passphrase protecting your identity' \
-'create:Create a new, empty vault' \
+'create:Create a new, empty vault; with --folder, a synced one shared between your devices' \
 'list:List the vaults, or entries\: of one vault, favourites, or recently used' \
 'add:Add an entry; its secret is typed, generated or piped in' \
 'show:Show an entry, with its secrets masked' \
@@ -5886,16 +6149,18 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
+'delete:Delete a whole vault, keeping a recovery copy beside it' \
+'grant:Seal one secret to another key, for a host to redeem' \
+'redeem:Open a grant, printing its secret to a pipe' \
+'identity:Print your public key, for encrypting a vault to you elsewhere' \
+'writer:Print this device'\''s writer public key, or rotate the write key' \
+'writers:List, pin or unpin the writer keys this device trusts' \
 'recipients:Show or change which public keys a vault is encrypted to' \
 'trust:Trust a vault that is new to this device, or that changed' \
 'fingerprint:Print a vault'\''s fingerprint, to verify it from another device' \
 'history:Show this device'\''s trust decisions for a vault' \
-'writer:Print this device'\''s writer public key, or rotate the write key' \
-'writers:List, pin or unpin the writer keys this device trusts' \
 'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
-'delete:Delete a whole vault, keeping a recovery copy beside it' \
-'grant:Seal one secret to another key, for a host to redeem' \
-'redeem:Open a grant, printing its secret to a pipe' \
+'advanced:Keys, trust and format details of vaults that are not synced' \
     )
     _describe -t commands 'txc help vault commands' commands "$@"
 }
@@ -5903,6 +6168,60 @@ _txc__subcmd__help__subcmd__vault_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__add_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault add commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced_commands() {
+    local commands; commands=(
+'identity:Print your public key, for encrypting a vault to you elsewhere' \
+'recipients:Show or change which public keys a vault is encrypted to' \
+'trust:Trust a vault that is new to this device, or that changed' \
+'fingerprint:Print a vault'\''s fingerprint, to verify it from another device' \
+'history:Show this device'\''s trust decisions for a vault' \
+'writer:Print this device'\''s writer public key, or rotate the write key' \
+'writers:List, pin or unpin the writer keys this device trusts' \
+'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
+    )
+    _describe -t commands 'txc help vault advanced commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__fingerprint_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__fingerprint_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced fingerprint commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__history_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__history_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced history commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__identity_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__identity_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced identity commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__recipients_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__recipients_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced recipients commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__trust_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__trust_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced trust commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__upgrade_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__upgrade_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced upgrade commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writer_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writer_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced writer commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writers_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writers_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault advanced writers commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__breach_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__breach_commands() {
@@ -6703,9 +7022,8 @@ _txc__subcmd__vault_commands() {
 'import:Bring in entries from another password manager or a .env file' \
 'export:Write a copy of vaults as one age file, readable with age -d' \
 'run:Run a program with secrets in its environment or as files, never in your shell' \
-'identity:Print your public key, for encrypting a vault to you elsewhere' \
 'passwd:Change the passphrase protecting your identity' \
-'create:Create a new, empty vault' \
+'create:Create a new, empty vault; with --folder, a synced one shared between your devices' \
 'list:List the vaults, or entries\: of one vault, favourites, or recently used' \
 'add:Add an entry; its secret is typed, generated or piped in' \
 'show:Show an entry, with its secrets masked' \
@@ -6729,16 +7047,18 @@ _txc__subcmd__vault_commands() {
 'rm:Remove an entry' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'mv:Move an entry into another vault, re-sealing its secrets there' \
+'delete:Delete a whole vault, keeping a recovery copy beside it' \
+'grant:Seal one secret to another key, for a host to redeem' \
+'redeem:Open a grant, printing its secret to a pipe' \
+'identity:Print your public key, for encrypting a vault to you elsewhere' \
+'writer:Print this device'\''s writer public key, or rotate the write key' \
+'writers:List, pin or unpin the writer keys this device trusts' \
 'recipients:Show or change which public keys a vault is encrypted to' \
 'trust:Trust a vault that is new to this device, or that changed' \
 'fingerprint:Print a vault'\''s fingerprint, to verify it from another device' \
 'history:Show this device'\''s trust decisions for a vault' \
-'writer:Print this device'\''s writer public key, or rotate the write key' \
-'writers:List, pin or unpin the writer keys this device trusts' \
 'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
-'delete:Delete a whole vault, keeping a recovery copy beside it' \
-'grant:Seal one secret to another key, for a host to redeem' \
-'redeem:Open a grant, printing its secret to a pipe' \
+'advanced:Keys, trust and format details of vaults that are not synced' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc vault commands' commands "$@"
@@ -6747,6 +7067,121 @@ _txc__subcmd__vault_commands() {
 _txc__subcmd__vault__subcmd__add_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault add commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced_commands() {
+    local commands; commands=(
+'identity:Print your public key, for encrypting a vault to you elsewhere' \
+'recipients:Show or change which public keys a vault is encrypted to' \
+'trust:Trust a vault that is new to this device, or that changed' \
+'fingerprint:Print a vault'\''s fingerprint, to verify it from another device' \
+'history:Show this device'\''s trust decisions for a vault' \
+'writer:Print this device'\''s writer public key, or rotate the write key' \
+'writers:List, pin or unpin the writer keys this device trusts' \
+'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'txc vault advanced commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__fingerprint_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__fingerprint_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced fingerprint commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help_commands() {
+    local commands; commands=(
+'identity:Print your public key, for encrypting a vault to you elsewhere' \
+'recipients:Show or change which public keys a vault is encrypted to' \
+'trust:Trust a vault that is new to this device, or that changed' \
+'fingerprint:Print a vault'\''s fingerprint, to verify it from another device' \
+'history:Show this device'\''s trust decisions for a vault' \
+'writer:Print this device'\''s writer public key, or rotate the write key' \
+'writers:List, pin or unpin the writer keys this device trusts' \
+'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'txc vault advanced help commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__fingerprint_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__fingerprint_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help fingerprint commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__help_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help help commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__history_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__history_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help history commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__identity_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__identity_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help identity commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__recipients_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__recipients_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help recipients commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__trust_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__trust_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help trust commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__upgrade_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__upgrade_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help upgrade commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writer_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writer_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help writer commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writers_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writers_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced help writers commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__history_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__history_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced history commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__identity_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__identity_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced identity commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__recipients_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__recipients_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced recipients commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__trust_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__trust_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced trust commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__upgrade_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__upgrade_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced upgrade commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__writer_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__writer_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced writer commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__advanced__subcmd__writers_commands] )) ||
+_txc__subcmd__vault__subcmd__advanced__subcmd__writers_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault advanced writers commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__breach_commands] )) ||
 _txc__subcmd__vault__subcmd__breach_commands() {
@@ -6972,9 +7407,8 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'import:Bring in entries from another password manager or a .env file' \
 'export:Write a copy of vaults as one age file, readable with age -d' \
 'run:Run a program with secrets in its environment or as files, never in your shell' \
-'identity:Print your public key, for encrypting a vault to you elsewhere' \
 'passwd:Change the passphrase protecting your identity' \
-'create:Create a new, empty vault' \
+'create:Create a new, empty vault; with --folder, a synced one shared between your devices' \
 'list:List the vaults, or entries\: of one vault, favourites, or recently used' \
 'add:Add an entry; its secret is typed, generated or piped in' \
 'show:Show an entry, with its secrets masked' \
@@ -6996,16 +7430,18 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
+'delete:Delete a whole vault, keeping a recovery copy beside it' \
+'grant:Seal one secret to another key, for a host to redeem' \
+'redeem:Open a grant, printing its secret to a pipe' \
+'identity:Print your public key, for encrypting a vault to you elsewhere' \
+'writer:Print this device'\''s writer public key, or rotate the write key' \
+'writers:List, pin or unpin the writer keys this device trusts' \
 'recipients:Show or change which public keys a vault is encrypted to' \
 'trust:Trust a vault that is new to this device, or that changed' \
 'fingerprint:Print a vault'\''s fingerprint, to verify it from another device' \
 'history:Show this device'\''s trust decisions for a vault' \
-'writer:Print this device'\''s writer public key, or rotate the write key' \
-'writers:List, pin or unpin the writer keys this device trusts' \
 'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
-'delete:Delete a whole vault, keeping a recovery copy beside it' \
-'grant:Seal one secret to another key, for a host to redeem' \
-'redeem:Open a grant, printing its secret to a pipe' \
+'advanced:Keys, trust and format details of vaults that are not synced' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'txc vault help commands' commands "$@"
@@ -7014,6 +7450,60 @@ _txc__subcmd__vault__subcmd__help_commands() {
 _txc__subcmd__vault__subcmd__help__subcmd__add_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help add commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced_commands() {
+    local commands; commands=(
+'identity:Print your public key, for encrypting a vault to you elsewhere' \
+'recipients:Show or change which public keys a vault is encrypted to' \
+'trust:Trust a vault that is new to this device, or that changed' \
+'fingerprint:Print a vault'\''s fingerprint, to verify it from another device' \
+'history:Show this device'\''s trust decisions for a vault' \
+'writer:Print this device'\''s writer public key, or rotate the write key' \
+'writers:List, pin or unpin the writer keys this device trusts' \
+'upgrade:Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate' \
+    )
+    _describe -t commands 'txc vault help advanced commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__fingerprint_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__fingerprint_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced fingerprint commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__history_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__history_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced history commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__identity_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__identity_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced identity commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__recipients_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__recipients_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced recipients commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__trust_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__trust_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced trust commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__upgrade_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__upgrade_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced upgrade commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writer_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writer_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced writer commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writers_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writers_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help advanced writers commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__breach_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__breach_commands() {

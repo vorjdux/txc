@@ -2031,3 +2031,36 @@ fn a_synced_vault_imports_in_one_change_and_exports_to_a_post_quantum_key() {
     );
     assert!(stderr(&exported).contains("infra"));
 }
+
+#[test]
+fn format_details_live_under_advanced_and_create_makes_a_second_synced_vault() {
+    let sandbox = Sandbox::new("advanced");
+    sandbox.init();
+    let help = succeeds(&sandbox.vault(&["--help"]));
+    assert!(
+        help.contains("advanced") && !help.contains("  writers "),
+        "{help}"
+    );
+    // The grouped spelling and the old one both still work.
+    let grouped = succeeds(&sandbox.vault(&["advanced", "identity"]));
+    assert_eq!(grouped, succeeds(&sandbox.vault(&["identity"])));
+
+    let (first, second) = (sandbox.root.join("sync-one"), sandbox.root.join("sync-two"));
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    succeeds(&sandbox.vault(&[
+        "init",
+        "--folder",
+        first.to_str().unwrap(),
+        "--name",
+        "home",
+    ]));
+    succeeds(&sandbox.vault(&["create", "work", "--folder", second.to_str().unwrap()]));
+    let listed = succeeds(&sandbox.vault(&["list"]));
+    assert!(
+        listed.contains("home (synced)")
+            && listed.contains("work (synced)")
+            && listed.contains("personal"),
+        "{listed}"
+    );
+}

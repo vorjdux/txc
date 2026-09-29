@@ -913,6 +913,9 @@ _txc() {
             txc__subcmd__help__subcmd__vault,add)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__add"
                 ;;
+            txc__subcmd__help__subcmd__vault,advanced)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced"
+                ;;
             txc__subcmd__help__subcmd__vault,breach)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__breach"
                 ;;
@@ -1030,6 +1033,30 @@ _txc() {
             txc__subcmd__help__subcmd__vault,writers)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__writers"
                 ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,fingerprint)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__fingerprint"
+                ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,history)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__history"
+                ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,identity)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__identity"
+                ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,recipients)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__recipients"
+                ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,trust)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__trust"
+                ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,upgrade)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__upgrade"
+                ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,writer)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writer"
+                ;;
+            txc__subcmd__help__subcmd__vault__subcmd__advanced,writers)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writers"
+                ;;
             txc__subcmd__help__subcmd__vault__subcmd__breach,check)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__breach__subcmd__check"
                 ;;
@@ -1065,6 +1092,9 @@ _txc() {
                 ;;
             txc__subcmd__vault,add)
                 cmd="txc__subcmd__vault__subcmd__add"
+                ;;
+            txc__subcmd__vault,advanced)
+                cmd="txc__subcmd__vault__subcmd__advanced"
                 ;;
             txc__subcmd__vault,breach)
                 cmd="txc__subcmd__vault__subcmd__breach"
@@ -1192,6 +1222,60 @@ _txc() {
             txc__subcmd__vault,writers)
                 cmd="txc__subcmd__vault__subcmd__writers"
                 ;;
+            txc__subcmd__vault__subcmd__advanced,fingerprint)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__fingerprint"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,help)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,history)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__history"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,identity)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__identity"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,recipients)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__recipients"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,trust)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__trust"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,upgrade)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__upgrade"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,writer)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__writer"
+                ;;
+            txc__subcmd__vault__subcmd__advanced,writers)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__writers"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,fingerprint)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__fingerprint"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,help)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__help"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,history)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__history"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,identity)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__identity"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,recipients)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__recipients"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,trust)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__trust"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,upgrade)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__upgrade"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,writer)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writer"
+                ;;
+            txc__subcmd__vault__subcmd__advanced__subcmd__help,writers)
+                cmd="txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writers"
+                ;;
             txc__subcmd__vault__subcmd__breach,check)
                 cmd="txc__subcmd__vault__subcmd__breach__subcmd__check"
                 ;;
@@ -1266,6 +1350,9 @@ _txc() {
                 ;;
             txc__subcmd__vault__subcmd__help,add)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__add"
+                ;;
+            txc__subcmd__vault__subcmd__help,advanced)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced"
                 ;;
             txc__subcmd__vault__subcmd__help,breach)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__breach"
@@ -1386,6 +1473,30 @@ _txc() {
                 ;;
             txc__subcmd__vault__subcmd__help,writers)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__writers"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,fingerprint)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__fingerprint"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,history)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__history"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,identity)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__identity"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,recipients)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__recipients"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,trust)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__trust"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,upgrade)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__upgrade"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,writer)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writer"
+                ;;
+            txc__subcmd__vault__subcmd__help__subcmd__advanced,writers)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writers"
                 ;;
             txc__subcmd__vault__subcmd__help__subcmd__breach,check)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__breach__subcmd__check"
@@ -4879,7 +4990,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault)
-            opts="init unlock lock import export run identity passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm move recipients trust fingerprint history writer writers upgrade delete grant redeem"
+            opts="init unlock lock import export run passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm move delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -4895,6 +5006,132 @@ _txc() {
         txc__subcmd__help__subcmd__vault__subcmd__add)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced)
+            opts="identity recipients trust fingerprint history writer writers upgrade"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__fingerprint)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__history)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__identity)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__recipients)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__trust)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__upgrade)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writer)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__advanced__subcmd__writers)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -9045,7 +9282,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault)
-            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help init unlock lock import export run identity passwd create list add show favourite favorite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm move mv recipients trust fingerprint history writer writers upgrade delete grant redeem help"
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help init unlock lock import export run passwd create list add show favourite favorite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm move mv delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -9102,6 +9339,400 @@ _txc() {
                     return 0
                     ;;
                 --tag)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced)
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help identity recipients trust fingerprint history writer writers upgrade help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__fingerprint)
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help)
+            opts="identity recipients trust fingerprint history writer writers upgrade help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__fingerprint)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__history)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__identity)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__recipients)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__trust)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__upgrade)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writer)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__help__subcmd__writers)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__history)
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__identity)
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__recipients)
+            opts="-h --add --remove --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --add)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --remove)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__trust)
+            opts="-h --yes --expect --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --expect)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__upgrade)
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__writer)
+            opts="-h --rotate --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__advanced__subcmd__writers)
+            opts="-h --add --remove --yes --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --add)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --remove)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -9319,13 +9950,17 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__create)
-            opts="-h --recipient --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --recipient --folder --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
                 --recipient)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --folder)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -10039,7 +10674,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help)
-            opts="init unlock lock import export run identity passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm move recipients trust fingerprint history writer writers upgrade delete grant redeem help"
+            opts="init unlock lock import export run passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm move delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -10055,6 +10690,132 @@ _txc() {
         txc__subcmd__vault__subcmd__help__subcmd__add)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced)
+            opts="identity recipients trust fingerprint history writer writers upgrade"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__fingerprint)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__history)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__identity)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__recipients)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__trust)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__upgrade)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writer)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__advanced__subcmd__writers)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi

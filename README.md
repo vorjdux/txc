@@ -435,6 +435,12 @@ the command to run.
   --setup` prints the line servers need.
 - **Moving an existing vault** is `txc vault migrate personal --folder DIR`;
   the old vault stays as it is.
+- **Another synced vault** is `txc vault create work --folder DIR`.
+
+The keys, trust and format details of vaults that are not synced
+(`identity`, `writer`, `writers`, `recipients`, `trust`, `fingerprint`,
+`history`, `upgrade`) live under `txc vault advanced`; the old top-level
+spellings still work.
 
 ### Unlocking once
 

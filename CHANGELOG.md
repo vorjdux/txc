@@ -8,6 +8,12 @@ All notable changes to txc are recorded here. The format follows
 
 ### Added
 
+- **A smaller command surface.** The keys, trust and format commands of vaults
+  that are not synced (`identity`, `writer`, `writers`, `recipients`, `trust`,
+  `fingerprint`, `history`, `upgrade`) are grouped under `txc vault advanced`;
+  their old spellings still work but are no longer listed. `txc vault create
+  NAME --folder DIR` makes another synced vault, `device approve` also covers
+  what `device ack` did, and `status` replaces `sync`.
 - **Synced vaults.** `txc vault init --folder DIR` creates a vault in a sync
   folder that several devices share: signed, encrypted objects with random
   names, post-quantum from end to end (age `mlkem768x25519`, composite

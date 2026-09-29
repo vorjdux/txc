@@ -119,7 +119,7 @@ pub fn command() -> Command {
             .help(help)
     };
 
-    Command::new("vault")
+    let vault = Command::new("vault")
         .about("Keep passwords, cards, keys and notes in an encrypted local vault")
         .long_about(
             "Keep passwords, cards, API keys, notes and other secrets in an encrypted local \
@@ -367,7 +367,7 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("create")
-                .about("Create a new, empty vault")
+                .about("Create a new, empty vault; with --folder, a synced one shared between your devices")
                 .arg(
                     Arg::new("NAME")
                         .required(true)
@@ -377,7 +377,14 @@ pub fn command() -> Command {
                     "recipient",
                     "AGE_KEY",
                     "Also encrypt to this public key, such as another device's",
-                )),
+                ))
+                .arg(
+                    Arg::new("folder")
+                        .long("folder")
+                        .value_name("DIR")
+                        .conflicts_with("recipient")
+                        .help("Make it a synced vault in this sync folder, shared between your devices"),
+                ),
         )
         .subcommand(
             Command::new("list")
@@ -992,7 +999,41 @@ pub fn command() -> Command {
                         .value_parser(value_parser!(u64))
                         .help("For a grant from a synced vault: refuse older versions of the secret"),
                 ),
-        )
+        );
+    group_advanced(vault)
+}
+
+/// Commands about the details of today's vault format, grouped under
+/// `txc vault advanced` so the everyday surface stays small. Their old
+/// top-level spellings stay as hidden aliases, so scripts keep working.
+const ADVANCED: [&str; 8] = [
+    "identity",
+    "writer",
+    "writers",
+    "recipients",
+    "trust",
+    "fingerprint",
+    "history",
+    "upgrade",
+];
+
+fn group_advanced(vault: Command) -> Command {
+    let advanced = Command::new("advanced")
+        .about("Keys, trust and format details of vaults that are not synced")
+        .subcommand_required(true)
+        .subcommands(
+            vault
+                .get_subcommands()
+                .filter(|command| ADVANCED.contains(&command.get_name()))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+    ADVANCED
+        .iter()
+        .fold(vault, |vault, name| {
+            vault.mut_subcommand(*name, |command| command.hide(true))
+        })
+        .subcommand(advanced)
 }
 
 /// The ways a main secret can be given, shared by `add` and `edit`.
@@ -1074,8 +1115,15 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
     let Some((name, sub)) = matches.subcommand() else {
         unreachable!("clap requires a subcommand");
     };
+    // `txc vault advanced X` is `txc vault X`, grouped.
+    let (name, sub) = if name == "advanced" {
+        sub.subcommand()
+            .context("clap requires an advanced subcommand")?
+    } else {
+        (name, sub)
+    };
     match name {
-        "init" if synced_command::folder_of(sub).is_some() => {
+        "init" | "create" if synced_command::folder_of(sub).is_some() => {
             let folder = synced_command::folder_of(sub).cloned().unwrap_or_default();
             synced_command::init(&context.synced(), sub, &folder)
         }

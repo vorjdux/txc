@@ -166,8 +166,10 @@ fn codes_match(code: &str) -> Result<bool> {
 /// Returns an error when the name is taken, the folder holds a vault, or no
 /// keystore is available.
 pub fn init(context: &Context<'_>, sub: &ArgMatches, folder: &str) -> Result<()> {
-    let name = sub
-        .get_one::<String>("name")
+    // init takes --name; create takes the name as its argument.
+    let name = ["name", "NAME"]
+        .into_iter()
+        .find_map(|id| sub.try_get_one::<String>(id).ok().flatten())
         .map_or(DEFAULT_VAULT, String::as_str);
     check_vault_name(name)?;
     let folder = std::fs::canonicalize(folder)
