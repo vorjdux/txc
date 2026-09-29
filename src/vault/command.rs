@@ -1789,7 +1789,7 @@ impl Session {
             }
             eprintln!(
                 "This device is provisioned to read only: no write key was created. Pin the \
-                 writer of the device that writes with: txc vault writers --add <key>"
+                 writer of the device that writes with: txc vault advanced writers --add <key>"
             );
             eprintln!("Your public key, for encrypting a vault to you:");
             return output(&keyring.public_key());
@@ -2519,7 +2519,7 @@ impl Session {
         eprintln!("Rotated the write key and re-signed {resigned} vault(s).");
         eprintln!("The old writer stays pinned so vaults still open on devices that have not");
         eprintln!("caught up. Once every device has the new key, remove it with:");
-        eprintln!("  txc vault writers --remove {old_id}");
+        eprintln!("  txc vault advanced writers --remove {old_id}");
         Ok(())
     }
 

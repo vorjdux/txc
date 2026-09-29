@@ -272,7 +272,7 @@ impl Keyring {
     }
 
     /// Decrypts a vault and compares it with what this device trusts, without
-    /// refusing it. This is what `txc vault trust` shows before asking.
+    /// refusing it. This is what `txc vault advanced trust` shows before asking.
     ///
     /// # Errors
     ///
@@ -569,7 +569,7 @@ impl fmt::Display for NotTrusted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}; it is not opened. If you expected this, check it and run: txc vault trust {}",
+            "{}; it is not opened. If you expected this, check it and run: txc vault advanced trust {}",
             self.standing.describe(&self.vault),
             self.vault
         )
