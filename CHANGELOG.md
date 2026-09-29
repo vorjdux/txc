@@ -34,6 +34,15 @@ All notable changes to txc are recorded here. The format follows
   that connection with a certificate that lives five minutes (`--minutes`, an
   hour at most) and hands both to `ssh` as in-memory files; `--setup` prints
   the `TrustedUserCAKeys` line servers need.
+- **Hardware keys and protected entries.** `txc vault hardware add` moves a
+  device's second key factor to a security key, the Secure Enclave or a TPM
+  through its age plugin, pinned by path and hash and never looked up again,
+  and registers it as an authenticator; others see a red line until they
+  acknowledge it (`txc vault device ack`), and `txc vault device approve`
+  handles what waits for approval. `txc vault add --protect` seals an entry
+  to every registered security key and the recovery sheets: each use needs a
+  touch, and it goes only to programs as a file, never to the clipboard, the
+  screen, an environment variable, a grant or an export.
 - **Offline breach checks.** `txc vault breach import` turns a downloaded
   Pwned Passwords SHA-1 list into a filter in the txc home, and
   `txc vault breach check` lists the entries whose password is probably in

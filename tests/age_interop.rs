@@ -365,6 +365,37 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         "{report}"
     );
 
+    // A protected entry: sealed to the registered authenticator and the
+    // recovery recipient, released only to a program as a file.
+    ok(txc(
+        &["add", "bank", "--protect", "--secret-from-stdin"],
+        b"pin-4321",
+    ));
+    assert!(!txc(&["copy", "--print", "bank"], b"").status.success());
+    assert!(
+        !txc(
+            &["run", "--set", "PIN=txc://personal/bank", "--", "true"],
+            b""
+        )
+        .status
+        .success()
+    );
+    if cfg!(unix) {
+        let shown = ok(txc(
+            &[
+                "run",
+                "--set",
+                "PIN=txc+file://personal/bank",
+                "--",
+                "sh",
+                "-c",
+                "cat \"$PIN\"",
+            ],
+            b"",
+        ));
+        assert_eq!(shown, "pin-4321");
+    }
+
     std::fs::OpenOptions::new()
         .append(true)
         .open(&plugin)

@@ -2436,6 +2436,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --secret-from-stdin 'Read the main secret from standard input, which may run over several lines'
             cand --favourite 'Star it straight away'
             cand --favorite 'Star it straight away'
+            cand --protect 'Seal it to security keys: each use needs a touch, and it goes only to programs as a file (synced vaults)'
             cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
             cand -h 'Print help'
             cand --help 'Print help'

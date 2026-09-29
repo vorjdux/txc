@@ -791,7 +791,7 @@ pub fn grant(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         .and_then(|wanted| field(view, wanted))
         .or_else(|| view.fields.iter().find(|field| field.kind.is_secret()))
         .context("the entry has no such field")?;
-    let secret = reveal(&vault, &reference.entry, Some(&field.label))?;
+    let secret = reveal_to(&vault, &reference.entry, Some(&field.label), Channel::Grant)?;
     let device = vault.device();
     let certificate = device
         .me()
@@ -892,7 +892,7 @@ pub fn export_vault(context: &Context<'_>, name: &str) -> Result<serde_json::Val
         let operation_only = views
             .iter()
             .find(|view| view.names.contains(&entry.name))
-            .is_some_and(|view| view.sensitivity == Sensitivity::OperationOnly);
+            .is_some_and(|view| view.sensitivity != Sensitivity::Normal);
         if operation_only {
             withheld.push(entry.name.clone());
             continue;
@@ -923,7 +923,7 @@ pub fn export_vault(context: &Context<'_>, name: &str) -> Result<serde_json::Val
     }
     if !withheld.is_empty() {
         eprintln!(
-            "Left out of the export, as never released: {}.",
+            "Left out of the export, as protected or never released: {}.",
             withheld.join(", ")
         );
     }
@@ -1508,7 +1508,12 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     check_sensitivities(kind, &plain, &secret_fields)?;
     let tags = checked_tags(sub, "tag")?;
     let primary = main_spec(kind);
-    let (mut vault, _) = context.open_confined(&reference.vault)?;
+    // Sealing to hardware runs its plugins, which confinement forbids.
+    let mut vault = if sub.get_flag("protect") {
+        context.open(&reference.vault)?
+    } else {
+        context.open_confined(&reference.vault)?.0
+    };
     let entries = vault.entries()?;
     ensure!(
         !entries
@@ -1519,34 +1524,43 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         reference.entry,
         reference.vault
     );
+    let protect = sub.get_flag("protect");
     let (secret, generated) = main_secret(sub, primary)?;
+    let seal = |value: &[u8]| -> Result<(FieldKind, Vec<u8>)> {
+        if protect {
+            Ok((
+                FieldKind::Protected,
+                vault.protect(value, &crate::vault::hardware::Terminal)?,
+            ))
+        } else {
+            Ok((FieldKind::Secret, value.to_vec()))
+        }
+    };
+    let (main_kind, main_value) = seal(secret.expose_secret().as_bytes())?;
+    let mut sealed_fields = Vec::new();
+    for label in &secret_fields {
+        let shown = kind.spec(label).map_or(label.as_str(), |spec| spec.label);
+        let value = prompt::secret_from_terminal(shown)?;
+        sealed_fields.push((label.clone(), seal(value.expose_secret().as_bytes())?));
+    }
     let mut changes = Changes::new(&entries, now());
     let entry = changes.create(&reference.entry)?;
     changes.set_kind(&entry, kind.id())?;
+    if protect {
+        changes.classify(&entry, Sensitivity::High)?;
+    }
     if !tags.is_empty() {
         changes.set_tags(&entry, &tags)?;
     }
     if sub.get_flag("favourite") {
         changes.set_star(&entry, true)?;
     }
-    changes.add_field(
-        &entry,
-        FieldKind::Secret,
-        primary.name,
-        secret.expose_secret().as_bytes(),
-    )?;
+    changes.add_field(&entry, main_kind, primary.name, &main_value)?;
     for (label, value) in &plain {
         changes.add_field(&entry, plain_kind(label), label, value.as_bytes())?;
     }
-    for label in secret_fields {
-        let shown = kind.spec(&label).map_or(label.as_str(), |spec| spec.label);
-        let value = prompt::secret_from_terminal(shown)?;
-        changes.add_field(
-            &entry,
-            FieldKind::Secret,
-            &label,
-            value.expose_secret().as_bytes(),
-        )?;
+    for (label, (field_kind, value)) in &sealed_fields {
+        changes.add_field(&entry, *field_kind, label, value)?;
     }
     vault.write(changes)?;
     eprintln!("Added {reference}.");
@@ -1578,10 +1592,15 @@ fn copy(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         );
     }
     let (vault, _) = context.open_confined(&reference.vault)?;
-    let secret = reveal(
+    let secret = reveal_to(
         &vault,
         &reference.entry,
         sub.get_one::<String>("field").map(String::as_str),
+        if print {
+            Channel::Pipe
+        } else {
+            Channel::Clipboard
+        },
     )?;
     drop(vault);
     if print {
@@ -1609,10 +1628,69 @@ fn copy(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error when there is no such field or it has two versions.
-pub fn reveal(vault: &Synced, entry: &str, label: Option<&str>) -> Result<SecretString> {
+/// Where a released secret goes (study section 10).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Channel {
+    /// The clipboard.
+    Clipboard,
+    /// The screen.
+    Screen,
+    /// A pipe, with --print.
+    Pipe,
+    /// A program's environment, by `txc vault run`.
+    Environment,
+    /// A program, as a sealed in-memory file.
+    File,
+    /// A grant for a machine.
+    Grant,
+}
+
+/// One field's single value, decrypted, for one channel: the named field,
+/// or the entry's main secret. Operation-only entries go nowhere; protected
+/// ones go only to a program as a sealed file, after a touch.
+///
+/// # Errors
+///
+/// Returns an error when there is no such field, it has two versions, or
+/// the channel is not open to it.
+pub fn reveal_to(
+    vault: &Synced,
+    entry: &str,
+    label: Option<&str>,
+    channel: Channel,
+) -> Result<SecretString> {
     let entries = vault.entries()?;
     let views = entries.list();
     let view = find(&views, entry)?;
+    let protected = matches!(view.sensitivity, Sensitivity::High | Sensitivity::RootGrade);
+    ensure!(
+        !protected || channel == Channel::File,
+        "{entry} is protected: it goes only to a program as a file, as in \
+         txc vault run --set NAME=txc+file://{}/{entry}",
+        vault.name
+    );
+    reveal_checked(vault, &entries, &views, entry, label)
+}
+
+/// One field's single value, decrypted: the named field, or the entry's
+/// main secret, for a channel that shows it to the person.
+///
+/// # Errors
+///
+/// Returns an error when there is no such field, it has two versions, or it
+/// is protected or operation-only.
+pub fn reveal(vault: &Synced, entry: &str, label: Option<&str>) -> Result<SecretString> {
+    reveal_to(vault, entry, label, Channel::Screen)
+}
+
+fn reveal_checked(
+    vault: &Synced,
+    entries: &crate::vault::entries::Entries,
+    views: &[EntryView],
+    entry: &str,
+    label: Option<&str>,
+) -> Result<SecretString> {
+    let view = find(views, entry)?;
     let wanted = label
         .map(str::to_owned)
         .or_else(|| kind_of(view).map(|kind| main_spec(kind).name.to_owned()));
@@ -1625,7 +1703,14 @@ pub fn reveal(vault: &Synced, entry: &str, label: Option<&str>) -> Result<Secret
         field.kind != FieldKind::SshCa && view.sensitivity != Sensitivity::OperationOnly,
         "{entry} is used only inside txc and is never released; for an SSH CA use: txc vault ssh"
     );
-    let values = entries.reveal(&view.id, &field.id, Slot::Value)?;
+    let mut values = entries.reveal(&view.id, &field.id, Slot::Value)?;
+    if field.kind == FieldKind::Protected {
+        eprintln!("{entry} is protected; your security key may ask for a touch.");
+        values = values
+            .iter()
+            .map(|sealed| vault.unprotect(sealed, &crate::vault::hardware::Terminal))
+            .collect::<Result<_>>()?;
+    }
     let [value] = values.as_slice() else {
         bail!(
             "{entry} has two versions of {}; pick one: txc vault resolve {}/{entry}",
@@ -1658,7 +1743,13 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             || !removed.is_empty(),
         "nothing to change; see: txc vault edit --help"
     );
-    let (mut vault, _) = context.open_confined(&reference.vault)?;
+    // A new secret value may have to be sealed to hardware, which runs its
+    // plugins; confinement forbids that, so only such edits go without it.
+    let mut vault = if new_main || !secret_fields.is_empty() {
+        context.open(&reference.vault)?
+    } else {
+        context.open_confined(&reference.vault)?.0
+    };
     let entries = vault.entries()?;
     let views = entries.list();
     let view = find(&views, &reference.entry)?;
@@ -1680,6 +1771,26 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         tags.dedup();
         changes.set_tags(&view.id, &tags)?;
     }
+    let protected = matches!(view.sensitivity, Sensitivity::High | Sensitivity::RootGrade);
+    let set_secret = |changes: &mut Changes<'_>, label: &str, value: &[u8]| -> Result<()> {
+        let (field_kind, value) = if protected {
+            (
+                FieldKind::Protected,
+                vault.protect(value, &crate::vault::hardware::Terminal)?,
+            )
+        } else {
+            (FieldKind::Secret, value.to_vec())
+        };
+        match field(view, label) {
+            Some(existing) if existing.kind.is_secret() => {
+                changes.set_field(&view.id, &existing.id, field_kind, &value)
+            }
+            Some(_) => bail!("{label} is not a secret field"),
+            None => changes
+                .add_field(&view.id, field_kind, label, &value)
+                .map(|_| ()),
+        }
+    };
     let set = |changes: &mut Changes<'_>,
                label: &str,
                field_kind: FieldKind,
@@ -1695,10 +1806,9 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     if new_main {
         let primary = main_spec(kind);
         let (secret, _) = main_secret(sub, primary)?;
-        set(
+        set_secret(
             &mut changes,
             primary.name,
-            FieldKind::Secret,
             secret.expose_secret().as_bytes(),
         )?;
     }
@@ -1707,12 +1817,7 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     }
     for label in secret_fields {
         let value = prompt::secret_from_terminal(&label)?;
-        set(
-            &mut changes,
-            &label,
-            FieldKind::Secret,
-            value.expose_secret().as_bytes(),
-        )?;
+        set_secret(&mut changes, &label, value.expose_secret().as_bytes())?;
     }
     for label in removed {
         let existing = field(view, &label)
@@ -1878,6 +1983,7 @@ pub fn resolve_reference(
     vault: &str,
     entry: &str,
     field: Option<&str>,
+    channel: Channel,
 ) -> Result<SecretString> {
     if !opened.contains_key(vault) {
         let synced = context.open(vault)?;
@@ -1886,5 +1992,5 @@ pub fn resolve_reference(
     let synced = opened
         .get(vault)
         .ok_or_else(|| anyhow!("the vault {vault} did not open"))?;
-    reveal(synced, entry, field)
+    reveal_to(synced, entry, field, channel)
 }

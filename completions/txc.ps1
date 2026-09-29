@@ -2594,6 +2594,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input, which may run over several lines')
             [CompletionResult]::new('--favourite', '--favourite', [CompletionResultType]::ParameterName, 'Star it straight away')
             [CompletionResult]::new('--favorite', '--favorite', [CompletionResultType]::ParameterName, 'Star it straight away')
+            [CompletionResult]::new('--protect', '--protect', [CompletionResultType]::ParameterName, 'Seal it to security keys: each use needs a touch, and it goes only to programs as a file (synced vaults)')
             [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')

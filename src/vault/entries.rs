@@ -94,6 +94,9 @@ pub enum FieldKind {
     Note,
     /// A file's content.
     File,
+    /// A protected secret: an age file sealed to every authenticator and the
+    /// recovery recipient, opened only with hardware.
+    Protected,
     /// A kind this version does not know, kept as it is.
     Unknown(u16),
 }
@@ -111,6 +114,7 @@ impl FieldKind {
             Self::SshCa => 8,
             Self::Note => 9,
             Self::File => 10,
+            Self::Protected => 11,
             Self::Unknown(code) => code,
         }
     }
@@ -127,6 +131,7 @@ impl FieldKind {
             8 => Self::SshCa,
             9 => Self::Note,
             10 => Self::File,
+            11 => Self::Protected,
             other => Self::Unknown(other),
         }
     }
@@ -137,8 +142,22 @@ impl FieldKind {
     pub const fn is_secret(self) -> bool {
         matches!(
             self,
-            Self::Secret | Self::Totp | Self::Passkey | Self::SshCa | Self::File | Self::Unknown(_)
+            Self::Secret
+                | Self::Totp
+                | Self::Passkey
+                | Self::SshCa
+                | Self::File
+                | Self::Protected
+                | Self::Unknown(_)
         )
+    }
+
+    /// Whether values of this kind are sealed under their object's field
+    /// key. A protected value is not: it carries its own key, wrapped to
+    /// hardware, and moves between objects as it is.
+    #[must_use]
+    pub const fn keyed(self) -> bool {
+        self.is_secret() && !matches!(self, Self::Protected)
     }
 }
 
@@ -801,7 +820,7 @@ impl Entries {
                      key: &[u8; 32],
                      bytes: &[u8]|
          -> Option<Vec<u8>> {
-            if kind.is_secret() {
+            if kind.keyed() {
                 open_value(key, &register.0, &register.1, bytes)
                     .ok()
                     .map(|plain| plain.to_vec())
@@ -943,7 +962,7 @@ impl Entries {
                 .get(source)
                 .ok_or_else(|| anyhow!("a field key is missing"))?;
             let seal = |bytes: &Vec<u8>| -> Result<Vec<u8>> {
-                if op.kind.is_secret() {
+                if op.kind.keyed() {
                     let plain = open_value(source_key, &op.register.0, &op.register.1, bytes)?;
                     seal_value(&key, &op.register.0, &op.register.1, &plain)
                 } else {
@@ -1053,7 +1072,7 @@ impl Entries {
         kind: FieldKind,
         stored: &Stored,
     ) -> Result<Zeroizing<Vec<u8>>> {
-        if !kind.is_secret() {
+        if !kind.keyed() {
             return Ok(Zeroizing::new(stored.bytes.clone()));
         }
         let key = self
@@ -1246,7 +1265,7 @@ impl<'a> Changes<'a> {
 
     fn set(&mut self, register: Register, kind: FieldKind, plain: &[u8]) -> Result<()> {
         let deps = self.deps(&register)?;
-        let value = if kind.is_secret() {
+        let value = if kind.keyed() {
             seal_value(&self.key, &register.0, &register.1, plain)?
         } else {
             plain.to_vec()
@@ -1275,7 +1294,7 @@ impl<'a> Changes<'a> {
             .iter()
             .map(|stored| {
                 let plain = self.entries.plain(&register, field.kind, stored)?;
-                if field.kind.is_secret() {
+                if field.kind.keyed() {
                     seal_value(&self.key, &register.0, &register.1, &plain)
                 } else {
                     Ok(plain.to_vec())

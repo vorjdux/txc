@@ -2728,6 +2728,7 @@ secret\:"Other secret"))' \
 '--secret-from-stdin[Read the main secret from standard input, which may run over several lines]' \
 '--favourite[Star it straight away]' \
 '--favorite[Star it straight away]' \
+'--protect[Seal it to security keys\: each use needs a touch, and it goes only to programs as a file (synced vaults)]' \
 '--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
 '-h[Print help]' \
 '--help[Print help]' \

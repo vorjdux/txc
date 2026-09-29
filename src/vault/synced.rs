@@ -766,6 +766,77 @@ impl Synced {
             .collect())
     }
 
+    /// Seals a protected value: an age file to every authenticator in the
+    /// vault and the recovery recipient, with a key of its own.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no authenticator is registered, or the plugin
+    /// for one is not pinned here.
+    pub fn protect(&self, plain: &[u8], prompter: &dyn Prompter) -> Result<Vec<u8>> {
+        let mut recipients: Vec<String> = self
+            .device
+            .view()
+            .values()
+            .flat_map(|cert| {
+                cert.authenticators
+                    .iter()
+                    .map(|authenticator| authenticator.recipient.clone())
+            })
+            .collect();
+        recipients.sort();
+        recipients.dedup();
+        ensure!(
+            !recipients.is_empty(),
+            "no security key is registered in this vault yet; add one with: txc vault hardware add"
+        );
+        let pins = self.pins()?;
+        let wrapped = recipients
+            .into_iter()
+            .map(|recipient| {
+                let name = crate::vault::hardware::plugin_name(&recipient)?;
+                let plugin = pins
+                    .iter()
+                    .find(|pin| pin.name == name)
+                    .cloned()
+                    .with_context(|| {
+                        format!(
+                            "to seal to a {name} key, pin its plugin: txc vault hardware pin {name}"
+                        )
+                    })?;
+                Ok(crate::vault::hardware::PluginRecipient {
+                    recipient,
+                    plugin,
+                    prompter,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let recovery = self
+            .genesis()
+            .context("the vault's genesis is not read yet")?
+            .recovery
+            .clone();
+        let all: Vec<&dyn age::Recipient> = wrapped
+            .iter()
+            .map(|recipient| recipient as &dyn age::Recipient)
+            .chain(std::iter::once(&recovery as &dyn age::Recipient))
+            .collect();
+        crate::vault::crypto::encrypt_to(&all, plain)
+    }
+
+    /// Opens a protected value with this device's hardware: a touch.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this device has no registered hardware or the
+    /// hardware does not open it.
+    pub fn unprotect(&self, sealed: &[u8], prompter: &dyn Prompter) -> Result<Zeroizing<Vec<u8>>> {
+        let hardware = self
+            .hardware()?
+            .context("only a device with its security key set up opens protected entries: txc vault hardware add")?;
+        hardware.open(sealed, prompter)
+    }
+
     /// The hardware holding this device's second factor, if any.
     ///
     /// # Errors

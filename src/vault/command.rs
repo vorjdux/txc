@@ -440,6 +440,15 @@ pub fn command() -> Command {
                     .action(ArgAction::SetTrue)
                     .help("Star it straight away"),
             )
+            .arg(
+                Arg::new("protect")
+                    .long("protect")
+                    .action(ArgAction::SetTrue)
+                    .help(
+                        "Seal it to security keys: each use needs a touch, and it goes only to \
+                         programs as a file (synced vaults)",
+                    ),
+            )
             .after_help(kinds_help()),
         )
         .subcommand(
@@ -1570,6 +1579,10 @@ impl Session {
                     &reference.vault,
                     &reference.entry,
                     reference.field.as_deref(),
+                    match reference.delivery {
+                        How::Environment => synced_command::Channel::Environment,
+                        How::File => synced_command::Channel::File,
+                    },
                 )
                 .with_context(|| format!("{name}={reference}"))?;
                 match reference.delivery {
