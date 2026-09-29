@@ -171,6 +171,9 @@ pub struct Device {
     /// Snapshots this device verified (rule 13); remembered because what
     /// they cover is collected afterwards.
     verified: BTreeSet<Hash>,
+    /// For data recovery: the share commitments the sheets gave, by sheet
+    /// number. Such a reader is no member; it holds the recovery identity.
+    recovering: Option<Vec<(u8, Hash)>>,
 }
 
 impl Device {
@@ -206,7 +209,33 @@ impl Device {
             originated: BTreeSet::new(),
             written: BTreeMap::new(),
             verified: BTreeSet::new(),
+            recovering: None,
         }
+    }
+
+    /// A reader for data recovery (study section 12): it opens every control
+    /// object with the recovery identity, which is a recipient of each, and
+    /// accepts only the genesis that names that identity and the sheets'
+    /// share commitments. It writes nothing.
+    #[must_use]
+    pub fn recovering(identity: pq::Identity, commitments: Vec<(u8, Hash)>) -> Self {
+        let me = Me {
+            device: new_id(),
+            signing: SigningKey::generate(),
+            identity,
+            retired: Vec::new(),
+            certificate: None,
+        };
+        let mut device = Self::empty(me, [0; 48]);
+        device.recovering = Some(commitments);
+        device
+    }
+
+    /// Whether this is a data-recovery reader, which trusts every snapshot
+    /// a member wrote, having no other device to check against.
+    #[must_use]
+    pub const fn is_recovering(&self) -> bool {
+        self.recovering.is_some()
     }
 
     /// Creates a vault: genesis signed by two roots, and this device's admin
@@ -643,6 +672,22 @@ impl Device {
     /// verifiable, `Err` invalid for good.
     fn apply(&mut self, signed: &Signed) -> Result<bool> {
         let payload = Payload::decode(&signed.payload)?;
+        if let Some(commitments) = &self.recovering
+            && self.genesis.is_none()
+        {
+            if payload.kind != Kind::Genesis {
+                return Ok(false);
+            }
+            let body = SignedGenesis::decode(&payload.body)?;
+            ensure!(
+                body.genesis.recovery == self.me.identity.to_public()
+                    && commitments.iter().all(|(index, commitment)| {
+                        body.genesis.commitments.get(usize::from(*index)) == Some(commitment)
+                    }),
+                "a genesis that the sheets do not belong to"
+            );
+            self.genesis_hash = body.genesis.hash();
+        }
         ensure!(
             payload.genesis == self.genesis_hash,
             "the object belongs to another vault"
@@ -926,12 +971,14 @@ impl Device {
             .ok_or_else(|| anyhow!("unknown writer"))?;
         ensure!(writer.role.writes(), "the author may not write");
         // Accept only under this device's current certificate (Tamarin:
-        // the key object names the reader's certificate).
+        // the key object names the reader's certificate). The recovery
+        // recipient is sealed every key without being named.
         let mine = self.me.certificate;
         ensure!(
-            recipients
-                .iter()
-                .any(|(device, cert, _)| *device == self.me.device && Some(*cert) == mine),
+            self.recovering.is_some()
+                || recipients
+                    .iter()
+                    .any(|(device, cert, _)| *device == self.me.device && Some(*cert) == mine),
             "the sender key is not for this device's current certificate"
         );
         let body = SenderKeyBody::decode(&payload.body)?;

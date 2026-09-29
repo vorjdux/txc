@@ -22,7 +22,8 @@ use zeroize::Zeroizing;
 
 use crate::vault::authority::Authenticator;
 use crate::vault::authority::{
-    Genesis, Lifetime, Policy, Role, new_id, recovery_identity, root_key, share_commitment,
+    Genesis, Lifetime, Policy, Role, new_id, normalize_card, recovery_identity, root_key,
+    share_commitment,
 };
 use crate::vault::device::{Device, Me};
 use crate::vault::entries::{Changes, Entries};
@@ -44,6 +45,7 @@ const HARDWARE: &str = "hardware";
 const SECOND: &str = "second.age";
 const PLUGINS: &str = "plugins";
 const ACKNOWLEDGED: &str = "acknowledged";
+const CHECKS: &str = "checks";
 const KEYSTORE_SERVICE: &str = "txc vault";
 const CARD_WORDS: usize = 8;
 const SHEETS: u8 = 3;
@@ -257,6 +259,195 @@ pub fn check_sheet(genesis: &Genesis, sheet: &str, card: &str) -> Result<u8> {
         "the sheet belongs to this vault, but the card does not match it"
     );
     Ok(index)
+}
+
+/// A vault read back from its folder with two sheets and the card alone
+/// (study section 12): the recovery identity is a recipient of every control
+/// object, so it holds every sender key and reads every entry.
+pub struct Recovered {
+    /// The reader, holding what it verified.
+    pub device: Device,
+}
+
+impl Recovered {
+    /// Opens a protected value, which is sealed to the recovery recipient
+    /// as well as to every security key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value is not sealed to this vault's
+    /// recovery recipient.
+    pub fn open_protected(&self, sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
+        let decryptor = age::Decryptor::new_buffered(sealed)
+            .map_err(|_error| anyhow!("a protected value is damaged"))?;
+        let mut reader = decryptor
+            .decrypt(std::iter::once(
+                &self.device.me().identity as &dyn age::Identity,
+            ))
+            .map_err(|_error| anyhow!("a protected value is not sealed to the recovery key"))?;
+        let mut plain = Zeroizing::new(Vec::new());
+        std::io::Read::read_to_end(&mut reader, &mut plain)?;
+        Ok(plain)
+    }
+}
+
+/// Reads a vault from its folder with two sheets and the card, on a machine
+/// that holds nothing else of it.
+///
+/// # Errors
+///
+/// Returns an error when the sheets and card do not combine, or the folder
+/// holds no vault they belong to.
+pub fn recover(folder: &Path, sheets: &[&str], card: &str) -> Result<Recovered> {
+    ensure!(
+        sheets.len() >= usize::from(SHEET_THRESHOLD),
+        "two sheets are needed"
+    );
+    let card = normalize_card(card)?;
+    let secret = slip39::combine(sheets, &card).context(
+        "the sheets and the card do not combine; check each with txc vault recovery check",
+    )?;
+    let secret: [u8; 32] = secret
+        .as_slice()
+        .try_into()
+        .map_err(|_length| anyhow!("these sheets do not hold a txc recovery secret"))?;
+    let commitments = sheets
+        .iter()
+        .map(|sheet| {
+            Ok((
+                slip39::share_index(sheet)?,
+                share_commitment(&slip39::share_value(sheet)?),
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let mut device = Device::recovering(recovery_identity(&secret), commitments);
+    let store = Store::open(folder, false)?;
+    device.sync(&store)?;
+    ensure!(
+        device.genesis().is_some(),
+        "{} holds no vault these sheets belong to",
+        folder.display()
+    );
+    Ok(Recovered { device })
+}
+
+/// How often one sheet is checked: twice a year, rotating through the three.
+pub const CHECK_EVERY: u64 = 182 * 24 * 60 * 60;
+/// How often a full recovery is rehearsed.
+pub const DRILL_EVERY: u64 = 365 * 24 * 60 * 60;
+
+/// When this device last saw the sheets written down, checked and drilled.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Checks {
+    /// When the sheets were written down.
+    pub written: Option<u64>,
+    /// When each sheet was last checked.
+    pub sheets: [Option<u64>; SHEETS as usize],
+    /// When a full recovery was last rehearsed.
+    pub drill: Option<u64>,
+}
+
+impl Checks {
+    fn encode(&self) -> String {
+        let written = self.written.map(|at| format!("written {at}"));
+        let sheets = self
+            .sheets
+            .iter()
+            .enumerate()
+            .filter_map(|(index, at)| at.map(|at| format!("sheet {index} {at}")));
+        let drill = self.drill.map(|at| format!("drill {at}"));
+        written
+            .into_iter()
+            .chain(sheets)
+            .chain(drill)
+            .map(|line| line + "\n")
+            .collect()
+    }
+
+    fn decode(text: &str) -> Self {
+        let mut checks = Self::default();
+        for line in text.lines() {
+            let words: Vec<&str> = line.split(' ').collect();
+            match words.as_slice() {
+                ["written", at] => checks.written = at.parse().ok(),
+                ["drill", at] => checks.drill = at.parse().ok(),
+                ["sheet", index, at] => {
+                    if let Some(slot) = index
+                        .parse::<usize>()
+                        .ok()
+                        .and_then(|index| checks.sheets.get_mut(index))
+                    {
+                        *slot = at.parse().ok();
+                    }
+                }
+                _ => {}
+            }
+        }
+        checks
+    }
+
+    /// The sheet to check next, when one is due: the one checked longest
+    /// ago, once half a year has passed since any check.
+    #[must_use]
+    pub fn sheet_due(&self, now: u64) -> Option<u8> {
+        let since = self.sheets.iter().flatten().chain(&self.written).max()?;
+        if now.saturating_sub(*since) < CHECK_EVERY {
+            return None;
+        }
+        (0..SHEETS).min_by_key(|index| self.sheets.get(usize::from(*index)).copied().flatten())
+    }
+
+    /// Whether a recovery drill is due: a year after the last, or after the
+    /// sheets were written down.
+    #[must_use]
+    pub fn drill_due(&self, now: u64) -> bool {
+        self.drill
+            .or(self.written)
+            .is_some_and(|since| now.saturating_sub(since) >= DRILL_EVERY)
+    }
+}
+
+/// The recovery dates recorded for a synced vault on this device.
+///
+/// # Errors
+///
+/// Returns an error when the file exists but cannot be read.
+pub fn checks(home: &Home, name: &str) -> Result<Checks> {
+    let path = dir(home, name).join(CHECKS);
+    if !home::exists(&path) {
+        return Ok(Checks::default());
+    }
+    let bytes = home::read_private(&path, 4096, PRIVATE)?;
+    Ok(Checks::decode(&String::from_utf8_lossy(&bytes)))
+}
+
+/// Records recovery dates for a synced vault on this device.
+///
+/// # Errors
+///
+/// Returns an error when the write fails.
+pub fn record_checks(home: &Home, name: &str, update: impl FnOnce(&mut Checks)) -> Result<()> {
+    let mut current = checks(home, name)?;
+    update(&mut current);
+    home::write_atomic(
+        &dir(home, name).join(CHECKS),
+        current.encode().as_bytes(),
+        None,
+    )
+}
+
+/// The sync folder a synced vault on this device reads.
+///
+/// # Errors
+///
+/// Returns an error when there is no such vault here.
+pub fn folder(home: &Home, name: &str) -> Result<PathBuf> {
+    let dir = dir(home, name);
+    ensure!(
+        home::exists(&dir.join(KEYS)),
+        "no synced vault named \"{name}\" on this device"
+    );
+    read_folder(&dir)
 }
 
 // ------------------------------------------------------------------- vault --
@@ -1003,7 +1194,18 @@ impl Synced {
         // Overwrite before removing; on copy-on-write or flash storage this
         // is best effort, which is why the kit is sealed in the first place.
         home::write_atomic(&path, &vec![0; usize::try_from(length).unwrap_or(0)], None)?;
-        fs::remove_file(&path).context("cannot erase the recovery kit")
+        fs::remove_file(&path).context("cannot erase the recovery kit")?;
+        let written = now();
+        let checks = self.dir.join(CHECKS);
+        let mut current = if home::exists(&checks) {
+            Checks::decode(&String::from_utf8_lossy(&home::read_private(
+                &checks, 4096, PRIVATE,
+            )?))
+        } else {
+            Checks::default()
+        };
+        current.written = Some(written);
+        home::write_atomic(&checks, current.encode().as_bytes(), None)
     }
 
     /// The vault's genesis, once known.
@@ -1184,5 +1386,97 @@ pub(crate) mod tests {
         .unwrap();
         first.sync().unwrap();
         assert_eq!(first.device().members().len(), 2);
+    }
+
+    #[test]
+    fn two_sheets_and_the_card_read_every_entry_back_from_the_folder_alone() {
+        let created = created_pending("recover");
+        let mut vault = created.vault;
+        let kit = vault.kit().unwrap();
+        let folder = folder(&created.home, "personal").unwrap();
+        let write = |vault: &mut Synced, name: &str, value: &[u8]| {
+            let entries = vault.entries().unwrap();
+            let mut changes = Changes::new(&entries, now());
+            let entry = changes.create(name).unwrap();
+            changes
+                .add_field(&entry, FieldKind::Secret, "password", value)
+                .unwrap();
+            vault.write(changes).unwrap();
+        };
+        write(&mut vault, "before", b"one");
+        // A snapshot stands in for what came before it.
+        vault
+            .entries()
+            .unwrap()
+            .snapshot(
+                vault.device_mut(),
+                &Store::open(&folder, false).unwrap(),
+                now(),
+                RETENTION,
+            )
+            .unwrap();
+        write(&mut vault, "after", b"two");
+
+        let recovered = recover(&folder, &[&kit.sheets[2], &kit.sheets[0]], &kit.card).unwrap();
+        let entries = Entries::read(&recovered.device).unwrap();
+        let mut found: Vec<(String, Vec<u8>)> = entries
+            .list()
+            .into_iter()
+            .map(|view| {
+                let field = &view.fields[0];
+                let values = entries.reveal(&view.id, &field.id, Slot::Value).unwrap();
+                (view.names[0].clone(), values[0].to_vec())
+            })
+            .collect();
+        found.sort();
+        assert_eq!(
+            found,
+            vec![
+                ("after".to_owned(), b"two".to_vec()),
+                ("before".to_owned(), b"one".to_vec())
+            ]
+        );
+
+        assert!(recover(&folder, &[&kit.sheets[0]], &kit.card).is_err());
+        assert!(
+            recover(
+                &folder,
+                &[&kit.sheets[0], &kit.sheets[1]],
+                "wrong card words"
+            )
+            .is_err()
+        );
+        let other = created_pending("recover-other");
+        let other_kit = other.vault.kit().unwrap();
+        assert!(
+            recover(
+                &folder,
+                &[&other_kit.sheets[0], &other_kit.sheets[1]],
+                &other_kit.card
+            )
+            .is_err(),
+            "another vault's sheets read nothing here"
+        );
+    }
+
+    #[test]
+    fn a_sheet_check_falls_due_twice_a_year_and_a_drill_once() {
+        let mut checks = Checks::default();
+        assert_eq!(
+            checks.sheet_due(CHECK_EVERY * 10),
+            None,
+            "nothing written down yet"
+        );
+        checks.written = Some(0);
+        assert_eq!(checks.sheet_due(CHECK_EVERY - 1), None);
+        assert_eq!(checks.sheet_due(CHECK_EVERY), Some(0));
+        checks.sheets[0] = Some(CHECK_EVERY);
+        assert_eq!(checks.sheet_due(CHECK_EVERY + 1), None);
+        assert_eq!(checks.sheet_due(2 * CHECK_EVERY), Some(1));
+        assert!(!checks.drill_due(DRILL_EVERY - 1));
+        assert!(checks.drill_due(DRILL_EVERY));
+        checks.drill = Some(DRILL_EVERY);
+        assert!(!checks.drill_due(DRILL_EVERY + 1));
+        assert_eq!(Checks::decode(&checks.encode()), checks);
     }
 }

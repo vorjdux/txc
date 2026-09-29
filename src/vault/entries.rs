@@ -732,7 +732,9 @@ impl Entries {
         let base = raw
             .snapshots
             .iter()
-            .filter(|(hash, (_, author))| verified.contains(*hash) || Some(*author) == trusted)
+            .filter(|(hash, (_, author))| {
+                verified.contains(*hash) || Some(*author) == trusted || device.is_recovering()
+            })
             .max_by_key(|(hash, (body, _))| (body.covers.len(), **hash))
             .map(|(hash, _)| *hash);
         let mut entries = Self {

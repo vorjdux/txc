@@ -607,7 +607,7 @@ pub fn command() -> Command {
                     Arg::new("all")
                         .long("all")
                         .action(ArgAction::SetTrue)
-                        .help("Also show what this system cannot protect, which needs nothing from you"),
+                        .help("Also show what this system cannot protect, and the lines folded into one"),
                 ),
         )
         .subcommand(
@@ -744,7 +744,7 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("recovery")
-                .about("Write down the recovery sheets, or check one")
+                .about("Write down the recovery sheets, check one, rehearse or restore")
                 .subcommand_required(true)
                 .subcommand(
                     Command::new("print")
@@ -755,6 +755,39 @@ pub fn command() -> Command {
                     Command::new("check")
                         .about("Check one sheet and the card against the vault")
                         .arg(Arg::new("VAULT").help("The synced vault")),
+                )
+                .subcommand(
+                    Command::new("drill")
+                        .about("Rehearse a full recovery with two sheets and the card, keeping nothing")
+                        .arg(Arg::new("VAULT").help("The synced vault")),
+                )
+                .subcommand(
+                    Command::new("restore")
+                        .about("Rebuild a vault from its folder with two sheets and the card, after losing every device")
+                        .long_about(
+                            "Rebuild a vault from its folder with two sheets and the card, after \
+                             losing every device.\n\n\
+                             The old folder is only read. The entries go into a new vault in a new, \
+                             empty folder, with new recovery sheets; protected entries come back \
+                             as normal ones until a security key is added. At a terminal the \
+                             sheets and card are asked for one at a time; otherwise they are read \
+                             from standard input, one per line.",
+                        )
+                        .arg(Arg::new("VAULT").required(true).help("The name of the restored vault"))
+                        .arg(
+                            Arg::new("from")
+                                .long("from")
+                                .value_name("DIR")
+                                .required(true)
+                                .help("The old vault's sync folder, or a copy of it"),
+                        )
+                        .arg(
+                            Arg::new("folder")
+                                .long("folder")
+                                .value_name("DIR")
+                                .required(true)
+                                .help("A new, empty folder for the restored vault"),
+                        ),
                 ),
         )
         .subcommand(
@@ -3164,6 +3197,7 @@ mod tests {
             "set",
             "format",
             "into",
+            "from",
             "output",
             "folder",
             "name",

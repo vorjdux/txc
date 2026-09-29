@@ -531,6 +531,35 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
         lines.push(format!(
             "● yellow  recovery sheets not written down   → txc vault recovery print {name}"
         ));
+    } else {
+        let mut checks = synced::checks(home, name)?;
+        if checks.written.is_none() {
+            // Written down before txc kept these dates: count from now.
+            let at = now();
+            synced::record_checks(home, name, |checks| checks.written = Some(at))?;
+            checks.written = Some(at);
+        }
+        let mut todo = Vec::new();
+        if let Some(sheet) = checks.sheet_due(now()) {
+            todo.push(format!(
+                "recovery sheet {} not checked for half a year → txc vault recovery check {name}",
+                sheet + 1
+            ));
+        }
+        if checks.drill_due(now()) {
+            todo.push(format!(
+                "no recovery drill for a year        → txc vault recovery drill {name}"
+            ));
+        }
+        // Related yellow lines fold into one; --all expands them.
+        if todo.len() > 1 && all.is_none() {
+            lines.push(format!(
+                "● yellow  recovery: {} things to do         → txc vault status {name} --all",
+                todo.len()
+            ));
+        } else {
+            lines.extend(todo.into_iter().map(|item| format!("● yellow  {item}")));
+        }
     }
     let gaps = device.gaps();
     if !gaps.is_empty() {
@@ -1311,7 +1340,203 @@ fn ssh_program() -> String {
 
 // --------------------------------------------------------------- recovery --
 
-/// `txc vault recovery print | check`.
+/// Two sheets and the card: typed at a terminal, one at a time, or three
+/// lines on standard input.
+fn read_sheets() -> Result<(Vec<SecretString>, SecretString)> {
+    if io::stdin().is_terminal() {
+        let first = prompt::secret_from_terminal("One sheet's words")?;
+        let second = prompt::secret_from_terminal("Another sheet's words")?;
+        let card = prompt::secret_from_terminal("Card words")?;
+        return Ok((vec![first, second], card));
+    }
+    let mut lines = Vec::new();
+    for line in io::stdin().lock().lines() {
+        let line = Zeroizing::new(line?);
+        if !line.trim().is_empty() {
+            lines.push(SecretString::from(line.trim().to_owned()));
+        }
+        if lines.len() == 3 {
+            break;
+        }
+    }
+    let [first, second, card]: [SecretString; 3] = lines
+        .try_into()
+        .map_err(|_lines| anyhow!("give two sheets and the card, one per line"))?;
+    Ok((vec![first, second], card))
+}
+
+/// Reads a folder back with two sheets and the card.
+fn recover_from(folder: &Path) -> Result<(synced::Recovered, Vec<u8>)> {
+    let (sheets, card) = read_sheets()?;
+    let words: Vec<&str> = sheets.iter().map(ExposeSecret::expose_secret).collect();
+    let numbers = words
+        .iter()
+        .map(|sheet| crate::vault::slip39::share_index(sheet))
+        .collect::<Result<Vec<u8>>>()
+        .context("a sheet is not a recovery sheet; check each with txc vault recovery check")?;
+    let recovered = working("Reading the folder with the sheets...", || {
+        synced::recover(folder, &words, card.expose_secret())
+    })?;
+    Ok((recovered, numbers))
+}
+
+/// A field read back: as listed, the kind to write it as, and its value.
+type ReadField = (FieldView, FieldKind, Zeroizing<Vec<u8>>);
+
+/// Every entry a recovery read, with its values decrypted, and what could
+/// not come back as it was.
+struct Readback {
+    entries: Vec<(EntryView, Vec<ReadField>)>,
+    values: usize,
+    unprotected: Vec<String>,
+    conflicted: Vec<String>,
+}
+
+fn read_back(recovered: &synced::Recovered) -> Result<Readback> {
+    let entries = crate::vault::entries::Entries::read(&recovered.device)?;
+    let mut out = Readback {
+        entries: Vec::new(),
+        values: 0,
+        unprotected: Vec::new(),
+        conflicted: Vec::new(),
+    };
+    for view in entries.list() {
+        let name = view.names.join(" / ");
+        let mut fields = Vec::new();
+        for field in &view.fields {
+            let mut values = entries.reveal(&view.id, &field.id, Slot::Value)?;
+            let kind = if field.kind == FieldKind::Protected {
+                values = values
+                    .iter()
+                    .map(|sealed| recovered.open_protected(sealed))
+                    .collect::<Result<_>>()?;
+                FieldKind::Secret
+            } else {
+                field.kind
+            };
+            out.values += values.len();
+            if values.len() > 1 {
+                out.conflicted.push(format!("{name}/{}", field.label));
+            }
+            if let Some(value) = values.into_iter().next() {
+                fields.push((field.clone(), kind, value));
+            }
+        }
+        if matches!(view.sensitivity, Sensitivity::High | Sensitivity::RootGrade) {
+            out.unprotected.push(name);
+        }
+        out.entries.push((view, fields));
+    }
+    Ok(out)
+}
+
+/// `txc vault recovery restore NAME --from OLD --folder NEW`: rebuilds a
+/// vault from its folder with two sheets and the card, into a new vault
+/// with new sheets. The old folder is only read.
+fn restore(context: &Context<'_>, args: &ArgMatches) -> Result<()> {
+    let name = required(args, "VAULT");
+    check_vault_name(name)?;
+    ensure!(
+        !synced::exists(context.home, name),
+        "there is already a synced vault named \"{name}\" on this device"
+    );
+    let from = required(args, "from");
+    let from =
+        std::fs::canonicalize(from).with_context(|| format!("the folder {from} does not exist"))?;
+    let to = required(args, "folder");
+    let to =
+        std::fs::canonicalize(to).with_context(|| format!("the folder {to} does not exist"))?;
+    ensure!(from != to, "restore into a new, empty folder");
+    let (recovered, _) = recover_from(&from)?;
+    let back = read_back(&recovered)?;
+    eprintln!(
+        "The sheets read {} entries. Choose a passphrase for the restored vault.",
+        back.entries.len()
+    );
+    let passphrase = context.passphrase.ask_new("New passphrase: ")?;
+    let params = working("Measuring this computer...", synced::calibrate)?;
+    let mut vault = working("Creating the vault...", || {
+        Synced::create(context.home, name, &to, &passphrase, params)
+    })?;
+    let entries = vault.entries()?;
+    let mut changes = Changes::new(&entries, now());
+    for (view, fields) in &back.entries {
+        let entry = changes.create(&view.names.join(" / "))?;
+        if let Some(kind) = view.kinds.first() {
+            changes.set_kind(&entry, kind)?;
+        }
+        if view.sensitivity == Sensitivity::OperationOnly {
+            changes.classify(&entry, Sensitivity::OperationOnly)?;
+        }
+        if !view.tags.is_empty() {
+            changes.set_tags(&entry, &view.tags)?;
+        }
+        if view.starred {
+            changes.set_star(&entry, true)?;
+        }
+        for (field, kind, value) in fields {
+            changes.add_field(&entry, *kind, &field.label, value)?;
+        }
+    }
+    vault.write(changes)?;
+    vault.checkpoint()?;
+    eprintln!(
+        "Restored {} entries into the vault \"{name}\" in {}.",
+        back.entries.len(),
+        to.display()
+    );
+    if !back.unprotected.is_empty() {
+        eprintln!(
+            "These were protected and are normal entries now, until a security key is added: {}",
+            back.unprotected.join(", ")
+        );
+    }
+    if !back.conflicted.is_empty() {
+        eprintln!(
+            "These had two versions; the first was kept: {}",
+            back.conflicted.join(", ")
+        );
+    }
+    eprintln!(
+        "The restored vault has new recovery sheets; write them down:\n  txc vault recovery \
+         print {name}\nThe old folder was only read."
+    );
+    Ok(())
+}
+
+/// `txc vault recovery drill [VAULT]`: rehearses a full recovery from the
+/// vault's folder with two sheets and the card, and keeps nothing.
+fn drill(context: &Context<'_>, args: &ArgMatches) -> Result<()> {
+    let name = context.which(args.get_one::<String>("VAULT"))?;
+    let folder = synced::folder(context.home, &name)?;
+    eprintln!(
+        "A drill reads the whole vault back with two sheets and the card, as after losing every \
+         device, and keeps nothing."
+    );
+    let (recovered, numbers) = recover_from(&folder)?;
+    let back = read_back(&recovered)?;
+    let count = back.entries.len();
+    drop(back.entries);
+    let at = now();
+    synced::record_checks(context.home, &name, |checks| {
+        checks.drill = Some(at);
+        for number in &numbers {
+            if let Some(slot) = checks.sheets.get_mut(usize::from(*number)) {
+                *slot = Some(at);
+            }
+        }
+    })?;
+    let sheets: Vec<String> = numbers.iter().map(|n| (n + 1).to_string()).collect();
+    eprintln!(
+        "Drill passed: sheets {} and the card read back {} values of {} entries. Nothing was kept.",
+        sheets.join(" and "),
+        back.values,
+        count
+    );
+    Ok(())
+}
+
+/// `txc vault recovery print | check | restore | drill`.
 ///
 /// # Errors
 ///
@@ -1320,10 +1545,25 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let (verb, args) = sub
         .subcommand()
         .context("clap requires a recovery subcommand")?;
+    match verb {
+        "restore" => return restore(context, args),
+        "drill" => return drill(context, args),
+        _ => {}
+    }
     let name = context.which(args.get_one::<String>("VAULT"))?;
     let vault = context.open_quiet(&name)?;
     match verb {
         "print" => {
+            // Debug builds only: the tests read the kit from standard output.
+            #[cfg(debug_assertions)]
+            if std::env::var_os("TXC_VAULT_TEST_KIT").is_some() {
+                let kit = vault.kit()?;
+                for sheet in &kit.sheets {
+                    println!("{}", sheet.as_str());
+                }
+                println!("{}", kit.card.as_str());
+                return vault.kit_done();
+            }
             ensure!(
                 io::stderr().is_terminal() && io::stdin().is_terminal(),
                 "the recovery sheets are shown only at a terminal"
@@ -1373,6 +1613,12 @@ pub fn recovery(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             let sheet = prompt::secret_from_terminal("Sheet words")?;
             let card = prompt::secret_from_terminal("Card words")?;
             let index = synced::check_sheet(&genesis, sheet.expose_secret(), card.expose_secret())?;
+            let at = now();
+            synced::record_checks(context.home, &name, |checks| {
+                if let Some(slot) = checks.sheets.get_mut(usize::from(index)) {
+                    *slot = Some(at);
+                }
+            })?;
             eprintln!(
                 "Sheet {} and the card belong to this vault and are intact.",
                 index + 1

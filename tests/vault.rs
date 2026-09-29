@@ -86,6 +86,9 @@ impl Sandbox {
             // than in the OS keystore, which CI runners do not have.
             .env("TXC_VAULT_TEST_KEYSTORE", self.private("keystore"))
             .env("TXC_VAULT_TEST_SSH", self.root.join("fake-ssh"))
+            // Debug builds print the recovery kit here instead of showing it
+            // one sheet at a time at a terminal.
+            .env("TXC_VAULT_TEST_KIT", "1")
             .env_remove("TXC_VAULT_HOME")
             .stdin(if input.is_some() {
                 Stdio::piped()
@@ -2148,4 +2151,80 @@ fn passwd_changes_the_identity_and_the_synced_vaults_it_opens() {
     ));
     succeeds(&sandbox.vault_with(&home, &third, &["list", "work", "--no-session"], None));
     fails(&sandbox.vault_with(&home, &other, &["list", "work", "--no-session"], None));
+}
+
+#[test]
+fn two_sheets_and_the_card_rehearse_and_restore_a_vault_from_its_folder() {
+    let sandbox = Sandbox::new("synced-recovery");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--tag",
+            "code",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    let kit = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let kit: Vec<&str> = kit.lines().collect();
+    assert_eq!(kit.len(), 4, "three sheets and a card");
+    let (sheets, card) = (&kit[..3], kit[3]);
+
+    let drilled = stderr(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{card}\n", sheets[0], sheets[2]),
+    ));
+    assert!(
+        drilled.contains("Drill passed: sheets 1 and 3"),
+        "{drilled}"
+    );
+    assert!(drilled.contains("of 1 entries"), "{drilled}");
+    let refused = fails(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{card}\n", sheets[0], sheets[0]),
+    ));
+    assert!(refused.contains("do not combine"), "{refused}");
+    fails(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\nwrong card words\n", sheets[0], sheets[1]),
+    ));
+
+    let new_folder = sandbox.root.join("sync-new");
+    std::fs::create_dir_all(&new_folder).unwrap();
+    let restored = stderr(&sandbox.vault_piped(
+        &[
+            "recovery",
+            "restore",
+            "restored",
+            "--from",
+            folder.to_str().unwrap(),
+            "--folder",
+            new_folder.to_str().unwrap(),
+        ],
+        &format!("{}\n{}\n{card}\n", sheets[1], sheets[2]),
+    ));
+    assert!(restored.contains("Restored 1 entries"), "{restored}");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "restored/github"])),
+        "hunter2"
+    );
+    let shown = succeeds(&sandbox.vault(&["show", "restored/github"]));
+    assert!(
+        shown.contains("octocat") && shown.contains("code"),
+        "{shown}"
+    );
+    // The restored vault has sheets of its own, and the old ones do not
+    // read it.
+    let new_kit = succeeds(&sandbox.vault(&["recovery", "print", "restored"]));
+    assert_eq!(new_kit.lines().count(), 4);
+    assert!(!new_kit.contains(sheets[0]));
+    fails(&sandbox.vault_piped(
+        &["recovery", "drill", "restored"],
+        &format!("{}\n{}\n{card}\n", sheets[0], sheets[1]),
+    ));
 }

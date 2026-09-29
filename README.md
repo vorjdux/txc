@@ -426,7 +426,14 @@ the command to run.
   Manager), so a copied disk alone opens nothing.
 - **Recovery** is three sheets and a card: any two sheets and the card
   recover every secret and every right, with any SLIP-39 tool. Until they are
-  written down, adding a second device is refused.
+  written down, adding a second device is refused. `txc vault recovery check`
+  checks one sheet, `recovery drill` rehearses a full recovery and keeps
+  nothing, and after losing every device `txc vault recovery restore NAME
+  --from OLD --folder NEW` rebuilds the vault from its folder with two sheets
+  and the card. `status` reminds you to check a sheet twice a year and to
+  drill once a year.
+- **Removed entries** come back for 30 days: `txc vault list VAULT
+  --removed`, then `txc vault restore VAULT/ENTRY`.
 - **Removing a device** (`txc vault device remove`) means it reads nothing
   written afterwards: every device changes its keys before it writes again.
 - **SSH without keys on disk**: `txc vault ssh-ca infra` makes a certificate

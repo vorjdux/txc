@@ -13,6 +13,15 @@ All notable changes to txc are recorded here. The format follows
   their own before it stay removed. `txc vault list VAULT --removed` lists
   what can come back. After the 30 days a snapshot drops the removed values,
   so they no longer outlive the window.
+- **Recovery without any device.** `txc vault recovery restore NAME --from
+  OLD --folder NEW` reads a vault's folder with two sheets and the card alone
+  (the recovery key is a recipient of every control object, so it holds every
+  sender key) and rebuilds it as a new vault with new sheets; protected
+  entries come back as normal ones until a security key is added.
+  `txc vault recovery drill` does the same without keeping anything, as the
+  yearly rehearsal. Sheet checks and drills are dated, and `status` reminds
+  you when one is due, folding several reminders into one line that
+  `status --all` expands.
 
 ## [0.8.0] - 2026-09-29
 
