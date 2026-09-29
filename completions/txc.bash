@@ -1009,6 +1009,9 @@ _txc() {
             txc__subcmd__help__subcmd__vault,rm)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__rm"
                 ;;
+            txc__subcmd__help__subcmd__vault,rotate)
+                cmd="txc__subcmd__help__subcmd__vault__subcmd__rotate"
+                ;;
             txc__subcmd__help__subcmd__vault,run)
                 cmd="txc__subcmd__help__subcmd__vault__subcmd__run"
                 ;;
@@ -1224,6 +1227,9 @@ _txc() {
                 ;;
             txc__subcmd__vault,rm)
                 cmd="txc__subcmd__vault__subcmd__rm"
+                ;;
+            txc__subcmd__vault,rotate)
+                cmd="txc__subcmd__vault__subcmd__rotate"
                 ;;
             txc__subcmd__vault,run)
                 cmd="txc__subcmd__vault__subcmd__run"
@@ -1506,6 +1512,9 @@ _txc() {
                 ;;
             txc__subcmd__vault__subcmd__help,rm)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__rm"
+                ;;
+            txc__subcmd__vault__subcmd__help,rotate)
+                cmd="txc__subcmd__vault__subcmd__help__subcmd__rotate"
                 ;;
             txc__subcmd__vault__subcmd__help,run)
                 cmd="txc__subcmd__vault__subcmd__help__subcmd__run"
@@ -5092,7 +5101,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault)
-            opts="init unlock lock import export run passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm code restore move delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced"
+            opts="init unlock lock import export run passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm rotate code restore move delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -5918,6 +5927,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__help__subcmd__vault__subcmd__rm)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__help__subcmd__vault__subcmd__rotate)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -9510,7 +9533,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault)
-            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help init unlock lock import export run passwd create list add show favourite favorite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm code restore move mv delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced help"
+            opts="-h --no-session --home --passphrase-file --write-passphrase-file --help init unlock lock import export run passwd create list add show favourite favorite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm rotate code restore move mv delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -10178,7 +10201,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__copy)
-            opts="-h --field --clear-after --print --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --field --clear-after --print --pending --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11116,7 +11139,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help)
-            opts="init unlock lock import export run passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm code restore move delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced help"
+            opts="init unlock lock import export run passwd create list add show favourite copy edit join device status ssh-ca ssh keyholder breach hardware compare doctor recovery resolve migrate rm rotate code restore move delete grant redeem identity writer writers recipients trust fingerprint history upgrade advanced help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -11956,6 +11979,20 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__help__subcmd__rm)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__help__subcmd__rotate)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -12844,6 +12881,40 @@ _txc() {
                 return 0
             fi
             case "${prev}" in
+                --home)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --write-passphrase-file)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        txc__subcmd__vault__subcmd__rotate)
+            opts="-h --field --commit --abort --generate --length --no-symbols --secret-from-stdin --no-session --home --passphrase-file --write-passphrase-file --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --field)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --length)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --home)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

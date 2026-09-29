@@ -2772,6 +2772,7 @@ _arguments "${_arguments_options[@]}" : \
 '--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
 '--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
 '(--clear-after)--print[Write the secret to standard output instead, which must be a pipe]' \
+'--pending[The new value of a rotation in progress (txc vault rotate), to set where it is used]' \
 '--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
 '-h[Print help]' \
 '--help[Print help]' \
@@ -3383,6 +3384,24 @@ _arguments "${_arguments_options[@]}" : \
 ':ENTRY -- The entry, in the personal vault unless another is named:_default' \
 && ret=0
 ;;
+(rotate)
+_arguments "${_arguments_options[@]}" : \
+'--field=[The field to rotate, rather than the entry'\''s main secret]:NAME:_default' \
+'--length=[Characters in a generated password]:N:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'(--abort --generate --secret-from-stdin)--commit[The new value is in use\: make it the current one]' \
+'(--generate --secret-from-stdin)--abort[Keep the old value and drop the new one]' \
+'(--secret-from-stdin)--generate[Generate the main secret\: a password, or a PIN where that is what it is]' \
+'--no-symbols[Generate from letters and digits only]' \
+'--secret-from-stdin[Read the main secret from standard input, which may run over several lines]' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':ENTRY -- The entry, in the personal vault unless another is named:_default' \
+&& ret=0
+;;
 (code)
 _arguments "${_arguments_options[@]}" : \
 '--field=[The field holding the seed]:NAME:_default' \
@@ -3973,6 +3992,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rotate)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4945,6 +4968,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(rotate)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -6361,6 +6388,7 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'rotate:Change a secret in two steps, so a failed change elsewhere loses nothing' \
 'code:Show the current one-time code of an entry'\''s TOTP seed' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
@@ -6704,6 +6732,11 @@ _txc__subcmd__help__subcmd__vault__subcmd__restore_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__rm_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault rm commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__rotate_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__rotate_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault rotate commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__run_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__run_commands() {
@@ -7312,6 +7345,7 @@ _txc__subcmd__vault_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'rotate:Change a secret in two steps, so a failed change elsewhere loses nothing' \
 'code:Show the current one-time code of an entry'\''s TOTP seed' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
@@ -7751,6 +7785,7 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'rotate:Change a secret in two steps, so a failed change elsewhere loses nothing' \
 'code:Show the current one-time code of an entry'\''s TOTP seed' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
@@ -8101,6 +8136,11 @@ _txc__subcmd__vault__subcmd__help__subcmd__rm_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help rm commands' commands "$@"
 }
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__rotate_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__rotate_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help rotate commands' commands "$@"
+}
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__run_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__run_commands() {
     local commands; commands=()
@@ -8309,6 +8349,11 @@ _txc__subcmd__vault__subcmd__restore_commands() {
 _txc__subcmd__vault__subcmd__rm_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault rm commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__rotate_commands] )) ||
+_txc__subcmd__vault__subcmd__rotate_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault rotate commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__run_commands] )) ||
 _txc__subcmd__vault__subcmd__run_commands() {

@@ -693,6 +693,15 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
             if waiting == 1 { "" } else { "s" }
         ));
     }
+    for view in vault.entries()?.list() {
+        for field in view.fields.iter().filter(|field| field.pending) {
+            let entry = view.names.join(" / ");
+            lines.push(format!(
+                "● yellow  {name}/{entry} has a new {} waiting → once it is in use: txc vault rotate {name}/{entry} --commit",
+                field.label
+            ));
+        }
+    }
     let unchanged = stale(vault)?.len();
     if unchanged > 0 {
         lines.push(format!(
@@ -2101,6 +2110,7 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             Ok(())
         }
         "grant" => grant(context, sub),
+        "rotate" => rotate(context, sub),
         "code" => {
             let reference: Reference = required(sub, "ENTRY").parse()?;
             // A protected seed needs its security key, whose plugin
@@ -2211,7 +2221,7 @@ fn copy(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         );
     }
     let (vault, _) = context.open_confined(&reference.vault)?;
-    let secret = reveal_to(
+    let secret = reveal_slot(
         &vault,
         &reference.entry,
         sub.get_one::<String>("field").map(String::as_str),
@@ -2219,6 +2229,11 @@ fn copy(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             Channel::Pipe
         } else {
             Channel::Clipboard
+        },
+        if sub.get_flag("pending") {
+            Slot::Pending
+        } else {
+            Slot::Value
         },
     )?;
     drop(vault);
@@ -2281,6 +2296,17 @@ pub fn reveal_to(
     label: Option<&str>,
     channel: Channel,
 ) -> Result<SecretString> {
+    reveal_slot(vault, entry, label, channel, Slot::Value)
+}
+
+/// The same, for the current value or a rotation's pending one.
+fn reveal_slot(
+    vault: &Synced,
+    entry: &str,
+    label: Option<&str>,
+    channel: Channel,
+    slot: Slot,
+) -> Result<SecretString> {
     let entries = vault.entries()?;
     let views = entries.list();
     let view = find(&views, entry)?;
@@ -2291,7 +2317,7 @@ pub fn reveal_to(
          txc vault run --set NAME=txc+file://{}/{entry}",
         vault.name
     );
-    reveal_checked(vault, &entries, &views, entry, label)
+    reveal_checked(vault, &entries, &views, entry, label, slot)
 }
 
 /// One field's single value, decrypted: the named field, or the entry's
@@ -2311,6 +2337,7 @@ fn reveal_checked(
     views: &[EntryView],
     entry: &str,
     label: Option<&str>,
+    slot: Slot,
 ) -> Result<SecretString> {
     let view = find(views, entry)?;
     let wanted = label
@@ -2325,7 +2352,12 @@ fn reveal_checked(
         field.kind != FieldKind::SshCa && view.sensitivity != Sensitivity::OperationOnly,
         "{entry} is used only inside txc and is never released; for an SSH CA use: txc vault ssh"
     );
-    let mut values = entries.reveal(&view.id, &field.id, Slot::Value)?;
+    ensure!(
+        slot != Slot::Pending || field.pending,
+        "{entry} has no rotation in progress for {}",
+        field.label
+    );
+    let mut values = entries.reveal(&view.id, &field.id, slot)?;
     if field.kind == FieldKind::Protected {
         eprintln!("{entry} is protected; your security key may ask for a touch.");
         values = values
@@ -2448,6 +2480,80 @@ fn edit(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     }
     vault.write(changes)?;
     eprintln!("Changed {reference}.");
+    Ok(())
+}
+
+/// `txc vault rotate VAULT/ENTRY`: two-phase rotation (study section 9). The
+/// new value is written beside the old, both readable, until `--commit`
+/// makes it current or `--abort` drops it.
+fn rotate(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
+    let reference: Reference = required(sub, "ENTRY").parse()?;
+    let (commit, abort) = (sub.get_flag("commit"), sub.get_flag("abort"));
+    // A new protected value is sealed to hardware, whose plugins
+    // confinement shuts out.
+    let mut vault = if commit || abort {
+        context.open_confined(&reference.vault)?.0
+    } else {
+        context.open(&reference.vault)?
+    };
+    let entries = vault.entries()?;
+    let views = entries.list();
+    let view = find(&views, &reference.entry)?;
+    let kind = kind_of(view).unwrap_or(Kind::Login);
+    let primary = main_spec(kind);
+    let label = sub
+        .get_one::<String>("field")
+        .map_or(primary.name, String::as_str);
+    let field =
+        field(view, label).ok_or_else(|| anyhow!("{} has no field {label}", reference.entry))?;
+    ensure!(field.kind.is_secret(), "{label} is not a secret field");
+    let mut changes = Changes::new(&entries, now());
+    if commit || abort {
+        ensure!(
+            field.pending,
+            "{reference} has no rotation in progress for {label}"
+        );
+        if commit {
+            changes.commit_rotation(&view.id, &field.id)?;
+        } else {
+            changes.abort_rotation(&view.id, &field.id)?;
+        }
+        vault.write(changes)?;
+        eprintln!(
+            "{}",
+            if commit {
+                format!("The new {label} of {reference} is the current one now.")
+            } else {
+                format!("Dropped the new {label} of {reference}; the old one stays.")
+            }
+        );
+        return Ok(());
+    }
+    ensure!(
+        !field.pending,
+        "{reference} already has a new {label} waiting; finish it with --commit or --abort"
+    );
+    let spec = kind.spec(label).unwrap_or(primary);
+    let (secret, generated) = main_secret(sub, spec)?;
+    let protected = matches!(view.sensitivity, Sensitivity::High | Sensitivity::RootGrade);
+    let (field_kind, value) = if protected {
+        (
+            FieldKind::Protected,
+            vault.protect(
+                secret.expose_secret().as_bytes(),
+                &crate::vault::hardware::Terminal,
+            )?,
+        )
+    } else {
+        (field.kind, secret.expose_secret().as_bytes().to_vec())
+    };
+    changes.begin_rotation(&view.id, &field.id, field_kind, &value)?;
+    vault.write(changes)?;
+    eprintln!(
+        "The new {label} of {reference} is written beside the old one{}. Set it where it is used \
+         (txc vault copy {reference} --pending), then: txc vault rotate {reference} --commit",
+        if generated { ", generated" } else { "" }
+    );
     Ok(())
 }
 

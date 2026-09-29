@@ -2302,6 +2302,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
+            cand rotate 'Change a secret in two steps, so a failed change elsewhere loses nothing'
             cand code 'Show the current one-time code of an entry''s TOTP seed'
             cand restore 'Bring back an entry removed from a synced vault in the last 30 days'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
@@ -2472,6 +2473,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
             cand --print 'Write the secret to standard output instead, which must be a pipe'
+            cand --pending 'The new value of a rotation in progress (txc vault rotate), to set where it is used'
             cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
             cand -h 'Print help'
             cand --help 'Print help'
@@ -2889,6 +2891,21 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'txc;vault;rotate'= {
+            cand --field 'The field to rotate, rather than the entry''s main secret'
+            cand --length 'Characters in a generated password'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --commit 'The new value is in use: make it the current one'
+            cand --abort 'Keep the old value and drop the new one'
+            cand --generate 'Generate the main secret: a password, or a PIN where that is what it is'
+            cand --no-symbols 'Generate from letters and digits only'
+            cand --secret-from-stdin 'Read the main secret from standard input, which may run over several lines'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'txc;vault;code'= {
             cand --field 'The field holding the seed'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
@@ -3174,6 +3191,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
+            cand rotate 'Change a secret in two steps, so a failed change elsewhere loses nothing'
             cand code 'Show the current one-time code of an entry''s TOTP seed'
             cand restore 'Bring back an entry removed from a synced vault in the last 30 days'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
@@ -3300,6 +3318,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;migrate'= {
         }
         &'txc;vault;help;rm'= {
+        }
+        &'txc;vault;help;rotate'= {
         }
         &'txc;vault;help;code'= {
         }
@@ -3842,6 +3862,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
+            cand rotate 'Change a secret in two steps, so a failed change elsewhere loses nothing'
             cand code 'Show the current one-time code of an entry''s TOTP seed'
             cand restore 'Bring back an entry removed from a synced vault in the last 30 days'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
@@ -3967,6 +3988,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;migrate'= {
         }
         &'txc;help;vault;rm'= {
+        }
+        &'txc;help;vault;rotate'= {
         }
         &'txc;help;vault;code'= {
         }

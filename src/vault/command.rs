@@ -522,6 +522,12 @@ pub fn command() -> Command {
                         .conflicts_with("clear-after")
                         .help("Write the secret to standard output instead, which must be a pipe"),
                 )
+                .arg(
+                    Arg::new("pending")
+                        .long("pending")
+                        .action(ArgAction::SetTrue)
+                        .help("The new value of a rotation in progress (txc vault rotate), to set where it is used"),
+                )
                 .after_help(
                     "Examples:\n  \
                      txc vault copy github\n  \
@@ -911,6 +917,41 @@ pub fn command() -> Command {
                         .action(ArgAction::SetTrue)
                         .help("Do not ask for confirmation"),
                 ),
+        )
+        .subcommand(
+            secret_source_args(
+                Command::new("rotate")
+                    .about("Change a secret in two steps, so a failed change elsewhere loses nothing")
+                    .long_about(
+                        "Change a secret in two steps, so a failed change elsewhere loses \
+                         nothing (synced vaults).\n\n\
+                         First, txc vault rotate ENTRY writes the new value beside the old one; \
+                         both stay readable. Set it where it is used, with txc vault copy ENTRY \
+                         --pending, then keep it with --commit, or go back with --abort. Until \
+                         then, status lists the rotation.",
+                    )
+                    .arg(reference())
+                    .arg(
+                        Arg::new("field")
+                            .long("field")
+                            .value_name("NAME")
+                            .help("The field to rotate, rather than the entry's main secret"),
+                    )
+                    .arg(
+                        Arg::new("commit")
+                            .long("commit")
+                            .action(ArgAction::SetTrue)
+                            .conflicts_with_all(["abort", "generate", "secret-from-stdin"])
+                            .help("The new value is in use: make it the current one"),
+                    )
+                    .arg(
+                        Arg::new("abort")
+                            .long("abort")
+                            .action(ArgAction::SetTrue)
+                            .conflicts_with_all(["generate", "secret-from-stdin"])
+                            .help("Keep the old value and drop the new one"),
+                    ),
+            ),
         )
         .subcommand(
             Command::new("code")
@@ -1303,7 +1344,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
             synced_command::migrate(&context.synced(), &keyring, sub)
         }
         "list" | "add" | "show" | "copy" | "edit" | "rm" | "restore" | "grant" | "favourite"
-        | "code"
+        | "code" | "rotate"
             if context.names_synced(name, sub) =>
         {
             synced_command::entry(&context.synced(), name, sub)
@@ -1335,6 +1376,9 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "code" => context.code(sub),
         "edit" => context.edit(sub),
         "rm" => context.remove(sub),
+        "rotate" => anyhow::bail!(
+            "two-step rotation is for synced vaults; here, change the secret with txc vault edit"
+        ),
         "restore" => anyhow::bail!(
             "only synced vaults keep removed entries; the previous version of this vault is in \
              the .bak file beside it until its next change"
@@ -2317,6 +2361,10 @@ impl Session {
 
     fn copy(&self, sub: &ArgMatches) -> Result<()> {
         let reference: Reference = required(sub, "ENTRY").parse()?;
+        ensure!(
+            !sub.get_flag("pending"),
+            "only synced vaults have two-step rotations; see: txc vault rotate --help"
+        );
         let print = sub.get_flag("print");
         if print {
             ensure!(

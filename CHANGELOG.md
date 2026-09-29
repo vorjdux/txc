@@ -56,6 +56,11 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **Two-step rotation.** `txc vault rotate ENTRY` writes a new secret beside
+  the old one in a synced vault, both readable; `txc vault copy ENTRY
+  --pending` gets the new one to set where it is used, and `rotate --commit`
+  makes it current, or `--abort` keeps the old. `status` lists a rotation
+  until it is finished, so a change that failed halfway loses nothing.
 - **One-time codes.** A login has a `totp` field for its TOTP seed, a base32
   secret or an `otpauth://` URI, and `txc vault code ENTRY` shows the
   current code, in either kind of vault (RFC 6238, SHA-1, SHA-256 and

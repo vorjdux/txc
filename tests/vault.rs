@@ -2397,3 +2397,32 @@ fn a_stored_totp_seed_gives_the_current_code_in_both_formats() {
     let synced = code(&sandbox, "shared/otp");
     assert_eq!(synced.len(), 8, "{synced}");
 }
+
+#[test]
+fn a_rotation_keeps_both_values_until_it_is_committed_or_aborted() {
+    let sandbox = Sandbox::new("synced-rotate");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "db", "--secret-from-stdin"], "old"));
+    fails(&sandbox.vault(&["rotate", "db", "--commit"]));
+    succeeds(&sandbox.vault_piped(&["rotate", "db", "--secret-from-stdin"], "new"));
+    assert_eq!(succeeds(&sandbox.vault(&["copy", "--print", "db"])), "old");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "--pending", "db"])),
+        "new"
+    );
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("personal/db has a new password waiting"),
+        "{status}"
+    );
+    fails(&sandbox.vault_piped(&["rotate", "db", "--secret-from-stdin"], "newer"));
+    succeeds(&sandbox.vault(&["rotate", "db", "--commit"]));
+    assert_eq!(succeeds(&sandbox.vault(&["copy", "--print", "db"])), "new");
+    fails(&sandbox.vault(&["copy", "--print", "--pending", "db"]));
+    assert!(!succeeds(&sandbox.vault(&["status"])).contains("waiting"));
+
+    succeeds(&sandbox.vault(&["rotate", "db", "--generate"]));
+    succeeds(&sandbox.vault(&["rotate", "db", "--abort"]));
+    assert_eq!(succeeds(&sandbox.vault(&["copy", "--print", "db"])), "new");
+}
