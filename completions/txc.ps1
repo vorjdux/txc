@@ -2593,6 +2593,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--favourite', '--favourite', [CompletionResultType]::ParameterName, 'Star it straight away')
             [CompletionResult]::new('--favorite', '--favorite', [CompletionResultType]::ParameterName, 'Star it straight away')
             [CompletionResult]::new('--protect', '--protect', [CompletionResultType]::ParameterName, 'Seal it to security keys: each use needs a touch, and it goes only to programs as a file (synced vaults)')
+            [CompletionResult]::new('--root-grade', '--root-grade', [CompletionResultType]::ParameterName, 'Protect it most: as --protect, and each use also needs the passphrase typed again (synced vaults)')
             [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')

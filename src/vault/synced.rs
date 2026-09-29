@@ -1187,6 +1187,28 @@ impl Synced {
         hardware.open(sealed, prompter)
     }
 
+    /// Checks the passphrase again, as a root-grade release needs: it must
+    /// open this device's keys with the second factor, as at unlock.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when it does not.
+    pub fn confirm_passphrase(
+        &self,
+        passphrase: &SecretString,
+        prompter: &dyn Prompter,
+    ) -> Result<()> {
+        let keys = home::read_private(&self.dir.join(KEYS), KEY_LIMIT, PRIVATE)?;
+        let device = local::key_file_device(&keys)?;
+        for second in second_factors(&self.dir, &device, prompter)? {
+            let kek = local::key_file_kek(&keys, passphrase.expose_secret().as_bytes(), &second)?;
+            if local::unlock_keys_with(&keys, &kek).is_ok() {
+                return Ok(());
+            }
+        }
+        bail!("the passphrase is wrong; nothing was released")
+    }
+
     /// Seals this device's keys again under a new passphrase, with the same
     /// second factor. The current passphrase is checked first.
     ///
@@ -2101,6 +2123,25 @@ pub(crate) mod tests {
         assert!(
             first.device().removed_authenticators().len() == 1,
             "its key went with it"
+        );
+    }
+
+    #[test]
+    fn a_root_grade_release_takes_the_passphrase_again() {
+        let created = created("confirm");
+        let terminal = &crate::vault::hardware::Terminal;
+        created
+            .vault
+            .confirm_passphrase(
+                &SecretString::from("correct horse battery staple".to_owned()),
+                terminal,
+            )
+            .unwrap();
+        assert!(
+            created
+                .vault
+                .confirm_passphrase(&SecretString::from("wrong".to_owned()), terminal)
+                .is_err()
         );
     }
 

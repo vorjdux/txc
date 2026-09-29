@@ -8,6 +8,9 @@ All notable changes to txc are recorded here. The format follows
 
 ### Fixed
 
+- `txc vault add --protect` on a vault that is not synced ignored the flag
+  and stored a normal entry; it now refuses, pointing at `txc vault migrate`.
+
 - A device that asked for new keys dropped, for good, control objects and
   sender keys sealed to its renewed certificate when it read them before
   the certificate itself; they are now opened with the pending keys, or
@@ -56,6 +59,9 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **Root-grade entries.** `txc vault add ENTRY --root-grade` seals an entry
+  as `--protect` does, and each release also asks for the passphrase again,
+  whatever the session holds; it goes only to a program as a file.
 - **Two-step rotation.** `txc vault rotate ENTRY` writes a new secret beside
   the old one in a synced vault, both readable; `txc vault copy ENTRY
   --pending` gets the new one to set where it is used, and `rotate --commit`

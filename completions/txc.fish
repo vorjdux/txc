@@ -1459,6 +1459,7 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l secret-from-stdin -d 'Read the main secret from standard input, which may run over several lines'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l favourite -l favorite -d 'Star it straight away'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l protect -d 'Seal it to security keys: each use needs a touch, and it goes only to programs as a file (synced vaults)'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l root-grade -d 'Protect it most: as --protect, and each use also needs the passphrase typed again (synced vaults)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -l no-session -d 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from add" -s h -l help -d 'Print help'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from show" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r

@@ -395,6 +395,37 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         ));
         assert_eq!(shown, "pin-4321");
     }
+    // A root-grade entry: as protected, and every release asks for the
+    // passphrase again (here from the passphrase file).
+    ok(txc(
+        &["add", "vault-root", "--root-grade", "--secret-from-stdin"],
+        b"root-secret",
+    ));
+    assert!(
+        !txc(&["code", "vault-root", "--field", "password"], b"")
+            .status
+            .success()
+    );
+    assert!(
+        !txc(&["copy", "--print", "vault-root"], b"")
+            .status
+            .success()
+    );
+    if cfg!(unix) {
+        let shown = ok(txc(
+            &[
+                "run",
+                "--set",
+                "ROOT=txc+file://personal/vault-root",
+                "--",
+                "sh",
+                "-c",
+                "cat \"$ROOT\"",
+            ],
+            b"",
+        ));
+        assert_eq!(shown, "root-secret");
+    }
     ok(txc(&["hardware", "rewrap"], b""));
     if cfg!(unix) {
         let shown = ok(txc(

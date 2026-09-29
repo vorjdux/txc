@@ -478,6 +478,15 @@ pub fn command() -> Command {
                          programs as a file (synced vaults)",
                     ),
             )
+            .arg(
+                Arg::new("root-grade")
+                    .long("root-grade")
+                    .action(ArgAction::SetTrue)
+                    .help(
+                        "Protect it most: as --protect, and each use also needs the passphrase \
+                         typed again (synced vaults)",
+                    ),
+            )
             .after_help(kinds_help()),
         )
         .subcommand(
@@ -2262,6 +2271,11 @@ impl Session {
         let tags = checked_tags(sub, "tag")?;
         let secret_fields = checked_field_names(sub, "secret-field")?;
         check_sensitivities(kind, &plain, &secret_fields)?;
+        ensure!(
+            !sub.get_flag("protect") && !sub.get_flag("root-grade"),
+            "entries sealed to security keys are kept in synced vaults; move this vault into one \
+             with txc vault migrate"
+        );
         let primary = main_spec(kind);
         if sub.get_flag("generate") {
             ensure!(

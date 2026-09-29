@@ -2723,6 +2723,7 @@ secret\:"Other secret"))' \
 '--favourite[Star it straight away]' \
 '--favorite[Star it straight away]' \
 '--protect[Seal it to security keys\: each use needs a touch, and it goes only to programs as a file (synced vaults)]' \
+'--root-grade[Protect it most\: as --protect, and each use also needs the passphrase typed again (synced vaults)]' \
 '--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
 '-h[Print help]' \
 '--help[Print help]' \

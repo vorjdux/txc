@@ -9559,7 +9559,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__add)
-            opts="-h --kind --generate --length --no-symbols --secret-from-stdin --username --url --field --secret-field --tag --favorite --favourite --protect --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --kind --generate --length --no-symbols --secret-from-stdin --username --url --field --secret-field --tag --favorite --favourite --protect --root-grade --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

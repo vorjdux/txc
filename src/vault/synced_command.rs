@@ -2138,7 +2138,8 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let tags = checked_tags(sub, "tag")?;
     let primary = main_spec(kind);
     // Sealing to hardware runs its plugins, which confinement forbids.
-    let mut vault = if sub.get_flag("protect") {
+    let root_grade = sub.get_flag("root-grade");
+    let mut vault = if sub.get_flag("protect") || root_grade {
         context.open(&reference.vault)?
     } else {
         context.open_confined(&reference.vault)?.0
@@ -2153,7 +2154,7 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         reference.entry,
         reference.vault
     );
-    let protect = sub.get_flag("protect");
+    let protect = sub.get_flag("protect") || root_grade;
     let (secret, generated) = main_secret(sub, primary)?;
     let seal = |value: &[u8]| -> Result<(FieldKind, Vec<u8>)> {
         if protect {
@@ -2176,7 +2177,14 @@ fn add(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let entry = changes.create(&reference.entry)?;
     changes.set_kind(&entry, kind.id())?;
     if protect {
-        changes.classify(&entry, Sensitivity::High)?;
+        changes.classify(
+            &entry,
+            if root_grade {
+                Sensitivity::RootGrade
+            } else {
+                Sensitivity::High
+            },
+        )?;
     }
     if !tags.is_empty() {
         changes.set_tags(&entry, &tags)?;
@@ -2311,6 +2319,12 @@ fn reveal_slot(
     let views = entries.list();
     let view = find(&views, entry)?;
     let protected = matches!(view.sensitivity, Sensitivity::High | Sensitivity::RootGrade);
+    ensure!(
+        view.sensitivity != Sensitivity::RootGrade || channel == Channel::File,
+        "{entry} is root-grade: it goes only to a program as a file, as in \
+         txc vault run --set NAME=txc+file://{}/{entry}",
+        vault.name
+    );
     ensure!(
         !protected || matches!(channel, Channel::File | Channel::Code),
         "{entry} is protected: it goes only to a program as a file, as in \
@@ -2726,5 +2740,16 @@ pub fn resolve_reference(
     let synced = opened
         .get(vault)
         .ok_or_else(|| anyhow!("the vault {vault} did not open"))?;
+    let root_grade = synced.entries()?.list().iter().any(|view| {
+        view.names.iter().any(|name| name == entry) && view.sensitivity == Sensitivity::RootGrade
+    });
+    if root_grade {
+        // Every release of a root-grade entry asks for the passphrase
+        // again, whatever the session holds (study section 9).
+        let passphrase = context
+            .passphrase
+            .ask(&format!("Passphrase, to release {vault}/{entry}: "))?;
+        synced.confirm_passphrase(&passphrase, &crate::vault::hardware::Terminal)?;
+    }
     reveal_to(synced, entry, field, channel)
 }
