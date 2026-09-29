@@ -89,6 +89,9 @@ impl Sandbox {
             // Debug builds print the recovery kit here instead of showing it
             // one sheet at a time at a terminal.
             .env("TXC_VAULT_TEST_KIT", "1")
+            // Debug builds take the swap's state from here: CI runners swap
+            // to plain files, which would change what status says.
+            .env("TXC_VAULT_TEST_SWAP", "safe")
             .env_remove("TXC_VAULT_HOME")
             .stdin(if input.is_some() {
                 Stdio::piped()
@@ -1499,6 +1502,7 @@ impl Sandbox {
             .env("TMPDIR", self.private("tmp"))
             .env("LOCALAPPDATA", self.private("local"))
             .env("TXC_VAULT_TEST_KEYSTORE", self.private("keystore"))
+            .env("TXC_VAULT_TEST_SWAP", "safe")
             .env_remove("TXC_VAULT_HOME")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

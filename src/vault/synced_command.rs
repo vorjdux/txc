@@ -744,6 +744,23 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
             ));
         }
     }
+    let protected = vault.entries()?.list().iter().any(|view| {
+        view.fields
+            .iter()
+            .any(|field| field.kind == FieldKind::Protected)
+    });
+    match crate::vault::harden::swap() {
+        crate::vault::harden::Swap::Unencrypted(what) if protected || all.is_some() => {
+            lines.push(format!(
+                "● yellow  protected entries are locked: {what} is not encrypted → encrypt it, or turn swap off"
+            ));
+        }
+        crate::vault::harden::Swap::Unknown if all.is_some() => lines.push(
+            "● yellow  on this system, whether swap is encrypted cannot be told; nothing to do"
+                .to_owned(),
+        ),
+        _ => {}
+    }
     let filter_path = home.root().join(crate::vault::breach::FILE_NAME);
     if let Ok(mut filter) = crate::vault::breach::Filter::open(&filter_path) {
         let found = breached(vault, &mut filter)?.len();
@@ -2384,6 +2401,15 @@ fn reveal_checked(
         "{entry} has no rotation in progress for {}",
         field.label
     );
+    if field.kind == FieldKind::Protected
+        && let crate::vault::harden::Swap::Unencrypted(what) = crate::vault::harden::swap()
+    {
+        bail!(
+            "protected entries are locked because {what} on this computer is not encrypted, and \
+             a released secret could be written there; encrypt it, or turn swap off, and they \
+             open again"
+        );
+    }
     let mut values = entries.reveal(&view.id, &field.id, slot)?;
     if field.kind == FieldKind::Protected {
         eprintln!("{entry} is protected; your security key may ask for a touch.");

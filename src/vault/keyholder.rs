@@ -225,6 +225,9 @@ fn answer(
 /// Returns an error when the pipe breaks.
 pub fn serve(home: &Home) -> Result<()> {
     crate::vault::harden::process();
+    // Kept out of swap where the system allows it; it holds keys for as
+    // long as the interface runs.
+    let _locked = crate::vault::harden::lock_memory();
     let mut input = BufReader::new(io::stdin().lock());
     let mut output = BufWriter::new(io::stdout().lock());
     let mut vault = None;

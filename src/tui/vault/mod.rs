@@ -366,6 +366,8 @@ pub struct VaultScreen {
     pub pending_copy: Option<(SecretString, String)>,
     held: Option<(Held, Instant)>,
     last_key: Instant,
+    /// Whether the desktop session is locked, as a watcher thread hears it.
+    screen_lock: Option<std::sync::mpsc::Receiver<bool>>,
     /// The message along the bottom.
     pub status: String,
 }
@@ -395,6 +397,7 @@ impl VaultScreen {
             pending_copy: None,
             held: None,
             last_key: Instant::now(),
+            screen_lock: None,
             status: String::new(),
         }
     }
@@ -772,6 +775,42 @@ impl VaultScreen {
         self.field_index = 0;
     }
 
+    /// Starts watching the desktop session, so locking the screen locks the
+    /// vaults and ends the session `txc vault unlock` opened (study section
+    /// 11). Linux only, through logind; elsewhere the idle lock remains.
+    pub fn watch_screen_lock(&mut self) {
+        if !cfg!(target_os = "linux") {
+            return;
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("screen-lock".to_owned())
+            .spawn(move || {
+                let session = std::env::var("XDG_SESSION_ID").unwrap_or_else(|_| "auto".to_owned());
+                loop {
+                    std::thread::sleep(Duration::from_secs(3));
+                    let Ok(output) = std::process::Command::new("loginctl")
+                        .args(["show-session", &session, "-p", "LockedHint", "--value"])
+                        .stdin(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .output()
+                    else {
+                        return;
+                    };
+                    if !output.status.success() {
+                        return;
+                    }
+                    let locked = String::from_utf8_lossy(&output.stdout).trim() == "yes";
+                    if sender.send(locked).is_err() {
+                        return;
+                    }
+                }
+            });
+        if spawned.is_ok() {
+            self.screen_lock = Some(receiver);
+        }
+    }
+
     /// Picks up finished work, hides a revealed secret and clears the
     /// clipboard when their time is up, and locks after a while without a
     /// key. Called by the event loop on every turn.
@@ -807,6 +846,18 @@ impl VaultScreen {
                 Ok(false) => String::new(),
                 Err(error) => error.to_string(),
             };
+        }
+
+        let screen_locked = self
+            .screen_lock
+            .as_ref()
+            .is_some_and(|receiver| receiver.try_iter().any(|locked| locked));
+        if screen_locked && self.is_unlocked() {
+            self.lock();
+            if let Ok(home) = &self.home {
+                let _ended = session::end(home);
+            }
+            self.status = "locked with the screen".to_string();
         }
 
         if self.is_unlocked()
@@ -1521,6 +1572,10 @@ impl VaultScreen {
         if self.resume_session() {
             return;
         }
+        if let Err(message) = typing_allowed() {
+            self.status = message;
+            return;
+        }
         self.dialog = Some(if self.has_anything() {
             Dialog::Unlock {
                 passphrase: SecretInput::default(),
@@ -1740,6 +1795,7 @@ impl VaultScreen {
                         changes must be made on a device that has the write key"
                 .to_string());
         }
+        typing_allowed()?;
         self.dialog = Some(Dialog::UnlockWriter {
             passphrase: SecretInput::default(),
             error: None,
@@ -2353,6 +2409,21 @@ fn shell_word(text: &str) -> String {
     }
 }
 
+/// Whether a passphrase may be typed here: not under X11, where any program
+/// on the display reads the keys, unless the person said so (study section
+/// 11).
+fn typing_allowed() -> Result<(), String> {
+    if crate::vault::harden::under_x11() && !crate::vault::harden::x11_allowed() {
+        return Err(
+            "under X11 any program can read what you type: open a session with \
+                    txc vault unlock --passphrase-file FILE first, or set \
+                    TXC_VAULT_ALLOW_X11=1"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -2802,6 +2873,20 @@ pub(crate) mod tests {
         assert!(screen.vaults().is_empty());
         assert!(screen.pending_copy.is_none());
         assert!(screen.items().is_empty());
+    }
+
+    #[test]
+    fn locking_the_screen_locks_the_vaults() {
+        let (_scratch, mut screen) = unlocked("tui-screen-lock");
+        let (sender, receiver) = std::sync::mpsc::channel();
+        screen.screen_lock = Some(receiver);
+        sender.send(false).unwrap();
+        screen.tick(Instant::now());
+        assert!(screen.is_unlocked());
+        sender.send(true).unwrap();
+        screen.tick(Instant::now());
+        assert!(!screen.is_unlocked());
+        assert_eq!(screen.status, "locked with the screen");
     }
 
     #[test]

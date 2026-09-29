@@ -291,7 +291,9 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&pass, std::fs::Permissions::from_mode(0o600)).unwrap();
     }
-    let txc = |args: &[&str], input: &[u8]| -> std::process::Output {
+    // Debug builds take the swap's state from the test: CI runners swap to
+    // plain files, which would lock protected entries.
+    let txc_with = |swap: &str, args: &[&str], input: &[u8]| -> std::process::Output {
         let mut child = Command::new(env!("CARGO_BIN_EXE_txc"))
             .arg("vault")
             .arg("--home")
@@ -301,6 +303,7 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
             .args(args)
             .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
             .env("TXC_VAULT_TEST_KEYSTORE", &keystore)
+            .env("TXC_VAULT_TEST_SWAP", swap)
             .env("XDG_RUNTIME_DIR", &run_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -310,6 +313,7 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         child.stdin.take().unwrap().write_all(input).unwrap();
         child.wait_with_output().unwrap()
     };
+    let txc = |args: &[&str], input: &[u8]| txc_with("safe", args, input);
     let ok = |output: std::process::Output| {
         assert!(
             output.status.success(),
@@ -395,6 +399,20 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         ));
         assert_eq!(shown, "pin-4321");
     }
+    // With swap that is not encrypted, protected entries stay locked, and
+    // status says why.
+    if cfg!(unix) {
+        let refused = txc_with(
+            "unencrypted",
+            &["run", "--set", "PIN=txc+file://personal/bank", "--", "true"],
+            b"",
+        );
+        assert!(!refused.status.success());
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("not encrypted"));
+        let status = ok(txc_with("unencrypted", &["status"], b""));
+        assert!(status.contains("protected entries are locked"), "{status}");
+    }
+
     // A root-grade entry: as protected, and every release asks for the
     // passphrase again (here from the passphrase file).
     ok(txc(

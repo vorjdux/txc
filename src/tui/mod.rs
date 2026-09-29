@@ -54,6 +54,8 @@ pub fn run() -> Result<()> {
 
 fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     let mut app = App::new();
+    #[cfg(feature = "vault")]
+    app.vault.watch_screen_lock();
     let result = run_app(terminal, &mut app);
     // However the loop ended, the vault is locked and any secret it copied
     // is taken off the clipboard before the interface goes.

@@ -59,6 +59,16 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **Swap, X11 and the screen lock.** Where swap or the hibernation target is
+  not encrypted (Linux: not on dm-crypt, nor zram), protected entries refuse
+  to release and `status` says why; macOS swap is always encrypted, and
+  where the system cannot tell, `status --all` says so. Under X11, where any
+  program on the display reads the keys, a passphrase is not asked for at
+  the terminal or in the interactive screen unless `TXC_VAULT_ALLOW_X11=1`
+  is set; a passphrase file or a session still works. On Linux the
+  interactive screen locks, and ends the session, when the desktop session
+  locks. The keyholder locks its memory out of swap where the system's lock
+  limit allows.
 - **Look-alike names and addresses.** Entry names that mix Latin with
   Greek, Cyrillic, Armenian or Cherokee letters in one word are marked
   "(mixed scripts)" in lists, `show` and the interactive screen, and a web

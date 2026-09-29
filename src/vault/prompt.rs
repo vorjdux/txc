@@ -234,6 +234,12 @@ fn normalise(text: &str) -> String {
 /// Reads without echo. rpassword asks the controlling terminal directly, so
 /// this works even while standard input is a pipe carrying a secret.
 fn hidden(prompt: &str, without_terminal: &'static str) -> Result<SecretString> {
+    ensure!(
+        !crate::vault::harden::under_x11() || crate::vault::harden::x11_allowed(),
+        "under X11 any program on the display can read what you type, so txc does not ask for \
+         a passphrase here; give it with --passphrase-file, unlock from a Wayland or text \
+         session, or set TXC_VAULT_ALLOW_X11=1 to type it anyway"
+    );
     let typed = rpassword::prompt_password(prompt).map_err(|_| anyhow!(without_terminal))?;
     Ok(SecretString::from(typed))
 }
