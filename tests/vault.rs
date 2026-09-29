@@ -1624,8 +1624,19 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
     );
     let compared = succeeds(&sandbox.vault(&["compare"]));
     assert!(compared.contains("(this device)"), "{compared}");
-    succeeds(&sandbox.vault(&["rm", "--yes", "github"]));
+    let removed = stderr(&sandbox.vault(&["rm", "--yes", "github"]));
+    assert!(removed.contains("txc vault restore"), "{removed}");
     fails(&sandbox.vault(&["copy", "--print", "github"]));
+    let listed = succeeds(&sandbox.vault(&["list", "personal", "--removed"]));
+    assert!(listed.contains("github"), "{listed}");
+    succeeds(&sandbox.vault(&["restore", "github"]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "github"])),
+        "hunter2"
+    );
+    assert!(!succeeds(&sandbox.vault(&["list", "personal", "--removed"])).contains("github"));
+    fails(&sandbox.vault(&["restore", "github"]));
+    succeeds(&sandbox.vault(&["rm", "--yes", "github"]));
     // Pairing waits for the recovery sheets.
     let refused = fails(&sandbox.vault(&["device", "add"]));
     assert!(refused.contains("recovery sheets"), "{refused}");

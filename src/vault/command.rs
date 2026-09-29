@@ -422,6 +422,14 @@ pub fn command() -> Command {
                         .long("tag")
                         .value_name("TAG")
                         .help("Only entries with this tag"),
+                )
+                .arg(
+                    Arg::new("removed")
+                        .long("removed")
+                        .action(ArgAction::SetTrue)
+                        .requires("VAULT")
+                        .conflicts_with_all(["favourites", "recent", "kind", "tag"])
+                        .help("Entries of a synced vault removed in the last 30 days, which txc vault restore brings back"),
                 ),
         )
         .subcommand(
@@ -787,6 +795,15 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("restore")
+                .about("Bring back an entry removed from a synced vault in the last 30 days")
+                .long_about(
+                    "Bring back an entry removed from a synced vault in the last 30 days.\n\n\
+                     The removed entries are listed by: txc vault list VAULT --removed",
+                )
+                .arg(reference()),
+        )
+        .subcommand(
             Command::new("move")
                 .visible_alias("mv")
                 .about("Move an entry into another vault, re-sealing its secrets there")
@@ -1149,7 +1166,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
             let keyring = context.unlock()?;
             synced_command::migrate(&context.synced(), &keyring, sub)
         }
-        "list" | "add" | "show" | "copy" | "edit" | "rm" | "grant" | "favourite"
+        "list" | "add" | "show" | "copy" | "edit" | "rm" | "restore" | "grant" | "favourite"
             if context.names_synced(name, sub) =>
         {
             synced_command::entry(&context.synced(), name, sub)
@@ -1180,6 +1197,10 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "copy" => context.copy(sub),
         "edit" => context.edit(sub),
         "rm" => context.remove(sub),
+        "restore" => anyhow::bail!(
+            "only synced vaults keep removed entries; the previous version of this vault is in \
+             the .bak file beside it until its next change"
+        ),
         "move" => context.move_entry(sub),
         "recipients" => context.recipients(sub),
         "trust" => context.trust(sub),

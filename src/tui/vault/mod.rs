@@ -2029,7 +2029,13 @@ impl VaultScreen {
                         Ok(()) => {
                             self.forget(vault, &entry);
                             self.move_item(self.item_index);
-                            format!("removed {entry}")
+                            match self.vaults.get(vault) {
+                                Some(loaded) if loaded.synced.is_some() => format!(
+                                    "removed {entry}; for 30 days: txc vault restore {}/{entry}",
+                                    loaded.name
+                                ),
+                                _ => format!("removed {entry}"),
+                            }
                         }
                         Err(message) => message,
                     }

@@ -2302,6 +2302,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
+            cand restore 'Bring back an entry removed from a synced vault in the last 30 days'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand mv 'Move an entry into another vault, re-sealing its secrets there'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
@@ -2410,6 +2411,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --favourites 'Only starred entries'
             cand --favorites 'Only starred entries'
             cand --recent 'The entries used most recently on this device, newest first'
+            cand --removed 'Entries of a synced vault removed in the last 30 days, which txc vault restore brings back'
             cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
             cand -h 'Print help'
             cand --help 'Print help'
@@ -2790,6 +2792,14 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'txc;vault;restore'= {
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'txc;vault;move'= {
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
@@ -3058,6 +3068,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
+            cand restore 'Bring back an entry removed from a synced vault in the last 30 days'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
             cand grant 'Seal one secret to another key, for a host to redeem'
@@ -3161,6 +3172,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;migrate'= {
         }
         &'txc;vault;help;rm'= {
+        }
+        &'txc;vault;help;restore'= {
         }
         &'txc;vault;help;move'= {
         }
@@ -3699,6 +3712,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand resolve 'Show the two versions of an entry edited on two devices at once, and keep one'
             cand migrate 'Copy a vault into a synced vault, to share it between devices; the original stays as it is'
             cand rm 'Remove an entry'
+            cand restore 'Bring back an entry removed from a synced vault in the last 30 days'
             cand move 'Move an entry into another vault, re-sealing its secrets there'
             cand delete 'Delete a whole vault, keeping a recovery copy beside it'
             cand grant 'Seal one secret to another key, for a host to redeem'
@@ -3801,6 +3815,8 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;migrate'= {
         }
         &'txc;help;vault;rm'= {
+        }
+        &'txc;help;vault;restore'= {
         }
         &'txc;help;vault;move'= {
         }

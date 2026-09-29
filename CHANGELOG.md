@@ -6,6 +6,14 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`txc vault restore VAULT/ENTRY`** brings back an entry removed from a
+  synced vault in the last 30 days, with the values it had; fields removed on
+  their own before it stay removed. `txc vault list VAULT --removed` lists
+  what can come back. After the 30 days a snapshot drops the removed values,
+  so they no longer outlive the window.
+
 ## [0.8.0] - 2026-09-29
 
 ### Added

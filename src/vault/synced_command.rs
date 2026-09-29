@@ -457,10 +457,7 @@ fn list_devices(vault: &Synced) -> Result<()> {
         rows.push([
             data_encoding::HEXLOWER.encode(&device[..4]),
             can.to_owned(),
-            i64::try_from(certificate.not_after)
-                .ok()
-                .and_then(|at| chrono::DateTime::from_timestamp(at, 0))
-                .map_or_else(String::new, |at| at.format("%Y-%m-%d").to_string()),
+            date_of(certificate.not_after),
             if device == me {
                 "this device".to_owned()
             } else {
@@ -1421,6 +1418,14 @@ fn words_in_rows(sheet: &str) -> String {
         .join("\n")
 }
 
+/// A time as a date, for tables.
+fn date_of(at: u64) -> String {
+    i64::try_from(at)
+        .ok()
+        .and_then(|at| chrono::DateTime::from_timestamp(at, 0))
+        .map_or_else(String::new, |at| at.format("%Y-%m-%d").to_string())
+}
+
 // ---------------------------------------------------------------- entries --
 
 fn find<'a>(views: &'a [EntryView], name: &str) -> Result<&'a EntryView> {
@@ -1456,6 +1461,13 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
         "list" => {
             let name = context.which(sub.get_one::<String>("VAULT"))?;
             let (vault, _) = context.open_confined(&name)?;
+            if sub.get_flag("removed") {
+                let mut rows = vec![["Name".to_owned(), "Removed".to_owned()]];
+                for removed in vault.entries()?.removed() {
+                    rows.push([removed.names.join(" / "), date_of(removed.at)]);
+                }
+                return output(&table(&rows));
+            }
             let mut rows = vec![["Name".to_owned(), "Kind".to_owned(), String::new()]];
             let mut views = vault.entries()?.list();
             views.sort_by(|a, b| (!a.starred, &a.names).cmp(&(!b.starred, &b.names)));
@@ -1532,7 +1544,42 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             let mut changes = Changes::new(&entries, now());
             changes.delete_entry(&id)?;
             vault.write(changes)?;
-            eprintln!("Removed {reference}. It can be restored for 30 days.");
+            eprintln!(
+                "Removed {reference}. For 30 days it can be brought back with: txc vault restore \
+                 {reference}"
+            );
+            Ok(())
+        }
+        "restore" => {
+            let reference: Reference = required(sub, "ENTRY").parse()?;
+            let (mut vault, _) = context.open_confined(&reference.vault)?;
+            let entries = vault.entries()?;
+            ensure!(
+                !entries
+                    .list()
+                    .iter()
+                    .any(|view| view.names.contains(&reference.entry)),
+                "there is already an entry named {:?}; rename it first with txc vault edit",
+                reference.entry
+            );
+            let removed = entries.removed();
+            let found: Vec<_> = removed
+                .iter()
+                .filter(|removed| removed.names.contains(&reference.entry))
+                .collect();
+            let id = match found.as_slice() {
+                [] => bail!(
+                    "no entry named {:?} was removed in the last 30 days; see: txc vault list {} \
+                     --removed",
+                    reference.entry,
+                    reference.vault
+                ),
+                [newest, ..] => newest.id,
+            };
+            let mut changes = Changes::new(&entries, now());
+            changes.restore_entry(&id)?;
+            vault.write(changes)?;
+            eprintln!("Restored {reference}.");
             Ok(())
         }
         "resolve" => resolve(context, sub),

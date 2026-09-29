@@ -464,6 +464,17 @@ pub struct FieldView {
     pub conflict: bool,
 }
 
+/// An entry removed inside the retention window, which can be restored.
+#[derive(Clone, Debug)]
+pub struct Removed {
+    /// The entry's id.
+    pub id: Id,
+    /// The names it had, sanitised for display.
+    pub names: Vec<String>,
+    /// When it was removed.
+    pub at: u64,
+}
+
 /// A snapshot: the objects it covers and the folded state of every
 /// register, with values sealed again under its own field key.
 struct SnapshotBody {
@@ -982,7 +993,13 @@ impl Entries {
                     .ops
                     .get(id)
                     .ok_or_else(|| anyhow!("a live op is missing"))?;
-                live.push((*id, reseal(op, source)?));
+                let mut copy = reseal(op, source)?;
+                // A removal keeps what it removed for the window only, even
+                // while it stays the register's live op.
+                if now.saturating_sub(op.time) >= retention {
+                    copy.old.clear();
+                }
+                live.push((*id, copy));
             }
         }
         let live_ids: BTreeSet<OpId> = live.iter().map(|(id, _)| *id).collect();
@@ -1208,6 +1225,38 @@ impl Entries {
             });
         }
         views
+    }
+
+    /// The entries removed whose values are still kept, newest first,
+    /// decrypting no secret.
+    #[must_use]
+    pub fn removed(&self) -> Vec<Removed> {
+        let folded = fold_registers(&self.ops, &self.covered());
+        let mut out: Vec<Removed> = folded
+            .iter()
+            .filter(|((_, field, slot), (_, _, state))| {
+                *field == NAME && *slot == Slot::Value && state.deleted && state.values.is_empty()
+            })
+            .filter_map(|((entry, _, _), (_, live, _))| {
+                let op = live
+                    .iter()
+                    .filter_map(|id| self.ops.get(id))
+                    .map(|(op, _)| op)
+                    .filter(|op| op.value.is_none() && !op.old.is_empty())
+                    .max_by_key(|op| op.time)?;
+                Some(Removed {
+                    id: *entry,
+                    names: op
+                        .old
+                        .iter()
+                        .map(|bytes| displayable(&String::from_utf8_lossy(bytes)))
+                        .collect(),
+                    at: op.time,
+                })
+            })
+            .collect();
+        out.sort_by(|a, b| (b.at, &a.names).cmp(&(a.at, &b.names)));
+        out
     }
 
     /// Decrypts the live values of one field: exactly one secret field per
@@ -1480,6 +1529,65 @@ impl<'a> Changes<'a> {
             self.delete(register)?;
         }
         Ok(())
+    }
+
+    /// Restores a removed entry: every register the removal deleted gets
+    /// back the value its tombstone kept. Fields deleted earlier, on their
+    /// own, stay deleted. Returns how many registers came back.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the entry was not removed, or its values are
+    /// past the retention window.
+    pub fn restore_entry(&mut self, entry: &Id) -> Result<usize> {
+        let entries = self.entries;
+        let folded = fold_registers(&entries.ops, &entries.covered());
+        let (_, name_live, name_state) = folded
+            .get(&(*entry, NAME, Slot::Value))
+            .ok_or_else(|| anyhow!("no such entry"))?;
+        ensure!(
+            name_state.deleted && name_state.values.is_empty(),
+            "the entry was not removed"
+        );
+        let removal = name_live
+            .iter()
+            .find(|id| {
+                entries
+                    .ops
+                    .get(*id)
+                    .is_some_and(|(op, _)| op.value.is_none() && !op.old.is_empty())
+            })
+            .map(|id| id.object)
+            .ok_or_else(|| anyhow!("the entry was removed too long ago to restore"))?;
+        let mut restored = 0_usize;
+        for (register, (_, live, state)) in
+            folded.range((*entry, [0; 16], Slot::Value)..=(*entry, [0xff; 16], Slot::Label))
+        {
+            if !state.deleted || !state.values.is_empty() {
+                continue;
+            }
+            let Some((op, source)) = live
+                .iter()
+                .filter(|id| id.object == removal)
+                .find_map(|id| entries.ops.get(id))
+            else {
+                continue;
+            };
+            let Some(old) = op.old.first() else {
+                continue;
+            };
+            let plain = entries.plain(
+                register,
+                op.kind,
+                &Stored {
+                    source: *source,
+                    bytes: old.clone(),
+                },
+            )?;
+            self.set(*register, op.kind, &plain)?;
+            restored = restored.saturating_add(1);
+        }
+        Ok(restored)
     }
 
     /// Two-phase rotation, step 1: writes the new value as pending, before
@@ -2006,5 +2114,79 @@ mod tests {
             "a live tombstone stays until superseded"
         );
         assert!(names(&admin).is_empty());
+    }
+
+    #[test]
+    fn a_removed_entry_comes_back_with_its_values_but_not_fields_removed_before() {
+        let (_scratch, store, mut admin, mut laptop) = setup();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW);
+        let entry = changes.create("mail").unwrap();
+        let secret = changes
+            .add_field(&entry, FieldKind::Secret, "secret", b"kept")
+            .unwrap();
+        let note = changes
+            .add_field(&entry, FieldKind::Note, "note", b"dropped first")
+            .unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW + 1);
+        changes.delete_field(&entry, &note).unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW + 2);
+        changes.delete_entry(&entry).unwrap();
+        changes.write(&mut admin, &store).unwrap();
+
+        // Across a snapshot, so the removal comes from it.
+        let entries = Entries::read(&admin).unwrap();
+        entries
+            .snapshot(&mut admin, &store, NOW + 3, 30 * DAY)
+            .unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        let removed = entries.removed();
+        assert_eq!(removed.len(), 1);
+        assert_eq!(
+            (removed[0].id, removed[0].names.clone(), removed[0].at),
+            (entry, vec!["mail".to_owned()], NOW + 2)
+        );
+        let mut changes = Changes::new(&entries, NOW + 4);
+        assert!(changes.restore_entry(&entry).unwrap() >= 3);
+        changes.write(&mut admin, &store).unwrap();
+
+        laptop.sync(&store).unwrap();
+        let entries = Entries::read(&laptop).unwrap();
+        let listed = entries.list();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].names, vec!["mail".to_owned()]);
+        assert_eq!(listed[0].fields.len(), 1, "the note was removed before");
+        assert_eq!(reveal_one(&laptop, &entry, &secret), "kept");
+        assert!(entries.removed().is_empty());
+        let mut changes = Changes::new(&entries, NOW + 5);
+        assert!(changes.restore_entry(&entry).is_err());
+    }
+
+    #[test]
+    fn a_removal_past_the_window_can_no_longer_be_restored() {
+        let (_scratch, store, mut admin, _laptop) = setup();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW);
+        let entry = changes.create("old").unwrap();
+        changes
+            .add_field(&entry, FieldKind::Secret, "secret", b"gone")
+            .unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW + 1);
+        changes.delete_entry(&entry).unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        entries
+            .snapshot(&mut admin, &store, NOW + 31 * DAY, 30 * DAY)
+            .unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        assert!(entries.removed().is_empty());
+        let mut changes = Changes::new(&entries, NOW + 32 * DAY);
+        assert!(changes.restore_entry(&entry).is_err());
     }
 }

@@ -2449,6 +2449,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
             [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Bring back an entry removed from a synced vault in the last 30 days')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('mv', 'mv', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
@@ -2566,6 +2567,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--favourites', '--favourites', [CompletionResultType]::ParameterName, 'Only starred entries')
             [CompletionResult]::new('--favorites', '--favorites', [CompletionResultType]::ParameterName, 'Only starred entries')
             [CompletionResult]::new('--recent', '--recent', [CompletionResultType]::ParameterName, 'The entries used most recently on this device, newest first')
+            [CompletionResult]::new('--removed', '--removed', [CompletionResultType]::ParameterName, 'Entries of a synced vault removed in the last 30 days, which txc vault restore brings back')
             [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
@@ -2997,6 +2999,15 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
+        'txc;vault;restore' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;move' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
@@ -3297,6 +3308,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
             [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Bring back an entry removed from a synced vault in the last 30 days')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
@@ -3439,6 +3451,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;rm' {
+            break
+        }
+        'txc;vault;help;restore' {
             break
         }
         'txc;vault;help;move' {
@@ -4148,6 +4163,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
             [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Bring back an entry removed from a synced vault in the last 30 days')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
@@ -4289,6 +4305,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;rm' {
+            break
+        }
+        'txc;help;vault;restore' {
             break
         }
         'txc;help;vault;move' {

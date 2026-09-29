@@ -2685,6 +2685,7 @@ secret\:"Other secret"))' \
 '--favourites[Only starred entries]' \
 '--favorites[Only starred entries]' \
 '--recent[The entries used most recently on this device, newest first]' \
+'(--favourites --recent --kind --tag)--removed[Entries of a synced vault removed in the last 30 days, which txc vault restore brings back]' \
 '--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
 '-h[Print help]' \
 '--help[Print help]' \
@@ -3266,6 +3267,17 @@ _arguments "${_arguments_options[@]}" : \
 ':ENTRY -- The entry, in the personal vault unless another is named:_default' \
 && ret=0
 ;;
+(restore)
+_arguments "${_arguments_options[@]}" : \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':ENTRY -- The entry, in the personal vault unless another is named:_default' \
+&& ret=0
+;;
 (move)
 _arguments "${_arguments_options[@]}" : \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
@@ -3805,6 +3817,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(restore)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4741,6 +4757,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(restore)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -6149,6 +6169,7 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
 'grant:Seal one secret to another key, for a host to redeem' \
@@ -6433,6 +6454,11 @@ _txc__subcmd__help__subcmd__vault__subcmd__redeem_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__resolve_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault resolve commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__restore_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__restore_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault restore commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__rm_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__rm_commands() {
@@ -7046,6 +7072,7 @@ _txc__subcmd__vault_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'mv:Move an entry into another vault, re-sealing its secrets there' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
@@ -7430,6 +7457,7 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
 'grant:Seal one secret to another key, for a host to redeem' \
@@ -7721,6 +7749,11 @@ _txc__subcmd__vault__subcmd__help__subcmd__resolve_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help resolve commands' commands "$@"
 }
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__restore_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__restore_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help restore commands' commands "$@"
+}
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__rm_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__rm_commands() {
     local commands; commands=()
@@ -7888,6 +7921,11 @@ _txc__subcmd__vault__subcmd__redeem_commands() {
 _txc__subcmd__vault__subcmd__resolve_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault resolve commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__restore_commands] )) ||
+_txc__subcmd__vault__subcmd__restore_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault restore commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__rm_commands] )) ||
 _txc__subcmd__vault__subcmd__rm_commands() {
