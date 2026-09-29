@@ -185,6 +185,17 @@ impl LoadedVault {
     }
 }
 
+/// A change that asked for the write key, carried on once it is unlocked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Resume {
+    Add,
+    Create,
+    Edit,
+    Delete,
+    Favourite,
+    Move,
+}
+
 /// A change to one entry, for either kind of vault.
 enum Edit {
     Add(NewEntry),
@@ -347,6 +358,8 @@ pub struct VaultScreen {
     /// The window open over the screen, if any.
     pub dialog: Option<Dialog>,
     busy: Option<Busy>,
+    /// The change waiting for the write passphrase dialog, if any.
+    after_writer: Option<Resume>,
     revealed: Option<Revealed>,
     /// A secret for the event loop to put on the clipboard, and what to call
     /// it. The event loop owns the clipboard, as it does for the output.
@@ -377,6 +390,7 @@ impl VaultScreen {
             searching: false,
             dialog: None,
             busy: None,
+            after_writer: None,
             revealed: None,
             pending_copy: None,
             held: None,
@@ -749,6 +763,7 @@ impl VaultScreen {
         // Locking drops the write key too, so it is asked for again the next
         // time a change is made.
         self.write_key = None;
+        self.after_writer = None;
         self.search.clear();
         self.searching = false;
         self.section = Section::All;
@@ -1268,7 +1283,7 @@ impl VaultScreen {
     }
 
     fn toggle_favourite(&mut self) {
-        if let Err(message) = self.require_write_key_here() {
+        if let Err(message) = self.require_write_key_here(Resume::Favourite) {
             self.status = message;
             return;
         }
@@ -1295,7 +1310,7 @@ impl VaultScreen {
                     .to_string();
             return;
         }
-        if let Err(message) = self.require_write_key() {
+        if let Err(message) = self.require_write_key_then(Resume::Create) {
             self.status = message;
             return;
         }
@@ -1313,7 +1328,7 @@ impl VaultScreen {
             .iter()
             .filter(|vault| vault.is_open())
             .all(LoadedVault::is_synced);
-        if !only_synced && let Err(message) = self.require_write_key() {
+        if !only_synced && let Err(message) = self.require_write_key_then(Resume::Add) {
             self.status = message;
             return;
         }
@@ -1371,7 +1386,7 @@ impl VaultScreen {
     }
 
     fn begin_edit(&mut self) {
-        if let Err(message) = self.require_write_key_here() {
+        if let Err(message) = self.require_write_key_here(Resume::Edit) {
             self.status = message;
             return;
         }
@@ -1382,7 +1397,7 @@ impl VaultScreen {
     }
 
     fn begin_delete(&mut self) {
-        if let Err(message) = self.require_write_key_here() {
+        if let Err(message) = self.require_write_key_here(Resume::Delete) {
             self.status = message;
             return;
         }
@@ -1395,7 +1410,7 @@ impl VaultScreen {
     }
 
     fn begin_move(&mut self) {
-        if let Err(message) = self.require_write_key() {
+        if let Err(message) = self.require_write_key_then(Resume::Move) {
             self.status = message;
             return;
         }
@@ -1620,7 +1635,10 @@ impl VaultScreen {
                 self.dialog = None;
                 self.write_key = Some(write_key);
                 self.last_key = Instant::now();
-                self.status = "the write key is unlocked; repeat the change".to_string();
+                self.status = "the write key is unlocked".to_string();
+                if let Some(resume) = self.after_writer.take() {
+                    self.resume(resume);
+                }
             }
             Err(message) => match self.dialog.as_mut() {
                 Some(
@@ -1641,14 +1659,37 @@ impl VaultScreen {
 
     /// Ensures the write key is unlocked before changing the selected entry,
     /// unless it is in a synced vault, which needs none.
-    fn require_write_key_here(&mut self) -> Result<(), String> {
+    fn require_write_key_here(&mut self, resume: Resume) -> Result<(), String> {
         let synced = self
             .selected()
             .is_some_and(|(vault, _)| self.vaults.get(vault).is_some_and(LoadedVault::is_synced));
         if synced {
             Ok(())
         } else {
-            self.require_write_key()
+            self.require_write_key_then(resume)
+        }
+    }
+
+    /// As [`require_write_key`](Self::require_write_key), remembering the
+    /// change so it carries on once the write key is unlocked, rather than
+    /// asking the person to repeat it.
+    fn require_write_key_then(&mut self, resume: Resume) -> Result<(), String> {
+        let result = self.require_write_key();
+        if result.is_err() && matches!(self.dialog, Some(Dialog::UnlockWriter { .. })) {
+            self.after_writer = Some(resume);
+        }
+        result
+    }
+
+    /// Carries on the change that asked for the write key.
+    fn resume(&mut self, resume: Resume) {
+        match resume {
+            Resume::Add => self.begin_add(),
+            Resume::Create => self.begin_create(),
+            Resume::Edit => self.begin_edit(),
+            Resume::Delete => self.begin_delete(),
+            Resume::Favourite => self.toggle_favourite(),
+            Resume::Move => self.begin_move(),
         }
     }
 
@@ -1668,7 +1709,7 @@ impl VaultScreen {
             passphrase: SecretInput::default(),
             error: None,
         });
-        Err("unlock the write key to make changes, then repeat that".to_string())
+        Err("unlock the write key to make this change".to_string())
     }
 
     /// Unlocks the write key directly, for tests, so a write-flow test does not
@@ -1805,7 +1846,10 @@ impl VaultScreen {
                 mut passphrase,
                 error,
             } => match (key.code, control) {
-                (KeyCode::Esc, _) => None,
+                (KeyCode::Esc, _) => {
+                    self.after_writer = None;
+                    None
+                }
                 (KeyCode::Enter, _) if passphrase.is_empty() => Some(Dialog::UnlockWriter {
                     passphrase,
                     error: Some("type your write passphrase".to_string()),
@@ -2736,11 +2780,12 @@ pub(crate) mod tests {
         type_text(&mut screen, PASSPHRASE);
         press(&mut screen, KeyCode::Enter);
         settle(&mut screen);
-        assert!(screen.dialog.is_none(), "{}", screen.status);
-
-        // Repeating the change now goes straight to the kind picker.
-        press(&mut screen, KeyCode::Char('a'));
-        assert!(matches!(screen.dialog, Some(Dialog::PickKind { .. })));
+        // The change carries on by itself: the kind picker opens.
+        assert!(
+            matches!(screen.dialog, Some(Dialog::PickKind { .. })),
+            "{}",
+            screen.status
+        );
         press(&mut screen, KeyCode::Esc);
 
         // A different change does not ask again: the key is kept for the session.
@@ -2993,5 +3038,79 @@ pub(crate) mod tests {
             loaded.name,
             if loaded.is_synced() { " (synced)" } else { "" }
         )
+    }
+
+    #[test]
+    fn each_change_carries_on_after_the_write_passphrase() {
+        let (_scratch, mut screen) = locked("tui-write-resume");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.unlock_writer_for_test(PASSPHRASE);
+        add_login(&mut screen, "first", "one", "p1");
+        screen.lock();
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.set_section(Section::All);
+        screen.move_item(0);
+
+        // Star: asks, then stars without being asked again.
+        press(&mut screen, KeyCode::Char('f'));
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(screen.dialog.is_none(), "{}", screen.status);
+        assert!(
+            screen.selected().is_some_and(|(_, entry)| entry.favourite),
+            "{}",
+            screen.status
+        );
+
+        // Cancelling the dialog forgets the change.
+        screen.lock();
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        press(&mut screen, KeyCode::Char('e'));
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        press(&mut screen, KeyCode::Esc);
+        assert!(screen.dialog.is_none());
+        // The next change asks again, and only it carries on, not the edit.
+        press(&mut screen, KeyCode::Char('a'));
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(
+            matches!(screen.dialog, Some(Dialog::PickKind { .. })),
+            "the cancelled edit came back: {}",
+            screen.status
+        );
+        press(&mut screen, KeyCode::Esc);
+
+        // Edit and delete carry on into their dialogs.
+        screen.lock();
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        press(&mut screen, KeyCode::Char('d'));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(
+            matches!(screen.dialog, Some(Dialog::Delete { .. })),
+            "{}",
+            screen.status
+        );
     }
 }
