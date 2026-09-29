@@ -1724,6 +1724,9 @@ fn a_vault_migrates_into_a_synced_vault_and_the_old_one_stays() {
             "github",
             "--username",
             "octocat",
+            "--tag",
+            "code",
+            "--favourite",
             "--secret-from-stdin",
         ],
         "hunter2",
@@ -1741,7 +1744,10 @@ fn a_vault_migrates_into_a_synced_vault_and_the_old_one_stays() {
         succeeds(&sandbox.vault(&["copy", "--print", "work/github"])),
         "hunter2"
     );
-    assert!(succeeds(&sandbox.vault(&["show", "work/github"])).contains("octocat"));
+    let shown = succeeds(&sandbox.vault(&["show", "work/github"]));
+    assert!(shown.contains("octocat"), "{shown}");
+    assert!(shown.contains("code"), "tags are carried over: {shown}");
+    assert!(shown.contains('★'), "the star is carried over: {shown}");
     assert_eq!(
         succeeds(&sandbox.vault(&["copy", "--print", "personal/github"])),
         "hunter2"

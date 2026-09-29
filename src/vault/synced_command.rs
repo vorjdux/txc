@@ -1994,6 +1994,12 @@ pub fn migrate(context: &Context<'_>, keyring: &Keyring, sub: &ArgMatches) -> Re
         }
         let entry = changes.create(&old_entry.name)?;
         changes.set_kind(&entry, old_entry.kind.id())?;
+        if !old_entry.tags.is_empty() {
+            changes.set_tags(&entry, &old_entry.tags)?;
+        }
+        if old_entry.favourite {
+            changes.set_star(&entry, true)?;
+        }
         for old_field in &old_entry.fields {
             if let Some(value) = old_entry.plain(&old_field.name) {
                 changes.add_field(
@@ -2018,7 +2024,7 @@ pub fn migrate(context: &Context<'_>, keyring: &Keyring, sub: &ArgMatches) -> Re
     vault.checkpoint()?;
     eprintln!(
         "Copied {copied} entries from \"{old}\" into the synced vault \"{name}\". The old vault is \
-         unchanged; tags and favourites were not copied."
+         unchanged."
     );
     Ok(())
 }
