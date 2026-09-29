@@ -2517,6 +2517,8 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --help 'Print help'
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
+            cand approve 'Approve renewals and new authenticators waiting for this device'
+            cand ack 'Acknowledge the authenticators status shows as newly added'
             cand remove 'Remove a device; it reads nothing written afterwards'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -2539,6 +2541,25 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'txc;vault;device;approve'= {
+            cand --vault 'The synced vault'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --yes 'Approve all without asking'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;device;ack'= {
+            cand --vault 'The synced vault'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
         &'txc;vault;device;remove'= {
             cand --vault 'The synced vault'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
@@ -2552,12 +2573,18 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;device;help'= {
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
+            cand approve 'Approve renewals and new authenticators waiting for this device'
+            cand ack 'Acknowledge the authenticators status shows as newly added'
             cand remove 'Remove a device; it reads nothing written afterwards'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;device;help;add'= {
         }
         &'txc;vault;device;help;list'= {
+        }
+        &'txc;vault;device;help;approve'= {
+        }
+        &'txc;vault;device;help;ack'= {
         }
         &'txc;vault;device;help;remove'= {
         }
@@ -2647,6 +2674,7 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
             cand add 'Seal this device''s second factor to hardware'
+            cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;hardware;add'= {
@@ -2655,6 +2683,17 @@ set edit:completion:arg-completer[txc] = {|@words|
             cand --identity-file 'The plugin identity file the hardware''s plugin wrote (AGE-PLUGIN-...)'
             cand --recipient-plugin 'The plugin for the recipient, rather than the one on PATH now'
             cand --identity-plugin 'The plugin for the identity, rather than the one on PATH now'
+            cand --name 'What to call it where other devices show it (default: security key)'
+            cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
+            cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
+            cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
+            cand --no-session 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'txc;vault;hardware;pin'= {
+            cand --path 'Its binary, rather than the one on PATH now'
+            cand --vault 'The synced vault'
             cand --home 'Use this vault directory rather than the default, as TXC_VAULT_HOME does'
             cand --passphrase-file 'Read the passphrase from a file only you can read, rather than asking'
             cand --write-passphrase-file 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.'
@@ -2664,9 +2703,12 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;hardware;help'= {
             cand add 'Seal this device''s second factor to hardware'
+            cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'txc;vault;hardware;help;add'= {
+        }
+        &'txc;vault;hardware;help;pin'= {
         }
         &'txc;vault;hardware;help;help'= {
         }
@@ -2953,11 +2995,17 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;vault;help;device'= {
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
+            cand approve 'Approve renewals and new authenticators waiting for this device'
+            cand ack 'Acknowledge the authenticators status shows as newly added'
             cand remove 'Remove a device; it reads nothing written afterwards'
         }
         &'txc;vault;help;device;add'= {
         }
         &'txc;vault;help;device;list'= {
+        }
+        &'txc;vault;help;device;approve'= {
+        }
+        &'txc;vault;help;device;ack'= {
         }
         &'txc;vault;help;device;remove'= {
         }
@@ -2979,8 +3027,11 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;vault;help;hardware'= {
             cand add 'Seal this device''s second factor to hardware'
+            cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
         }
         &'txc;vault;help;hardware;add'= {
+        }
+        &'txc;vault;help;hardware;pin'= {
         }
         &'txc;vault;help;compare'= {
         }
@@ -3560,11 +3611,17 @@ set edit:completion:arg-completer[txc] = {|@words|
         &'txc;help;vault;device'= {
             cand add 'Pair a new device; it runs txc vault join'
             cand list 'List the devices'
+            cand approve 'Approve renewals and new authenticators waiting for this device'
+            cand ack 'Acknowledge the authenticators status shows as newly added'
             cand remove 'Remove a device; it reads nothing written afterwards'
         }
         &'txc;help;vault;device;add'= {
         }
         &'txc;help;vault;device;list'= {
+        }
+        &'txc;help;vault;device;approve'= {
+        }
+        &'txc;help;vault;device;ack'= {
         }
         &'txc;help;vault;device;remove'= {
         }
@@ -3586,8 +3643,11 @@ set edit:completion:arg-completer[txc] = {|@words|
         }
         &'txc;help;vault;hardware'= {
             cand add 'Seal this device''s second factor to hardware'
+            cand pin 'Pin a plugin, to seal protected entries to other devices'' hardware'
         }
         &'txc;help;vault;hardware;add'= {
+        }
+        &'txc;help;vault;hardware;pin'= {
         }
         &'txc;help;vault;compare'= {
         }

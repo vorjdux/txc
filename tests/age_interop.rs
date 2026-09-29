@@ -354,6 +354,16 @@ fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on(
         "the keystore factor was forgotten"
     );
     assert_eq!(ok(txc(&["copy", "--print", "mail"], b"")), "s3cret");
+    let status = ok(txc(&["status"], b""));
+    assert!(
+        !status.contains("red"),
+        "its own authenticator is not an alarm: {status}"
+    );
+    let report = ok(txc(&["doctor"], b""));
+    assert!(
+        report.contains("authenticators: 1") && report.contains("hardware on this device: true"),
+        "{report}"
+    );
 
     std::fs::OpenOptions::new()
         .append(true)

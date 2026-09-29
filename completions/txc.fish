@@ -1515,6 +1515,8 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from device" -s h -l help -d 'Print help'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from device" -f -a "add" -d 'Pair a new device; it runs txc vault join'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from device" -f -a "list" -d 'List the devices'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from device" -f -a "approve" -d 'Approve renewals and new authenticators waiting for this device'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from device" -f -a "ack" -d 'Acknowledge the authenticators status shows as newly added'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from device" -f -a "remove" -d 'Remove a device; it reads nothing written afterwards'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from device" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
@@ -1557,6 +1559,7 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -l no-session -d 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -f -a "add" -d 'Seal this device\'s second factor to hardware'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -f -a "pin" -d 'Pin a plugin, to seal protected entries to other devices\' hardware'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from hardware" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from compare" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from compare" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r

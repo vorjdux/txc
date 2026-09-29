@@ -452,6 +452,36 @@ pub struct Authenticator {
     pub recipient: String,
 }
 
+impl Authenticator {
+    /// A new authenticator for a hardware recipient, named as its owner
+    /// calls it.
+    #[must_use]
+    pub fn new(nickname: &str, recipient: &str) -> Self {
+        Self {
+            id: new_id(),
+            nickname: nickname.to_owned(),
+            fingerprint: sha384(b"txc/v1/authenticator", recipient.as_bytes()),
+            recipient: recipient.to_owned(),
+        }
+    }
+
+    fn write(&self, out: &mut Writer) {
+        out.fixed(&self.id);
+        out.str(&self.nickname);
+        out.fixed(&self.fingerprint);
+        out.str(&self.recipient);
+    }
+
+    fn read(input: &mut Reader<'_>) -> Result<Self> {
+        Ok(Self {
+            id: input.fixed()?,
+            nickname: input.str(MAX_TEXT)?,
+            fingerprint: input.fixed()?,
+            recipient: input.str(MAX_RECIPIENT)?,
+        })
+    }
+}
+
 /// Who issued a certificate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Issuer {
@@ -518,10 +548,7 @@ impl Certificate {
         out.str(&self.recipient.to_string());
         out.count(self.authenticators.len());
         for authenticator in &self.authenticators {
-            out.fixed(&authenticator.id);
-            out.str(&authenticator.nickname);
-            out.fixed(&authenticator.fingerprint);
-            out.str(&authenticator.recipient);
+            authenticator.write(&mut out);
         }
         out.u8(self.role.code());
         out.str(&self.scope);
@@ -558,14 +585,7 @@ impl Certificate {
             .parse()
             .map_err(|error: &str| anyhow!("device recipient: {error}"))?;
         let authenticators = (0..input.count(MAX_AUTHENTICATORS)?)
-            .map(|_| {
-                Ok(Authenticator {
-                    id: input.fixed()?,
-                    nickname: input.str(MAX_TEXT)?,
-                    fingerprint: input.fixed()?,
-                    recipient: input.str(MAX_RECIPIENT)?,
-                })
-            })
+            .map(|_| Authenticator::read(&mut input))
             .collect::<Result<_>>()?;
         let role = Role::from_code(input.u8()?)?;
         let scope = input.str(MAX_TEXT)?;
@@ -909,6 +929,8 @@ pub struct RenewalRequest {
     pub signing_key: VerifyingKey,
     /// Its new age recipient.
     pub recipient: pq::Recipient,
+    /// Authenticators to add: hardware this device proved it holds.
+    pub authenticators: Vec<Authenticator>,
     /// The old key's signature.
     pub old: Vec<u8>,
     /// The new key's signature.
@@ -916,18 +938,17 @@ pub struct RenewalRequest {
 }
 
 impl RenewalRequest {
-    fn message(
-        certificate: &Id,
-        device: &Id,
-        signing_key: &VerifyingKey,
-        recipient: &pq::Recipient,
-    ) -> Vec<u8> {
+    fn message(&self) -> Vec<u8> {
         let mut out = Writer::default();
         out.fixed(RENEWAL_TAG);
-        out.fixed(certificate);
-        out.fixed(device);
-        out.bytes(&signing_key.to_bytes());
-        out.str(&recipient.to_string());
+        out.fixed(&self.certificate);
+        out.fixed(&self.device);
+        out.bytes(&self.signing_key.to_bytes());
+        out.str(&self.recipient.to_string());
+        out.count(self.authenticators.len());
+        for authenticator in &self.authenticators {
+            authenticator.write(&mut out);
+        }
         out.finish()
     }
 
@@ -941,17 +962,21 @@ impl RenewalRequest {
         old: &SigningKey,
         new: &SigningKey,
         recipient: pq::Recipient,
+        authenticators: Vec<Authenticator>,
     ) -> Result<Self> {
-        let signing_key = new.verifying_key();
-        let message = Self::message(&current.id, &current.device, &signing_key, &recipient);
-        Ok(Self {
+        let mut request = Self {
             certificate: current.id,
             device: current.device,
-            old: old.sign(&message, RENEWAL_CONTEXT)?,
-            new: new.sign(&message, RENEWAL_CONTEXT)?,
-            signing_key,
+            signing_key: new.verifying_key(),
             recipient,
-        })
+            authenticators,
+            old: Vec::new(),
+            new: Vec::new(),
+        };
+        let message = request.message();
+        request.old = old.sign(&message, RENEWAL_CONTEXT)?;
+        request.new = new.sign(&message, RENEWAL_CONTEXT)?;
+        Ok(request)
     }
 
     /// Checks both signatures against the certificate being renewed.
@@ -965,12 +990,7 @@ impl RenewalRequest {
             self.certificate == current.id && self.device == current.device,
             "the request is for another certificate"
         );
-        let message = Self::message(
-            &self.certificate,
-            &self.device,
-            &self.signing_key,
-            &self.recipient,
-        );
+        let message = self.message();
         ensure!(
             current
                 .signing_key
@@ -989,12 +1009,7 @@ impl RenewalRequest {
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Writer::default();
-        out.bytes(&Self::message(
-            &self.certificate,
-            &self.device,
-            &self.signing_key,
-            &self.recipient,
-        ));
+        out.bytes(&self.message());
         out.bytes(&self.old);
         out.bytes(&self.new);
         out.finish()
@@ -1023,12 +1038,16 @@ impl RenewalRequest {
             .str(MAX_RECIPIENT)?
             .parse()
             .map_err(|error: &str| anyhow!("new recipient: {error}"))?;
+        let authenticators = (0..input.count(MAX_AUTHENTICATORS)?)
+            .map(|_| Authenticator::read(&mut input))
+            .collect::<Result<_>>()?;
         input.finish()?;
         Ok(Self {
             certificate,
             device,
             signing_key,
             recipient,
+            authenticators,
             old,
             new,
         })
@@ -1391,18 +1410,29 @@ pub(crate) mod tests {
         let old = SigningKey::generate();
         let current = certificate(&genesis, Role::Writer, Issuer::Admin([1; 16]), &old);
         let new = SigningKey::generate();
-        let request =
-            RenewalRequest::new(&current, &old, &new, pq::Identity::generate().to_public())
-                .unwrap();
+        let request = RenewalRequest::new(
+            &current,
+            &old,
+            &new,
+            pq::Identity::generate().to_public(),
+            Vec::new(),
+        )
+        .unwrap();
         request.verify(&current).unwrap();
         let read = RenewalRequest::decode(&request.encode()).unwrap();
         assert_eq!(read, request);
         let thief = SigningKey::generate();
         assert!(
-            RenewalRequest::new(&current, &thief, &new, request.recipient.clone())
-                .unwrap()
-                .verify(&current)
-                .is_err()
+            RenewalRequest::new(
+                &current,
+                &thief,
+                &new,
+                request.recipient.clone(),
+                Vec::new()
+            )
+            .unwrap()
+            .verify(&current)
+            .is_err()
         );
     }
 
@@ -1413,8 +1443,14 @@ pub(crate) mod tests {
         let new = SigningKey::generate();
         let current = certificate(&genesis, Role::Writer, Issuer::Admin([1; 16]), &old);
         let member = Renewal::Member(
-            RenewalRequest::new(&current, &old, &new, pq::Identity::generate().to_public())
-                .unwrap(),
+            RenewalRequest::new(
+                &current,
+                &old,
+                &new,
+                pq::Identity::generate().to_public(),
+                Vec::new(),
+            )
+            .unwrap(),
         );
         let admin = Renewal::admin(
             certificate(&genesis, Role::Admin, Issuer::Root, &new),

@@ -24,8 +24,8 @@ use anyhow::{Context, Result, anyhow, bail, ensure};
 use zeroize::Zeroizing;
 
 use crate::vault::authority::{
-    Certificate, Endorsement, Genesis, Issuance, IssuedCertificate, Issuer, Lifetime, Renewal,
-    RenewalRequest, Role, SignedGenesis, new_id, quorum,
+    Authenticator, Certificate, Endorsement, Genesis, Issuance, IssuedCertificate, Issuer,
+    Lifetime, Renewal, RenewalRequest, Role, SignedGenesis, new_id, quorum,
 };
 use crate::vault::composite::SigningKey;
 use crate::vault::control::{
@@ -1491,10 +1491,13 @@ impl Device {
         request.verify(&current)?;
         ensure!(current.role != Role::Admin, "admins renew themselves");
         let admin = self.my_certificate()?.clone();
+        let mut authenticators = current.authenticators.clone();
+        merge_authenticators(&mut authenticators, &request.authenticators);
         let certificate = Certificate {
             id: new_id(),
             signing_key: request.signing_key.clone(),
             recipient: request.recipient.clone(),
+            authenticators,
             issuer: Issuer::Admin(admin.id),
             renews: Some(current.id),
             not_before: now,
@@ -1515,13 +1518,18 @@ impl Device {
     ///
     /// Returns an error when this device has no certificate or the write
     /// fails.
-    pub fn request_renewal(&mut self, store: &Store) -> Result<()> {
+    pub fn request_renewal(&mut self, store: &Store, add: Vec<Authenticator>) -> Result<()> {
         self.refuse_if_alarmed()?;
         let current = self.my_certificate()?.clone();
         let signing = SigningKey::generate();
         let identity = pq::Identity::generate();
-        let request =
-            RenewalRequest::new(&current, &self.me.signing, &signing, identity.to_public())?;
+        let request = RenewalRequest::new(
+            &current,
+            &self.me.signing,
+            &signing,
+            identity.to_public(),
+            add,
+        )?;
         let admins: Vec<Id> = self
             .view()
             .values()
@@ -1569,13 +1577,21 @@ impl Device {
     /// # Errors
     ///
     /// Returns an error when this device is not an admin or a write fails.
-    pub fn request_self_renewal(&mut self, store: &Store, now: u64) -> Result<bool> {
+    pub fn request_self_renewal(
+        &mut self,
+        store: &Store,
+        now: u64,
+        add: &[Authenticator],
+    ) -> Result<bool> {
         self.require_admin()?;
         let current = self.my_certificate()?.clone();
         let signing = SigningKey::generate();
         let identity = pq::Identity::generate();
+        let mut authenticators = current.authenticators.clone();
+        merge_authenticators(&mut authenticators, add);
         let certificate = Certificate {
             id: new_id(),
+            authenticators,
             signing_key: signing.verifying_key(),
             recipient: identity.to_public(),
             renews: Some(current.id),
@@ -1873,6 +1889,18 @@ impl Device {
             sent = sent.saturating_add(1);
         }
         Ok(sent)
+    }
+}
+
+/// Adds authenticators not already present, by recipient.
+fn merge_authenticators(into: &mut Vec<Authenticator>, add: &[Authenticator]) {
+    for authenticator in add {
+        if !into
+            .iter()
+            .any(|existing| existing.recipient == authenticator.recipient)
+        {
+            into.push(authenticator.clone());
+        }
     }
 }
 
@@ -2461,7 +2489,7 @@ mod tests {
         let mut laptop = pair(&store, &mut admin, Role::Writer);
         let old = laptop.me().certificate;
 
-        laptop.request_renewal(&store).unwrap();
+        laptop.request_renewal(&store, Vec::new()).unwrap();
         admin.sync(&store).unwrap();
         let requests = admin.renewal_requests();
         assert_eq!(requests.len(), 1);
@@ -2695,7 +2723,7 @@ mod tests {
         let World { _scratch, store } = world();
         let mut admin = create(&store);
         let before = admin.me().certificate;
-        assert!(admin.request_self_renewal(&store, NOW + 100).unwrap());
+        assert!(admin.request_self_renewal(&store, NOW + 100, &[]).unwrap());
         assert_ne!(admin.me().certificate, before);
         assert_eq!(admin.me().retired.len(), 1);
         admin
@@ -2712,7 +2740,7 @@ mod tests {
         let mut laptop = pair(&store, &mut admin, Role::Writer);
         let before = admin.me().certificate;
 
-        assert!(!admin.request_self_renewal(&store, NOW + 100).unwrap());
+        assert!(!admin.request_self_renewal(&store, NOW + 100, &[]).unwrap());
         admin.sync(&store).unwrap();
         assert_eq!(admin.me().certificate, before);
 
@@ -2821,5 +2849,26 @@ mod tests {
         assert_eq!(texts(&reopened), set(&["before", "after", "reply"]));
         assert!(texts(&laptop).contains("reply"));
         assert!(reopened.alarms().is_empty());
+    }
+
+    #[test]
+    fn a_member_adds_an_authenticator_through_its_admin() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        let key = Authenticator::new("blue key", "age1tagpq1example");
+        laptop.request_renewal(&store, vec![key.clone()]).unwrap();
+        admin.sync(&store).unwrap();
+        let requests = admin.renewal_requests();
+        assert_eq!(requests[0].authenticators, vec![key.clone()]);
+        admin.renew(&store, &requests[0], NOW + 5).unwrap();
+        laptop.sync(&store).unwrap();
+        let mine = laptop
+            .me()
+            .certificate
+            .and_then(|id| laptop.certificate(&id))
+            .unwrap();
+        assert_eq!(mine.authenticators, vec![key]);
+        assert!(laptop.alarms().is_empty(), "{:?}", laptop.alarms());
     }
 }

@@ -20,12 +20,13 @@ use age::secrecy::{ExposeSecret, SecretString};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use zeroize::Zeroizing;
 
+use crate::vault::authority::Authenticator;
 use crate::vault::authority::{
     Genesis, Lifetime, Policy, Role, new_id, recovery_identity, root_key, share_commitment,
 };
 use crate::vault::device::{Device, Me};
 use crate::vault::entries::{Changes, Entries};
-use crate::vault::hardware::{Hardware, Prompter};
+use crate::vault::hardware::{Hardware, Pinned, Prompter};
 use crate::vault::home::{self, Home, PRIVATE};
 use crate::vault::local::{self, KdfParams};
 use crate::vault::object::{Hash, Id};
@@ -41,6 +42,8 @@ const STATE: &str = "state.age";
 const KIT: &str = "recovery.age";
 const HARDWARE: &str = "hardware";
 const SECOND: &str = "second.age";
+const PLUGINS: &str = "plugins";
+const ACKNOWLEDGED: &str = "acknowledged";
 const KEYSTORE_SERVICE: &str = "txc vault";
 const CARD_WORDS: usize = 8;
 const SHEETS: u8 = 3;
@@ -615,6 +618,152 @@ impl Synced {
         self.save()?;
         forget_second_factor(&device);
         Ok(())
+    }
+
+    /// Registers the hardware this device just proved it holds as an
+    /// authenticator in its certificate: at once for an admin alone, or on
+    /// approval by another of its owner's devices or, for a member, by an
+    /// admin. Returns whether it is done already.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a write fails.
+    pub fn register_authenticator(&mut self, hardware: &Hardware, nickname: &str) -> Result<bool> {
+        let authenticator = Authenticator::new(nickname, &hardware.recipient);
+        self.acknowledge(&[authenticator.id])?;
+        let admin = self
+            .device
+            .me()
+            .certificate
+            .and_then(|id| self.device.certificate(&id))
+            .is_some_and(|cert| cert.role == Role::Admin);
+        let done = if admin {
+            self.device
+                .request_self_renewal(&self.store, now(), &[authenticator])?
+        } else {
+            self.device
+                .request_renewal(&self.store, vec![authenticator])?;
+            false
+        };
+        self.save()?;
+        Ok(done)
+    }
+
+    /// Approves an admin renewal of this owner, and saves.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there is no such request or the write fails.
+    pub fn approve(&mut self, certificate: &Id) -> Result<()> {
+        self.device.approve(&self.store, certificate)?;
+        self.save()
+    }
+
+    /// Renews a member from its request, and saves.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this device is not an admin or the request
+    /// does not verify.
+    pub fn renew(&mut self, request: &crate::vault::authority::RenewalRequest) -> Result<()> {
+        self.device.renew(&self.store, request, now())?;
+        self.save()
+    }
+
+    /// The plugins pinned on this device, for sealing to authenticators.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file is damaged.
+    pub fn pins(&self) -> Result<Vec<Pinned>> {
+        let path = self.dir.join(PLUGINS);
+        if !home::exists(&path) {
+            return Ok(Vec::new());
+        }
+        let bytes = home::read_private(&path, KEY_LIMIT, PRIVATE)?;
+        let mut input = Reader(&bytes);
+        let pins = (0..input.count(256)?)
+            .map(|_| Pinned::read(&mut input))
+            .collect::<Result<_>>()?;
+        input.finish()?;
+        Ok(pins)
+    }
+
+    /// Pins plugins, replacing any earlier pin of the same name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be written.
+    pub fn add_pins(&self, new: &[Pinned]) -> Result<()> {
+        let mut pins: Vec<Pinned> = self
+            .pins()?
+            .into_iter()
+            .filter(|pin| !new.iter().any(|added| added.name == pin.name))
+            .collect();
+        pins.extend(new.iter().cloned());
+        let mut out = Writer::default();
+        out.count(pins.len());
+        for pin in &pins {
+            pin.write(&mut out);
+        }
+        home::write_atomic(&self.dir.join(PLUGINS), &out.finish(), None)
+    }
+
+    fn acknowledged(&self) -> Result<Vec<Id>> {
+        let path = self.dir.join(ACKNOWLEDGED);
+        if !home::exists(&path) {
+            return Ok(Vec::new());
+        }
+        let bytes = home::read_private(&path, KEY_LIMIT, PRIVATE)?;
+        let mut input = Reader(&bytes);
+        let ids = (0..input.count(100_000)?)
+            .map(|_| input.fixed())
+            .collect::<Result<_>>()?;
+        input.finish()?;
+        Ok(ids)
+    }
+
+    /// Records that the person has seen these authenticators added.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be written.
+    pub fn acknowledge(&self, ids: &[Id]) -> Result<()> {
+        let mut all = self.acknowledged()?;
+        all.extend(
+            ids.iter()
+                .filter(|id| !all.contains(id))
+                .copied()
+                .collect::<Vec<_>>(),
+        );
+        let mut out = Writer::default();
+        out.count(all.len());
+        for id in &all {
+            out.fixed(id);
+        }
+        home::write_atomic(&self.dir.join(ACKNOWLEDGED), &out.finish(), None)
+    }
+
+    /// Authenticators registered to a member that nobody here has
+    /// acknowledged yet: each is a red line until then, so none is added
+    /// quietly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file is damaged.
+    pub fn unacknowledged(&self) -> Result<Vec<(Id, Authenticator)>> {
+        let seen = self.acknowledged()?;
+        Ok(self
+            .device
+            .view()
+            .into_iter()
+            .flat_map(|(device, cert)| {
+                cert.authenticators
+                    .into_iter()
+                    .map(move |authenticator| (device, authenticator))
+            })
+            .filter(|(_, authenticator)| !seen.contains(&authenticator.id))
+            .collect())
     }
 
     /// The hardware holding this device's second factor, if any.

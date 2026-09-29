@@ -556,6 +556,17 @@ pub fn command() -> Command {
                         .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
                 )
                 .subcommand(
+                    Command::new("approve")
+                        .about("Approve renewals and new authenticators waiting for this device")
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault"))
+                        .arg(Arg::new("yes").long("yes").action(ArgAction::SetTrue).help("Approve all without asking")),
+                )
+                .subcommand(
+                    Command::new("ack")
+                        .about("Acknowledge the authenticators status shows as newly added")
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
+                )
+                .subcommand(
                     Command::new("remove")
                         .about("Remove a device; it reads nothing written afterwards")
                         .arg(Arg::new("DEVICE").required(true).help("The device, by the start of its id"))
@@ -675,7 +686,20 @@ pub fn command() -> Command {
                                 .long("identity-plugin")
                                 .value_name("PATH")
                                 .help("The plugin for the identity, rather than the one on PATH now"),
+                        )
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .value_name("NICKNAME")
+                                .help("What to call it where other devices show it (default: security key)"),
                         ),
+                )
+                .subcommand(
+                    Command::new("pin")
+                        .about("Pin a plugin, to seal protected entries to other devices' hardware")
+                        .arg(Arg::new("NAME").required(true).help("The plugin's name: tagpq for age-plugin-tagpq"))
+                        .arg(Arg::new("path").long("path").value_name("PATH").help("Its binary, rather than the one on PATH now"))
+                        .arg(Arg::new("vault").long("vault").value_name("VAULT").help("The synced vault")),
                 ),
         )
         .subcommand(
@@ -2999,6 +3023,7 @@ mod tests {
             "identity-file",
             "recipient-plugin",
             "identity-plugin",
+            "path",
         ];
         walk(&command(), &valued);
     }

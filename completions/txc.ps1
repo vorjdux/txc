@@ -2682,6 +2682,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
+            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -2707,6 +2709,27 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;device;approve' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Approve all without asking')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;device;ack' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
         'txc;vault;device;remove' {
             [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
@@ -2721,6 +2744,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;device;help' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
+            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
@@ -2729,6 +2754,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;device;help;list' {
+            break
+        }
+        'txc;vault;device;help;approve' {
+            break
+        }
+        'txc;vault;device;help;ack' {
             break
         }
         'txc;vault;device;help;remove' {
@@ -2832,6 +2863,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -2841,6 +2873,18 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--identity-file', '--identity-file', [CompletionResultType]::ParameterName, 'The plugin identity file the hardware''s plugin wrote (AGE-PLUGIN-...)')
             [CompletionResult]::new('--recipient-plugin', '--recipient-plugin', [CompletionResultType]::ParameterName, 'The plugin for the recipient, rather than the one on PATH now')
             [CompletionResult]::new('--identity-plugin', '--identity-plugin', [CompletionResultType]::ParameterName, 'The plugin for the identity, rather than the one on PATH now')
+            [CompletionResult]::new('--name', '--name', [CompletionResultType]::ParameterName, 'What to call it where other devices show it (default: security key)')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;hardware;pin' {
+            [CompletionResult]::new('--path', '--path', [CompletionResultType]::ParameterName, 'Its binary, rather than the one on PATH now')
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
@@ -2851,10 +2895,14 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;vault;hardware;help' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'txc;vault;hardware;help;add' {
+            break
+        }
+        'txc;vault;hardware;help;pin' {
             break
         }
         'txc;vault;hardware;help;help' {
@@ -3185,6 +3233,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;help;device' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
+            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             break
         }
@@ -3192,6 +3242,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;vault;help;device;list' {
+            break
+        }
+        'txc;vault;help;device;approve' {
+            break
+        }
+        'txc;vault;help;device;ack' {
             break
         }
         'txc;vault;help;device;remove' {
@@ -3222,9 +3278,13 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;vault;help;hardware' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
             break
         }
         'txc;vault;help;hardware;add' {
+            break
+        }
+        'txc;vault;help;hardware;pin' {
             break
         }
         'txc;vault;help;compare' {
@@ -3991,6 +4051,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;help;vault;device' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve renewals and new authenticators waiting for this device')
+            [CompletionResult]::new('ack', 'ack', [CompletionResultType]::ParameterValue, 'Acknowledge the authenticators status shows as newly added')
             [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
             break
         }
@@ -3998,6 +4060,12 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             break
         }
         'txc;help;vault;device;list' {
+            break
+        }
+        'txc;help;vault;device;approve' {
+            break
+        }
+        'txc;help;vault;device;ack' {
             break
         }
         'txc;help;vault;device;remove' {
@@ -4028,9 +4096,13 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;help;vault;hardware' {
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
             break
         }
         'txc;help;vault;hardware;add' {
+            break
+        }
+        'txc;help;vault;hardware;pin' {
             break
         }
         'txc;help;vault;compare' {

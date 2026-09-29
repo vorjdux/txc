@@ -14,6 +14,7 @@
 
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, IsTerminal, Write};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use age::secrecy::{ExposeSecret, SecretString};
@@ -304,6 +305,21 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             Ok(())
         }
         "list" => list_devices(&vault),
+        "approve" => approve(&mut vault, args.get_flag("yes")),
+        "ack" => {
+            let pending = vault.unacknowledged()?;
+            let ids: Vec<Id> = pending
+                .iter()
+                .map(|(_, authenticator)| authenticator.id)
+                .collect();
+            vault.acknowledge(&ids)?;
+            eprintln!(
+                "Acknowledged {} authenticator{}.",
+                ids.len(),
+                if ids.len() == 1 { "" } else { "s" }
+            );
+            Ok(())
+        }
         "remove" => {
             let prefix = required(args, "DEVICE").to_lowercase();
             let matches: Vec<Id> = vault
@@ -338,6 +354,76 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         }
         other => bail!("unknown device subcommand {other}"),
     }
+}
+
+/// Approves what waits for this device: renewals of this owner's admin, and
+/// members' requests for new keys or new authenticators.
+fn approve(vault: &mut Synced, yes: bool) -> Result<()> {
+    let ask = |question: &str| -> Result<bool> {
+        if yes {
+            Ok(true)
+        } else {
+            prompt::confirm(question, "pass --yes")
+        }
+    };
+    let mut done = 0_usize;
+    let proposals: Vec<crate::vault::authority::Certificate> =
+        vault.device().approvals().into_iter().cloned().collect();
+    for certificate in proposals {
+        let device = data_encoding::HEXLOWER.encode(&certificate.device[..4]);
+        let added: Vec<String> = certificate
+            .authenticators
+            .iter()
+            .map(|authenticator| authenticator.nickname.clone())
+            .collect();
+        let question = format!(
+            "Approve the renewal of your device {device}{}?",
+            if added.is_empty() {
+                String::new()
+            } else {
+                format!(", with {}", added.join(", "))
+            }
+        );
+        if ask(&question)? {
+            vault.approve(&certificate.id)?;
+            done = done.saturating_add(1);
+        }
+    }
+    for request in vault.device().renewal_requests() {
+        let device = data_encoding::HEXLOWER.encode(&request.device[..4]);
+        let added: Vec<String> = request
+            .authenticators
+            .iter()
+            .map(|authenticator| {
+                format!(
+                    "{} ({})",
+                    authenticator.nickname,
+                    data_encoding::HEXLOWER.encode(&authenticator.fingerprint[..4])
+                )
+            })
+            .collect();
+        let question = if added.is_empty() {
+            format!("Renew device {device} with new keys?")
+        } else {
+            format!(
+                "Device {device} asks to add {}. It will be able to open protected entries. Approve?",
+                added.join(", ")
+            )
+        };
+        if ask(&question)? {
+            vault.renew(&request)?;
+            done = done.saturating_add(1);
+        }
+    }
+    eprintln!(
+        "{}",
+        if done == 0 {
+            "Nothing was approved.".to_owned()
+        } else {
+            format!("Approved {done}.")
+        }
+    );
+    Ok(())
 }
 
 fn add_paired(vault: &mut Synced, paired: &Paired, role: Role) -> Result<()> {
@@ -400,6 +486,15 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
                 data_encoding::HEXLOWER.encode(&author[..4])
             ),
         });
+    }
+    for (device, authenticator) in vault.unacknowledged()? {
+        lines.push(format!(
+            "● red     device {} added the authenticator \"{}\" ({})\n          → if that was you: txc vault device ack; if not: txc vault device remove {}",
+            data_encoding::HEXLOWER.encode(&device[..4]),
+            authenticator.nickname,
+            data_encoding::HEXLOWER.encode(&authenticator.fingerprint[..4]),
+            data_encoding::HEXLOWER.encode(&device[..4])
+        ));
     }
     if vault.kit_pending() {
         lines.push(format!(
@@ -587,6 +682,16 @@ pub fn doctor(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
                 ));
                 let device = vault.device();
                 lines.push(format!("devices: {}", device.members().len()));
+                let authenticators: usize = device
+                    .view()
+                    .values()
+                    .map(|cert| cert.authenticators.len())
+                    .sum();
+                lines.push(format!("authenticators: {authenticators}"));
+                lines.push(format!(
+                    "hardware on this device: {}",
+                    vault.hardware()?.is_some()
+                ));
                 lines.push(format!("alarms: {:?}", device.alarms()));
                 lines.push(format!("gaps: {}", device.gaps().len()));
                 lines.push(format!(
@@ -838,8 +943,23 @@ pub fn hardware(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let (verb, args) = sub
         .subcommand()
         .context("clap requires a hardware subcommand")?;
-    ensure!(verb == "add", "unknown hardware subcommand {verb}");
     let name = context.which(args.get_one::<String>("vault"))?;
+    if verb == "pin" {
+        let plugin = required(args, "NAME");
+        let pinned = crate::vault::hardware::Pinned::pin(
+            plugin,
+            args.get_one::<String>("path").map(Path::new),
+        )?;
+        let vault = context.open_quiet(&name)?;
+        vault.add_pins(std::slice::from_ref(&pinned))?;
+        eprintln!(
+            "Pinned {} ({}).",
+            pinned.path.display(),
+            data_encoding::HEXLOWER.encode(&pinned.hash[..8])
+        );
+        return Ok(());
+    }
+    ensure!(verb == "add", "unknown hardware subcommand {verb}");
     let recipient = required(args, "recipient");
     let identity_file = required(args, "identity-file");
     let text = Zeroizing::new(
@@ -871,6 +991,23 @@ pub fn hardware(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         "Your hardware may ask for a touch or its PIN, twice: once to seal, once to prove it opens."
     );
     vault.use_hardware(&hardware, &passphrase, &crate::vault::hardware::Terminal)?;
+    vault.add_pins(&[
+        hardware.recipient_plugin.clone(),
+        hardware.identity_plugin.clone(),
+    ])?;
+    let nickname = args
+        .get_one::<String>("name")
+        .map_or("security key", String::as_str);
+    let registered = vault.register_authenticator(&hardware, nickname)?;
+    eprintln!(
+        "{}",
+        if registered {
+            "It is registered as an authenticator: protected entries can be sealed to it."
+        } else {
+            "It becomes an authenticator once approved: on another of your devices, or by a device \
+             that can add devices, run: txc vault device approve"
+        }
+    );
     // A session holds the old key; it no longer opens this vault.
     let ended = session::end(context.home);
     eprintln!(
