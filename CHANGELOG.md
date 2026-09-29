@@ -59,6 +59,11 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **Look-alike names and addresses.** Entry names that mix Latin with
+  Greek, Cyrillic, Armenian or Cherokee letters in one word are marked
+  "(mixed scripts)" in lists, `show` and the interactive screen, and a web
+  address whose host has letters beyond ASCII is shown in punycode, as
+  `https://xn--pple-43d.com` for an "аpple.com" with a Cyrillic "а".
 - **Root-grade entries.** `txc vault add ENTRY --root-grade` seals an entry
   as `--protect` does, and each release also asks for the passphrase again,
   whatever the session holds; it goes only to a program as a file.

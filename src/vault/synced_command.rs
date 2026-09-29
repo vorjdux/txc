@@ -1992,7 +1992,7 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
                     format!(
                         "{}{}",
                         if view.starred { "★ " } else { "" },
-                        view.names.join(" / ")
+                        crate::vault::model::flagged_name(&view.names.join(" / "))
                     ),
                     kind_of(&view).map_or_else(String::new, |kind| kind.label().to_owned()),
                     if view.conflict {
@@ -2011,7 +2011,10 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             let views = vault.entries()?.list();
             let view = find(&views, &reference.entry)?;
             let mut rows = vec![
-                ["Name".to_owned(), view.names.join(" / ")],
+                [
+                    "Name".to_owned(),
+                    crate::vault::model::flagged_name(&view.names.join(" / ")),
+                ],
                 ["Vault".to_owned(), reference.vault.clone()],
             ];
             if let Some(kind) = kind_of(view) {
@@ -2024,10 +2027,20 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
                 rows.push(["Tags".to_owned(), view.tags.join(", ")]);
             }
             for field in &view.fields {
-                let shown = field
-                    .shown
-                    .as_ref()
-                    .map_or_else(|| MASK.to_owned(), |values| values.join(" / "));
+                let shown = field.shown.as_ref().map_or_else(
+                    || MASK.to_owned(),
+                    |values| {
+                        if field.kind == FieldKind::Origin {
+                            values
+                                .iter()
+                                .map(|value| crate::vault::model::origin_for_display(value))
+                                .collect::<Vec<_>>()
+                                .join(" / ")
+                        } else {
+                            values.join(" / ")
+                        }
+                    },
+                );
                 let conflict = if field.conflict {
                     "  (two versions)"
                 } else {

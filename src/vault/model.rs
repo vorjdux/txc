@@ -827,9 +827,212 @@ pub fn displayable(text: &str) -> String {
     shown
 }
 
+/// The confusable scripts a homograph mixes with Latin.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Script {
+    Latin,
+    Greek,
+    Cyrillic,
+    Armenian,
+    Cherokee,
+}
+
+const fn script_of(c: char) -> Option<Script> {
+    match c {
+        'A'..='Z' | 'a'..='z' | '\u{00C0}'..='\u{024F}' | '\u{1E00}'..='\u{1EFF}' => {
+            Some(Script::Latin)
+        }
+        '\u{0370}'..='\u{03FF}' | '\u{1F00}'..='\u{1FFF}' => Some(Script::Greek),
+        '\u{0400}'..='\u{052F}' | '\u{1C80}'..='\u{1C8F}' | '\u{A640}'..='\u{A69F}' => {
+            Some(Script::Cyrillic)
+        }
+        '\u{0530}'..='\u{058F}' => Some(Script::Armenian),
+        '\u{13A0}'..='\u{13FF}' | '\u{AB70}'..='\u{ABBF}' => Some(Script::Cherokee),
+        _ => None,
+    }
+}
+
+/// Whether a word of the text mixes Latin with a script whose letters look
+/// like it (Greek, Cyrillic, Armenian, Cherokee): "аpple" with a Cyrillic
+/// "а" is flagged, a name written wholly in one script is not.
+#[must_use]
+pub fn mixes_scripts(text: &str) -> bool {
+    text.split(|c: char| !c.is_alphanumeric()).any(|word| {
+        let mut seen: Option<Script> = None;
+        word.chars().filter_map(script_of).any(|script| {
+            let mixed = seen.is_some_and(|first| first != script);
+            seen = seen.or(Some(script));
+            mixed
+        })
+    })
+}
+
+/// A name for display, with a mark when it mixes look-alike scripts.
+#[must_use]
+pub fn flagged_name(name: &str) -> String {
+    if mixes_scripts(name) {
+        format!("{name} (mixed scripts)")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// Punycode (RFC 3492) of one label, without the `xn--` prefix.
+fn punycode(label: &str) -> Option<String> {
+    const BASE: u32 = 36;
+    const T_MIN: u32 = 1;
+    const T_MAX: u32 = 26;
+    fn digit(value: u32) -> Option<char> {
+        match value {
+            0..=25 => char::from_u32(value.checked_add(u32::from(b'a'))?),
+            26..=35 => char::from_u32(value.checked_sub(26)?.checked_add(u32::from(b'0'))?),
+            _ => None,
+        }
+    }
+    fn adapt(delta: u32, points: u32, first: bool) -> Option<u32> {
+        let mut delta = if first { delta / 700 } else { delta / 2 };
+        delta = delta.checked_add(delta.checked_div(points)?)?;
+        let mut step = 0_u32;
+        while delta > ((BASE - T_MIN) * T_MAX) / 2 {
+            delta /= BASE - T_MIN;
+            step = step.checked_add(BASE)?;
+        }
+        step.checked_add(
+            ((BASE - T_MIN + 1).checked_mul(delta)?).checked_div(delta.checked_add(38)?)?,
+        )
+    }
+    let input: Vec<u32> = label.chars().map(u32::from).collect();
+    let mut output: String = label.chars().filter(char::is_ascii).collect();
+    let basic = u32::try_from(output.len()).ok()?;
+    let mut handled = basic;
+    if basic > 0 {
+        output.push('-');
+    }
+    let (mut point, mut delta, mut bias) = (128_u32, 0_u32, 72_u32);
+    let total = u32::try_from(input.len()).ok()?;
+    while handled < total {
+        let next = *input.iter().filter(|code| **code >= point).min()?;
+        delta =
+            delta.checked_add((next.checked_sub(point)?).checked_mul(handled.checked_add(1)?)?)?;
+        point = next;
+        for &code in &input {
+            if code < point {
+                delta = delta.checked_add(1)?;
+            }
+            if code == point {
+                let mut value = delta;
+                let mut step = BASE;
+                loop {
+                    let threshold = if step <= bias {
+                        T_MIN
+                    } else if step >= bias.checked_add(T_MAX)? {
+                        T_MAX
+                    } else {
+                        step.checked_sub(bias)?
+                    };
+                    if value < threshold {
+                        break;
+                    }
+                    let rest = BASE.checked_sub(threshold)?;
+                    output
+                        .push(digit(threshold.checked_add(
+                            (value.checked_sub(threshold)?).checked_rem(rest)?,
+                        )?)?);
+                    value = (value.checked_sub(threshold)?).checked_div(rest)?;
+                    step = step.checked_add(BASE)?;
+                }
+                output.push(digit(value)?);
+                bias = adapt(delta, handled.checked_add(1)?, handled == basic)?;
+                delta = 0;
+                handled = handled.checked_add(1)?;
+            }
+        }
+        delta = delta.checked_add(1)?;
+        point = point.checked_add(1)?;
+    }
+    Some(output)
+}
+
+/// A web address for display: a host name with letters beyond ASCII is
+/// shown in punycode (`xn--...`), as browsers do for suspicious names, so a
+/// look-alike address cannot pass for the real one.
+#[must_use]
+pub fn origin_for_display(url: &str) -> String {
+    let (scheme, rest) = url
+        .split_once("://")
+        .map_or(("", url), |(scheme, rest)| (scheme, rest));
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(end);
+    let (userinfo, host_port) = authority
+        .rsplit_once('@')
+        .map_or(("", authority), |(user, host)| (user, host));
+    let (host, port) = host_port
+        .rsplit_once(':')
+        .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
+        .map_or((host_port, ""), |(host, port)| (host, port));
+    if host.is_ascii() {
+        return url.to_owned();
+    }
+    let labels: Option<Vec<String>> = host
+        .split('.')
+        .map(|label| {
+            if label.is_ascii() {
+                Some(label.to_owned())
+            } else {
+                punycode(&label.to_lowercase()).map(|code| format!("xn--{code}"))
+            }
+        })
+        .collect();
+    let Some(labels) = labels else {
+        return url.to_owned();
+    };
+    let mut shown = String::new();
+    if !scheme.is_empty() {
+        shown.push_str(scheme);
+        shown.push_str("://");
+    }
+    if !userinfo.is_empty() {
+        shown.push_str(userinfo);
+        shown.push('@');
+    }
+    shown.push_str(&labels.join("."));
+    if !port.is_empty() {
+        shown.push(':');
+        shown.push_str(port);
+    }
+    shown.push_str(tail);
+    shown
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn look_alike_names_and_addresses_are_shown_for_what_they_are() {
+        assert!(mixes_scripts("\u{0430}pple"));
+        assert!(mixes_scripts("my p\u{0430}ypal login"));
+        assert!(!mixes_scripts("apple"));
+        assert!(!mixes_scripts("\u{0431}\u{0430}\u{043d}\u{043a}"));
+        assert!(!mixes_scripts("GitHub \u{0431}\u{0430}\u{043d}\u{043a}"));
+        assert!(!mixes_scripts("Café Gmail 账户"));
+        assert_eq!(flagged_name("\u{0430}pple"), "\u{0430}pple (mixed scripts)");
+        // RFC 3492 and IDNA examples.
+        assert_eq!(punycode("bücher").as_deref(), Some("bcher-kva"));
+        assert_eq!(punycode("münchen").as_deref(), Some("mnchen-3ya"));
+        assert_eq!(
+            origin_for_display("https://\u{0430}pple.com/login"),
+            "https://xn--pple-43d.com/login"
+        );
+        assert_eq!(
+            origin_for_display("https://user@bücher.example:8443/a?b"),
+            "https://user@xn--bcher-kva.example:8443/a?b"
+        );
+        assert_eq!(
+            origin_for_display("https://example.com/ü"),
+            "https://example.com/ü"
+        );
+    }
 
     fn entry() -> Entry {
         Entry {

@@ -331,7 +331,10 @@ fn draw_items(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
             ListItem::new(vec![
                 Line::from(vec![
                     Span::styled(star, accent()),
-                    Span::raw(truncate(&entry.name, width.saturating_sub(2))),
+                    Span::raw(truncate(
+                        &crate::vault::model::flagged_name(&entry.name),
+                        width.saturating_sub(2),
+                    )),
                 ]),
                 Line::styled(
                     format!("    {}", truncate(&detail, width.saturating_sub(4))),
@@ -462,8 +465,13 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
                 } else {
                     Style::default()
                 };
+                let value = if field.name == "url" {
+                    crate::vault::model::origin_for_display(value)
+                } else {
+                    value.clone()
+                };
                 lines.push(Line::from(
-                    [head, vec![Span::styled(value.clone(), style)]].concat(),
+                    [head, vec![Span::styled(value, style)]].concat(),
                 ));
             }
             (Sensitivity::Private, _) => {
@@ -515,7 +523,10 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     ));
 
     frame.render_widget(
-        Paragraph::new(lines).block(panel(&entry.name, focused)),
+        Paragraph::new(lines).block(panel(
+            &crate::vault::model::flagged_name(&entry.name),
+            focused,
+        )),
         area,
     );
 }

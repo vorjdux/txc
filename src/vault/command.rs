@@ -2215,6 +2215,7 @@ impl Session {
             } else {
                 entry.name.clone()
             };
+            name = crate::vault::model::flagged_name(&name);
             if entry.favourite {
                 name.push_str(" ★");
             }
@@ -2334,7 +2335,10 @@ impl Session {
         let entry = vault.entry(&reference.entry)?;
 
         let mut rows = vec![
-            ["Name".to_string(), entry.name.clone()],
+            [
+                "Name".to_string(),
+                crate::vault::model::flagged_name(&entry.name),
+            ],
             ["Vault".to_string(), reference.vault.clone()],
             ["Kind".to_string(), entry.kind.label().to_string()],
         ];
@@ -2343,6 +2347,9 @@ impl Session {
         }
         for field in &entry.fields {
             let shown = match entry.plain(&field.name) {
+                Some(value) if field.name == "url" => {
+                    crate::vault::model::origin_for_display(value)
+                }
                 Some(value) => value.to_string(),
                 None => MASK.to_string(),
             };
