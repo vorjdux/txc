@@ -309,6 +309,7 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             );
             add_paired(&mut vault, &paired, role)?;
             eprintln!("Added the device. It finishes joining on its own within a minute.");
+            print_receipt(&vault);
             Ok(())
         }
         "list" => list_devices(&vault),
@@ -346,6 +347,7 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
                 vault.remove_device(device, args.get_flag("wipe"), args.get_flag("key-lost"))?
             };
             eprintln!("Removed the device. Every device changes its keys before it writes again.");
+            print_receipt(&vault);
             if args.get_flag("wipe") {
                 eprintln!("If txc opens the vault on it again, it wipes its keys there.");
             }
@@ -389,6 +391,7 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
                     format!("Device {prefix} may add more devices or security keys now.")
                 }
             );
+            print_receipt(&vault);
             Ok(())
         }
         "forget" => {
@@ -413,6 +416,12 @@ pub fn device(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         }
         other => bail!("unknown device subcommand {other}"),
     }
+}
+
+/// Prints the receipt of what a device just did.
+fn print_receipt(vault: &Synced) {
+    let receipt = data_encoding::HEXLOWER.encode(&vault.device().receipt()[..8]);
+    eprintln!("Receipt: {receipt}; check it later with: txc vault compare --receipt {receipt}");
 }
 
 /// The one device in the vault whose id starts with `prefix`.
@@ -672,6 +681,18 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
             lines.extend(todo.into_iter().map(|item| format!("● yellow  {item}")));
         }
     }
+    if let Some(days) = vault.stale_days() {
+        lines.push(format!(
+            "● yellow  this vault has not heard from your other devices in {days} days → check that the folder is syncing"
+        ));
+    }
+    let waiting = vault.long_waiting()?;
+    if waiting > 0 {
+        lines.push(format!(
+            "● yellow  {waiting} change{} wait for objects that have not arrived → check that the folder is syncing; a device that adds devices sends what is missing",
+            if waiting == 1 { "" } else { "s" }
+        ));
+    }
     let unchanged = stale(vault)?.len();
     if unchanged > 0 {
         lines.push(format!(
@@ -760,6 +781,36 @@ fn digest_of(checkpoint: &Checkpoint) -> String {
 pub fn compare(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let name = context.which(sub.get_one::<String>("VAULT"))?;
     let (mut vault, _) = context.open_confined(&name)?;
+    if let Some(receipt) = sub.get_one::<String>("receipt") {
+        ensure!(
+            receipt.len() >= 8 && receipt.chars().all(|c| c.is_ascii_hexdigit()),
+            "a receipt is at least 8 hexadecimal digits"
+        );
+        let found = vault.device().find_receipt(receipt);
+        let [(kind, author, seq)] = found.as_slice() else {
+            bail!(
+                "this device holds no object with receipt {receipt}: it was not written in this \
+                 vault, or has not arrived here yet"
+            );
+        };
+        let what = match kind {
+            Some(crate::vault::object::Kind::Fact) => "a change to the devices or keys",
+            Some(crate::vault::object::Kind::Certificate) => "a device's certificate",
+            Some(crate::vault::object::Kind::Op) => "a change to entries",
+            Some(crate::vault::object::Kind::Snapshot) => "a snapshot",
+            Some(crate::vault::object::Kind::Checkpoint) => "a checkpoint",
+            Some(crate::vault::object::Kind::SenderKey) => "a key change",
+            Some(_) => "a control object",
+            None => "an object collected since",
+        };
+        eprintln!(
+            "Receipt {receipt}: {what}, written by device {} as number {} of its signed chain. \
+             This device holds it.",
+            data_encoding::HEXLOWER.encode(&author[..4]),
+            seq + 1
+        );
+        return Ok(());
+    }
     vault.checkpoint()?;
     let me = vault.device().me().device;
     let mut latest: BTreeMap<Id, (u64, Id, Checkpoint)> = BTreeMap::new();
@@ -1108,6 +1159,7 @@ pub fn hardware(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     if verb == "remove" {
         let mut vault = context.open_confined(&name)?.0;
         let removed = vault.remove_authenticator(required(args, "KEY"))?;
+        print_receipt(&vault);
         eprintln!(
             "Removed the security key \"{removed}\". Seal protected entries again without it, on \
              a device with another key: txc vault hardware rewrap"
@@ -1694,6 +1746,7 @@ fn reissue(context: &Context<'_>, args: &ArgMatches) -> Result<()> {
          History written before now stays readable with the old sheets until the sync \
          provider's version history of this folder is purged."
     );
+    print_receipt(&vault);
     Ok(())
 }
 
@@ -1849,16 +1902,9 @@ fn stale(vault: &Synced) -> Result<Vec<EntryView>> {
         .list()
         .into_iter()
         .filter(|view| {
-            flagged.get(&view.id).is_some_and(|removed_at| {
-                view.fields
-                    .iter()
-                    .filter(|field| field.kind.is_secret())
-                    .all(|field| {
-                        entries
-                            .written_at(&view.id, &field.id)
-                            .is_none_or(|written| written <= *removed_at)
-                    })
-            })
+            flagged
+                .get(&view.id)
+                .is_some_and(|seen| seen.contains(&entries.secret_version(&view.id)))
         })
         .collect())
 }

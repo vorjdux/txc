@@ -933,6 +933,41 @@ impl Entries {
         self.verified.clone()
     }
 
+    /// A digest of the versions of an entry's secret fields: the live ops
+    /// of each. It changes whenever one of them is written, on any device.
+    #[must_use]
+    pub fn secret_version(&self, entry: &Id) -> Hash {
+        use sha2::Digest;
+        let mut hash = Sha384::new();
+        Digest::update(&mut hash, b"txc/v1/secret-version");
+        for ((_, field, slot), (kind, live, _)) in fold_registers(&self.ops, &self.covered())
+            .range((*entry, [0; 16], Slot::Value)..=(*entry, [0xff; 16], Slot::Label))
+        {
+            if *slot != Slot::Value || !kind.is_secret() {
+                continue;
+            }
+            Digest::update(&mut hash, field);
+            for id in live {
+                Digest::update(&mut hash, id.object);
+                Digest::update(&mut hash, id.index.to_be_bytes());
+            }
+        }
+        hash.finalize().into()
+    }
+
+    /// When each op that waits for objects not read yet was written: its
+    /// dependencies neither arrived nor are covered by the base snapshot
+    /// (rule 7).
+    #[must_use]
+    pub fn waiting(&self) -> Vec<u64> {
+        let covered = self.covered();
+        self.ops
+            .iter()
+            .filter(|(id, _)| !applied(&self.ops, id, &covered))
+            .map(|(_, (op, _))| op.time)
+            .collect()
+    }
+
     /// Whether enough op objects arrived since the base snapshot that a new
     /// one is due (rule 19).
     #[must_use]
@@ -1970,7 +2005,7 @@ mod tests {
             let entries = Entries::read(device).unwrap();
             assert!(entries.verified().contains(&snapshot));
             device
-                .checkpoint(&store, [0; 48], entries.verified())
+                .checkpoint(&store, [0; 48], entries.verified(), NOW, false)
                 .unwrap();
         }
         admin.sync(&store).unwrap();

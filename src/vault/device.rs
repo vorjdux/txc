@@ -1865,7 +1865,7 @@ impl Device {
         &mut self,
         store: &Store,
         removed: Id,
-        entries: Vec<Id>,
+        entries: Vec<(Id, Hash)>,
         now: u64,
     ) -> Result<Hash> {
         self.require_admin()?;
@@ -1878,20 +1878,19 @@ impl Device {
         self.publish_fact(store, fact, &to)
     }
 
-    /// Entries flagged for rotation by valid facts, each with the latest
-    /// time it was flagged.
+    /// Entries flagged for rotation by valid facts, each with the versions
+    /// of its secrets each removal saw.
     #[must_use]
-    pub fn rotation_required(&self) -> BTreeMap<Id, u64> {
+    pub fn rotation_required(&self) -> BTreeMap<Id, BTreeSet<Hash>> {
         let cutoffs = self.cutoffs();
-        let mut out: BTreeMap<Id, u64> = BTreeMap::new();
+        let mut out: BTreeMap<Id, BTreeSet<Hash>> = BTreeMap::new();
         for (fact, held) in self.facts.values() {
-            if let FactKind::RotationRequired { entries, at } = &fact.kind
+            if let FactKind::RotationRequired { entries, .. } = &fact.kind
                 && self.is_admin_device(&held.author)
                 && Self::within(&cutoffs, held)
             {
-                for entry in entries {
-                    let latest = out.entry(*entry).or_insert(*at);
-                    *latest = (*latest).max(*at);
+                for (entry, version) in entries {
+                    out.entry(*entry).or_default().insert(*version);
                 }
             }
         }
@@ -2243,12 +2242,16 @@ impl Device {
         store: &Store,
         build: Hash,
         verified: BTreeSet<Hash>,
+        now: u64,
+        wants_snapshot: bool,
     ) -> Result<Hash> {
         let checkpoint = Checkpoint {
             heads: self.heads.clone(),
             facts: self.fact_hashes(),
             verified,
             build,
+            time: now,
+            wants_snapshot,
         };
         let previous: Vec<Hash> = self
             .content
@@ -2259,9 +2262,89 @@ impl Device {
             .map(|content| content.hash)
             .collect();
         let hash = self.write_content(store, Kind::Checkpoint, checkpoint.encode())?;
+        self.checkpoints
+            .insert(self.me.device, (self.seq.saturating_sub(1), checkpoint));
         // Older checkpoints are superseded and collected like ops.
         self.collect(store, &previous.into_iter().collect())?;
         Ok(hash)
+    }
+
+    /// The hash of the last object this device wrote: the receipt of what
+    /// it just did, which the signed chain of every later object commits
+    /// to.
+    #[must_use]
+    pub const fn receipt(&self) -> Hash {
+        self.prev
+    }
+
+    /// The objects this device holds whose hash starts with `prefix`, as
+    /// (kind, author, place in the author's chain); the kind is `None` for
+    /// one collected since.
+    #[must_use]
+    pub fn find_receipt(&self, prefix: &str) -> Vec<(Option<Kind>, Id, u64)> {
+        let prefix = prefix.to_lowercase();
+        self.positions
+            .iter()
+            .filter(|(_, hash)| {
+                data_encoding::HEXLOWER
+                    .encode(&hash[..])
+                    .starts_with(&prefix)
+            })
+            .map(|((author, seq), hash)| {
+                let kind = self
+                    .held
+                    .get(hash)
+                    .and_then(|signed| Payload::decode(&signed.payload).ok())
+                    .map(|payload| payload.kind)
+                    .or_else(|| self.content.get(hash).map(|content| content.payload.kind));
+                (kind, *author, *seq)
+            })
+            .collect()
+    }
+
+    /// When this device last wrote a checkpoint, by its own clock.
+    #[must_use]
+    pub fn last_checkpoint(&self) -> Option<u64> {
+        self.checkpoints
+            .get(&self.me.device)
+            .map(|(_, checkpoint)| checkpoint.time)
+    }
+
+    /// How long, by `now`, since any other member last wrote a checkpoint;
+    /// `None` alone in the vault, or before any other checkpoint arrived.
+    #[must_use]
+    pub fn view_age(&self, now: u64) -> Option<u64> {
+        let members = self.members();
+        self.checkpoints
+            .iter()
+            .filter(|(device, _)| **device != self.me.device && members.contains(*device))
+            .map(|(_, (_, checkpoint))| checkpoint.time)
+            .max()
+            .map(|newest| now.saturating_sub(newest))
+    }
+
+    /// Whether a current member's latest checkpoint asks for a snapshot
+    /// newer than any this device wrote.
+    #[must_use]
+    pub fn snapshot_wanted(&self) -> bool {
+        let members = self.members();
+        let latest_snapshot = self
+            .content
+            .values()
+            .filter(|content| {
+                content.payload.author == self.me.device && content.payload.kind == Kind::Snapshot
+            })
+            .map(|content| content.payload.seq)
+            .max();
+        // Answered once per request: when the asking device had already
+        // seen this device's latest snapshot and still asks.
+        self.checkpoints.iter().any(|(device, (_, checkpoint))| {
+            let seen = checkpoint.heads.get(&self.me.device).map(|(seq, _)| *seq);
+            *device != self.me.device
+                && members.contains(device)
+                && checkpoint.wants_snapshot
+                && latest_snapshot.is_none_or(|mine| seen.is_some_and(|seen| seen >= mine))
+        })
     }
 
     /// The latest checkpoint read from each device, with its position.
@@ -2934,7 +3017,9 @@ mod tests {
         laptop.sync(&store).unwrap();
         assert!(laptop.members().contains(&phone.me().device));
 
-        laptop.checkpoint(&store, [0; 48], BTreeSet::new()).unwrap();
+        laptop
+            .checkpoint(&store, [0; 48], BTreeSet::new(), NOW, false)
+            .unwrap();
         admin.sync(&store).unwrap();
         assert_eq!(admin.forward_missing(&store).unwrap(), 1);
         laptop.sync(&store).unwrap();
@@ -3335,6 +3420,41 @@ mod tests {
     }
 
     #[test]
+    fn checkpoints_date_the_view_and_carry_a_request_for_a_snapshot() {
+        let World { _scratch, store } = world();
+        let mut admin = create(&store);
+        assert_eq!(admin.view_age(NOW), None, "alone in the vault");
+        let mut laptop = pair(&store, &mut admin, Role::Writer);
+        laptop
+            .checkpoint(&store, [0; 48], BTreeSet::new(), NOW, false)
+            .unwrap();
+        admin.sync(&store).unwrap();
+        assert_eq!(admin.view_age(NOW + 8 * 86_400), Some(8 * 86_400));
+        assert!(!admin.snapshot_wanted());
+
+        laptop
+            .checkpoint(&store, [0; 48], BTreeSet::new(), NOW + 1, true)
+            .unwrap();
+        admin.sync(&store).unwrap();
+        assert!(admin.snapshot_wanted());
+        admin
+            .write_content(&store, Kind::Snapshot, Vec::new())
+            .unwrap();
+        assert!(!admin.snapshot_wanted(), "answered once");
+        laptop.sync(&store).unwrap();
+        laptop
+            .checkpoint(&store, [0; 48], BTreeSet::new(), NOW + 2, true)
+            .unwrap();
+        admin.sync(&store).unwrap();
+        assert!(admin.snapshot_wanted(), "asked again after seeing it");
+        assert_eq!(admin.last_checkpoint(), None);
+        admin
+            .checkpoint(&store, [0; 48], BTreeSet::new(), NOW + 3, false)
+            .unwrap();
+        assert_eq!(admin.last_checkpoint(), Some(NOW + 3));
+    }
+
+    #[test]
     fn a_security_key_added_to_a_certificate_counts_against_the_allowance() {
         let World { _scratch, store } = world();
         let mut admin = create(&store);
@@ -3392,10 +3512,10 @@ mod tests {
 
         let mut phone = pair(&store, &mut admin, Role::Writer);
         admin
-            .require_rotation(&store, phone.me().device, vec![[9; 16]], NOW + 7)
+            .require_rotation(&store, phone.me().device, vec![([9; 16], [1; 48])], NOW + 7)
             .unwrap();
         laptop.sync(&store).unwrap();
-        assert_eq!(laptop.rotation_required().get(&[9; 16]), Some(&(NOW + 7)));
+        assert!(laptop.rotation_required()[&[9; 16]].contains(&[1; 48]));
 
         assert!(!phone.killed());
         admin.kill(&store, phone.me().device).unwrap();

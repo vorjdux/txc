@@ -2337,6 +2337,18 @@ fn root_actions_take_the_sheets_and_forget_leaves_the_folder_alone() {
         &format!("{}\n{}\n{}\n", kit[0], kit[2], kit[3]),
     ));
     assert!(allowed.contains("may add more"), "{allowed}");
+    let receipt = allowed
+        .split("--receipt ")
+        .nth(1)
+        .unwrap()
+        .trim()
+        .to_owned();
+    let checked = stderr(&sandbox.vault(&["compare", "--receipt", &receipt]));
+    assert!(
+        checked.contains("a change to the devices or keys"),
+        "{checked}"
+    );
+    fails(&sandbox.vault(&["compare", "--receipt", "0123456789abcdef"]));
     fails(&sandbox.vault_piped(
         &["device", "allow", &me, "--more", "2"],
         &format!("{}\n{}\nwrong card words\n", kit[0], kit[2]),

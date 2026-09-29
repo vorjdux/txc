@@ -45,10 +45,11 @@ pub enum FactKind {
     /// cutoff.
     AdminRevoke(Cutoff),
     /// Entries the removed device could read and that must be rotated:
-    /// each is flagged until a secret of it is written after `at`.
+    /// each with a digest of its secrets' versions then, and flagged while
+    /// that digest still holds.
     RotationRequired {
-        /// The entries.
-        entries: Vec<Id>,
+        /// The entries and their secrets' versions.
+        entries: Vec<(Id, Hash)>,
         /// When the device was removed, as its admin's clock said.
         at: u64,
     },
@@ -145,8 +146,9 @@ impl Fact {
             FactKind::RotationRequired { entries, at } => {
                 out.u8(6);
                 out.count(entries.len());
-                for entry in entries {
+                for (entry, version) in entries {
                     out.fixed(entry);
+                    out.fixed(version);
                 }
                 out.u64(*at);
             }
@@ -221,7 +223,7 @@ impl Fact {
             5 => FactKind::AdminRevoke(read_cutoff(&mut input)?),
             6 => FactKind::RotationRequired {
                 entries: (0..input.count(MAX_ITEMS)?)
-                    .map(|_| input.fixed())
+                    .map(|_| Ok((input.fixed()?, input.fixed()?)))
                     .collect::<Result<_>>()?,
                 at: input.u64()?,
             },
@@ -458,6 +460,12 @@ pub struct Checkpoint {
     pub verified: BTreeSet<Hash>,
     /// The hash of the txc build that wrote it: an honest-client signal.
     pub build: Hash,
+    /// When it was written, by its writer's clock: for display and
+    /// staleness only, never for the fold.
+    pub time: u64,
+    /// Whether its writer holds changes that have waited too long for
+    /// objects it cannot read, and asks an admin for a snapshot (rule 7).
+    pub wants_snapshot: bool,
 }
 
 impl Checkpoint {
@@ -478,6 +486,8 @@ impl Checkpoint {
             }
         }
         out.fixed(&self.build);
+        out.u64(self.time);
+        out.bool(self.wants_snapshot);
         out.finish()
     }
 
@@ -498,12 +508,16 @@ impl Checkpoint {
             .map(|_| input.fixed())
             .collect::<Result<_>>()?;
         let build = input.fixed()?;
+        let time = input.u64()?;
+        let wants_snapshot = input.bool()?;
         input.finish()?;
         let checkpoint = Self {
             heads,
             facts,
             verified,
             build,
+            time,
+            wants_snapshot,
         };
         ensure!(
             checkpoint.encode() == bytes,
@@ -627,7 +641,7 @@ mod tests {
             FactKind::Kill(cutoff(5)),
             FactKind::AdminRevoke(cutoff(6)),
             FactKind::RotationRequired {
-                entries: vec![[2; 16], [3; 16]],
+                entries: vec![([2; 16], [5; 48]), ([3; 16], [6; 48])],
                 at: 1_700_000_000,
             },
             FactKind::MintAllowance(4),
@@ -725,6 +739,8 @@ mod tests {
             facts: [[3; 48]].into_iter().collect(),
             verified: BTreeSet::new(),
             build: [4; 48],
+            time: 1_700_000_000,
+            wants_snapshot: true,
         };
         assert_eq!(
             Checkpoint::decode(&checkpoint.encode()).unwrap(),

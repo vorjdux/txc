@@ -40,7 +40,8 @@ All notable changes to txc are recorded here. The format follows
   read nothing written afterwards.
 - **Devices, keys and root actions.**
   - `txc vault device remove` flags every entry the removed device could
-    read until its secret changes: `status` says how many, and
+    read until one of its secrets changes, on any device: `status` says how
+    many, and
     `txc vault list VAULT --stale` names them.
   - `device remove` also removes its security keys unless another device
     uses them (`--key-lost` removes those too). `--wipe` tells the device to
@@ -55,6 +56,15 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **Checkpoints, staleness and receipts.** Opening a synced vault writes a
+  checkpoint at least once an hour, dated by the device's clock. When no
+  other device has written one for a week, `status` says so and adding
+  devices, approving, promoting and reissuing are refused until the folder
+  syncs again; removing a device never waits. Changes that have waited three
+  days for objects that never arrived ask, in the checkpoint, for a
+  snapshot, which a device that adds devices writes at its next sync. Device
+  changes and reissues print a receipt, which `txc vault compare --receipt`
+  checks against the signed history.
 
 ## [0.8.0] - 2026-09-29
 

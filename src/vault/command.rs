@@ -800,7 +800,13 @@ pub fn command() -> Command {
         .subcommand(
             Command::new("compare")
                 .about("Show digests to compare with another device, to see you share one history")
-                .arg(Arg::new("VAULT").help("The synced vault")),
+                .arg(Arg::new("VAULT").help("The synced vault"))
+                .arg(
+                    Arg::new("receipt")
+                        .long("receipt")
+                        .value_name("RECEIPT")
+                        .help("Check a receipt a device change printed: what it was, and who signed it"),
+                ),
         )
         .subcommand(
             Command::new("doctor")
@@ -3278,6 +3284,7 @@ mod tests {
             "into",
             "from",
             "more",
+            "receipt",
             "output",
             "folder",
             "name",

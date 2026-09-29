@@ -388,6 +388,12 @@ pub fn recover(folder: &Path, sheets: &[&str], card: &str) -> Result<Recovered> 
     Ok(Recovered { device })
 }
 
+/// How often each device writes a checkpoint at least, when it opens a vault.
+pub const CHECKPOINT_EVERY: u64 = 60 * 60;
+/// How long changes may wait for objects they depend on before this device
+/// asks for a snapshot (rule 7).
+pub const WAIT_LIMIT: u64 = 3 * 24 * 60 * 60;
+
 /// How often one sheet is checked: twice a year, rotating through the three.
 pub const CHECK_EVERY: u64 = 182 * 24 * 60 * 60;
 /// How often a full recovery is rehearsed.
@@ -767,7 +773,27 @@ impl Synced {
         {
             entries.snapshot(&mut self.device, &self.store, now(), RETENTION)?;
         }
+        let admin_writer = self
+            .device
+            .certificate(&self.device.me().certificate.unwrap_or_default())
+            .is_some_and(|cert| cert.role == Role::Admin && cert.role.writes());
+        if admin_writer && self.device.snapshot_wanted() {
+            Entries::read(&self.device)?.snapshot(
+                &mut self.device,
+                &self.store,
+                now(),
+                RETENTION,
+            )?;
+        }
         Entries::read(&self.device)?.collect(&mut self.device, &self.store)?;
+        // Every unlock leaves a checkpoint (rule 14), at most one an hour.
+        let due = self
+            .device
+            .last_checkpoint()
+            .is_none_or(|last| now().saturating_sub(last) >= CHECKPOINT_EVERY);
+        if due && self.device.alarms().is_empty() && self.device.me().certificate.is_some() {
+            self.checkpoint()?;
+        }
         self.save()?;
         Ok(accepted)
     }
@@ -779,10 +805,56 @@ impl Synced {
     ///
     /// Returns an error when the write fails.
     pub fn checkpoint(&mut self) -> Result<()> {
-        let verified = Entries::read(&self.device)?.verified();
+        let entries = Entries::read(&self.device)?;
+        let at = now();
+        let wants = entries
+            .waiting()
+            .iter()
+            .any(|written| at.saturating_sub(*written) >= WAIT_LIMIT);
         self.device
-            .checkpoint(&self.store, build_hash(), verified)?;
+            .checkpoint(&self.store, build_hash(), entries.verified(), at, wants)?;
         self.save()
+    }
+
+    /// How many days this device has heard from none of the others, once
+    /// that is past the vault's staleness threshold (rule 17).
+    #[must_use]
+    pub fn stale_days(&self) -> Option<u64> {
+        let limit = self
+            .genesis()
+            .map_or(7, |genesis| u64::from(genesis.policy.staleness_days))
+            .saturating_mul(24 * 60 * 60);
+        self.device
+            .view_age(now())
+            .filter(|age| *age >= limit)
+            .map(|age| age / (24 * 60 * 60))
+    }
+
+    /// Refuses a change to devices or keys on a stale view: it may miss a
+    /// removal another device made. Removing never waits for this.
+    fn refuse_if_stale(&self) -> Result<()> {
+        if let Some(days) = self.stale_days() {
+            bail!(
+                "this vault has not heard from your other devices in {days} days; check that the \
+                 folder is syncing before adding devices or changing keys"
+            );
+        }
+        Ok(())
+    }
+
+    /// Changes that have waited longer than the limit for objects this
+    /// device cannot read yet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an object is malformed.
+    pub fn long_waiting(&self) -> Result<usize> {
+        let at = now();
+        Ok(Entries::read(&self.device)?
+            .waiting()
+            .iter()
+            .filter(|written| at.saturating_sub(**written) >= WAIT_LIMIT)
+            .count())
     }
 
     /// The entries.
@@ -833,6 +905,7 @@ impl Synced {
     /// Returns an error when this device is not an admin or a write fails.
     pub fn add(&mut self, paired: &Paired, role: Role) -> Result<()> {
         self.device.sync(&self.store)?;
+        self.refuse_if_stale()?;
         let principal = self
             .device
             .certificate(&self.device.me().certificate.unwrap_or_default())
@@ -930,6 +1003,7 @@ impl Synced {
     ///
     /// Returns an error when there is no such request or the write fails.
     pub fn approve(&mut self, certificate: &Id) -> Result<()> {
+        self.refuse_if_stale()?;
         self.device.approve(&self.store, certificate)?;
         self.save()
     }
@@ -941,6 +1015,7 @@ impl Synced {
     /// Returns an error when this device is not an admin or the request
     /// does not verify.
     pub fn renew(&mut self, request: &crate::vault::authority::RenewalRequest) -> Result<()> {
+        self.refuse_if_stale()?;
         self.device.renew(&self.store, request, now())?;
         self.save()
     }
@@ -1169,18 +1244,24 @@ impl Synced {
             .get(&device)
             .map(|certificate| certificate.authenticators.clone())
             .unwrap_or_default();
-        let readable: Vec<Id> = Entries::read(&self.device)?
-            .list()
-            .into_iter()
-            .filter(|view| view.fields.iter().any(|field| field.kind.is_secret()))
-            .map(|view| view.id)
-            .collect();
+        let readable = self.secret_versions()?;
         if wipe {
             self.device.kill(&self.store, device)?;
         } else {
             self.device.remove(&self.store, device)?;
         }
         self.after_removal(device, &view, theirs, readable, key_lost)
+    }
+
+    /// Every entry with a secret, and its secrets' versions now.
+    fn secret_versions(&self) -> Result<Vec<(Id, Hash)>> {
+        let entries = Entries::read(&self.device)?;
+        Ok(entries
+            .list()
+            .into_iter()
+            .filter(|view| view.fields.iter().any(|field| field.kind.is_secret()))
+            .map(|view| (view.id, entries.secret_version(&view.id)))
+            .collect())
     }
 
     /// What follows taking a device out: its entries flagged for rotation,
@@ -1191,7 +1272,7 @@ impl Synced {
         device: Id,
         view: &std::collections::BTreeMap<Id, crate::vault::authority::Certificate>,
         theirs: Vec<Authenticator>,
-        readable: Vec<Id>,
+        readable: Vec<(Id, Hash)>,
         key_lost: bool,
     ) -> Result<Vec<String>> {
         if !readable.is_empty() {
@@ -1292,6 +1373,7 @@ impl Synced {
         let view = self.device.view();
         match action {
             RootAction::Promote(device) => {
+                self.refuse_if_stale()?;
                 let current = view
                     .get(&device)
                     .context("no such device in the vault")?
@@ -1329,11 +1411,7 @@ impl Synced {
                     "remove this device from another one"
                 );
                 let theirs = current.authenticators.clone();
-                let readable: Vec<Id> = Entries::read(&self.device)?
-                    .list()
-                    .into_iter()
-                    .map(|view| view.id)
-                    .collect();
+                let readable = self.secret_versions()?;
                 let mut fact = self.device.admin_revocation(device);
                 fact.endorsements = endorse(&fact.statement())?;
                 self.device.publish_root_fact(&self.store, fact)?;
@@ -1506,6 +1584,7 @@ impl Synced {
                 .is_some_and(|certificate| certificate.role == Role::Admin),
             "only a device that can add devices reissues the sheets"
         );
+        self.refuse_if_stale()?;
         ensure!(
             !self.kit_pending(),
             "the current sheets are not written down yet; write them down first: txc vault \
