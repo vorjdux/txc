@@ -2360,3 +2360,40 @@ fn root_actions_take_the_sheets_and_forget_leaves_the_folder_alone() {
     assert!(!succeeds(&sandbox.vault(&["list"])).contains("personal"));
     assert_eq!(std::fs::read_dir(&folder).unwrap().count(), before);
 }
+
+#[test]
+fn a_stored_totp_seed_gives_the_current_code_in_both_formats() {
+    let sandbox = Sandbox::new("totp");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(
+        &["add", "otp", "--kind", "secret", "--secret-from-stdin"],
+        "JBSWY3DPEHPK3PXP",
+    ));
+    let code = |sandbox: &Sandbox, entry: &str| {
+        let output = sandbox.vault(&["code", entry, "--field", "value"]);
+        let code = succeeds(&output).trim().to_owned();
+        assert!(stderr(&output).contains("Valid for"), "{}", stderr(&output));
+        code
+    };
+    let classic = code(&sandbox, "otp");
+    assert!(
+        classic.len() == 6 && classic.chars().all(|c| c.is_ascii_digit()),
+        "{classic}"
+    );
+    fails(&sandbox.vault(&["code", "otp"]));
+
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["create", "shared", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "shared/otp",
+            "--kind",
+            "secret",
+            "--secret-from-stdin",
+        ],
+        "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&digits=8",
+    ));
+    let synced = code(&sandbox, "shared/otp");
+    assert_eq!(synced.len(), 8, "{synced}");
+}

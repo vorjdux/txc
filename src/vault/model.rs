@@ -156,6 +156,7 @@ static LOGIN: &[FieldSpec] = &[
     FieldSpec::plain("username", "Username"),
     FieldSpec::password("password", "Password"),
     FieldSpec::plain("url", "Website").hinted("https://example.com"),
+    FieldSpec::secret("totp", "One-time code seed").hinted("otpauth://... or base32"),
     NOTES,
 ];
 

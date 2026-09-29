@@ -560,6 +560,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                 Pane::Items => &[
                     ("c", "copy"),
                     ("u", "user"),
+                    ("p", "one-time code"),
                     ("r", "reveal"),
                     ("f", "star"),
                     ("a", "add"),
@@ -573,6 +574,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                 Pane::Details => &[
                     ("↑↓", "field"),
                     ("c", "copy"),
+                    ("p", "one-time code"),
                     ("r", "reveal or read"),
                     ("e", "edit"),
                     ("m", "move"),

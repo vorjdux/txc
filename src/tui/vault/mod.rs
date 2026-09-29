@@ -1022,6 +1022,7 @@ impl VaultScreen {
             KeyCode::End => self.move_item(usize::MAX),
             KeyCode::Enter | KeyCode::Char('c') => self.copy(None),
             KeyCode::Char('u') => self.copy(Some("username".to_string())),
+            KeyCode::Char('p') => self.copy_code(),
             KeyCode::Char('r') => self.reveal(None),
             KeyCode::Char('f') => self.toggle_favourite(),
             KeyCode::Char('e') => self.begin_edit(),
@@ -1074,6 +1075,7 @@ impl VaultScreen {
                     self.reveal(Some(field));
                 }
             }
+            KeyCode::Char('p') => self.copy_code(),
             KeyCode::Char('f') => self.toggle_favourite(),
             KeyCode::Char('e') => self.begin_edit(),
             KeyCode::Char('d') => self.begin_delete(),
@@ -1164,6 +1166,39 @@ impl VaultScreen {
                 self.status = "copying".to_string();
             }
             Err(message) => self.status = message,
+        }
+    }
+
+    /// Copies the current one-time code of the entry's TOTP seed, as
+    /// `txc vault code` shows it; the seed itself never leaves.
+    fn copy_code(&mut self) {
+        let (vault, entry, field, _, _) = match self.target(Some("totp".to_string())) {
+            Ok(target) => target,
+            Err(message) => {
+                self.status = message;
+                return;
+            }
+        };
+        let seed = match self.decrypt(vault, &entry, &field) {
+            Ok(seed) => seed,
+            Err(message) => {
+                self.status = message;
+                return;
+            }
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        match crate::vault::totp::code(seed.expose_secret(), now) {
+            Ok((code, left)) => {
+                self.pending_copy = Some((
+                    SecretString::from(code),
+                    format!("one-time code of {entry}, which changes in {left}s,"),
+                ));
+                self.note_use(vault, &entry);
+                self.status = "copying".to_string();
+            }
+            Err(error) => self.status = format!("{error:#}"),
         }
     }
 
@@ -2470,6 +2505,43 @@ pub(crate) mod tests {
                 .expose_secret(),
             "hunter2"
         );
+    }
+
+    #[test]
+    fn p_copies_the_current_one_time_code_and_never_the_seed() {
+        let (_scratch, mut screen) = unlocked("tui-totp");
+        press(&mut screen, KeyCode::Char('a'));
+        press(&mut screen, KeyCode::Enter);
+        type_text(&mut screen, "GitHub");
+        press(&mut screen, KeyCode::Tab);
+        type_text(&mut screen, "octocat");
+        press(&mut screen, KeyCode::Tab);
+        type_text(&mut screen, "hunter2");
+        press(&mut screen, KeyCode::Tab);
+        press(&mut screen, KeyCode::Tab);
+        type_text(&mut screen, "JBSWY3DPEHPK3PXP");
+        press_ctrl(&mut screen, KeyCode::Char('s'));
+        assert!(screen.dialog.is_none(), "{:?}", screen.status);
+        add_login(&mut screen, "plain", "u", "p");
+
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        press(&mut screen, KeyCode::Char('p'));
+        let (code, what) = screen
+            .pending_copy
+            .take()
+            .unwrap_or_else(|| panic!("no code to copy: {}", screen.status));
+        assert!(
+            code.expose_secret().len() == 6
+                && code.expose_secret().chars().all(|c| c.is_ascii_digit()),
+            "{}",
+            code.expose_secret()
+        );
+        assert!(what.starts_with("one-time code of GitHub"), "{what}");
+        screen.move_item(1);
+        press(&mut screen, KeyCode::Char('p'));
+        assert!(screen.pending_copy.is_none());
+        assert!(screen.status.contains("has no"), "{}", screen.status);
     }
 
     #[test]

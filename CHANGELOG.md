@@ -56,6 +56,11 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **One-time codes.** A login has a `totp` field for its TOTP seed, a base32
+  secret or an `otpauth://` URI, and `txc vault code ENTRY` shows the
+  current code, in either kind of vault (RFC 6238, SHA-1, SHA-256 and
+  SHA-512). In the interactive screen, `p` copies it. The seed itself is
+  never shown; a protected entry's code asks for its security key.
 - **Checkpoints, staleness and receipts.** Opening a synced vault writes a
   checkpoint at least once an hour, dated by the device's clock. When no
   other device has written one for a week, `status` says so and adding

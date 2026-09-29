@@ -3383,6 +3383,18 @@ _arguments "${_arguments_options[@]}" : \
 ':ENTRY -- The entry, in the personal vault unless another is named:_default' \
 && ret=0
 ;;
+(code)
+_arguments "${_arguments_options[@]}" : \
+'--field=[The field holding the seed]:NAME:_default' \
+'--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
+'--passphrase-file=[Read the passphrase from a file only you can read, rather than asking]:PATH:_default' \
+'--write-passphrase-file=[Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.]:PATH:_default' \
+'--no-session[Ask for the passphrase even when a session is open (see\: txc vault unlock)]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':ENTRY -- The entry, in the personal vault unless another is named:_default' \
+&& ret=0
+;;
 (restore)
 _arguments "${_arguments_options[@]}" : \
 '--home=[Use this vault directory rather than the default, as TXC_VAULT_HOME does]:DIR:_default' \
@@ -3961,6 +3973,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(code)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -4929,6 +4945,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (rm)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(code)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -6341,6 +6361,7 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'code:Show the current one-time code of an entry'\''s TOTP seed' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
@@ -6434,6 +6455,11 @@ _txc__subcmd__help__subcmd__vault__subcmd__breach__subcmd__check_commands() {
 _txc__subcmd__help__subcmd__vault__subcmd__breach__subcmd__import_commands() {
     local commands; commands=()
     _describe -t commands 'txc help vault breach import commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__code_commands] )) ||
+_txc__subcmd__help__subcmd__vault__subcmd__code_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc help vault code commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__help__subcmd__vault__subcmd__compare_commands] )) ||
 _txc__subcmd__help__subcmd__vault__subcmd__compare_commands() {
@@ -7286,6 +7312,7 @@ _txc__subcmd__vault_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'code:Show the current one-time code of an entry'\''s TOTP seed' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'mv:Move an entry into another vault, re-sealing its secrets there' \
@@ -7467,6 +7494,11 @@ _txc__subcmd__vault__subcmd__breach__subcmd__help__subcmd__import_commands() {
 _txc__subcmd__vault__subcmd__breach__subcmd__import_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault breach import commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__code_commands] )) ||
+_txc__subcmd__vault__subcmd__code_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault code commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__compare_commands] )) ||
 _txc__subcmd__vault__subcmd__compare_commands() {
@@ -7719,6 +7751,7 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'resolve:Show the two versions of an entry edited on two devices at once, and keep one' \
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
+'code:Show the current one-time code of an entry'\''s TOTP seed' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
@@ -7813,6 +7846,11 @@ _txc__subcmd__vault__subcmd__help__subcmd__breach__subcmd__check_commands() {
 _txc__subcmd__vault__subcmd__help__subcmd__breach__subcmd__import_commands() {
     local commands; commands=()
     _describe -t commands 'txc vault help breach import commands' commands "$@"
+}
+(( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__code_commands] )) ||
+_txc__subcmd__vault__subcmd__help__subcmd__code_commands() {
+    local commands; commands=()
+    _describe -t commands 'txc vault help code commands' commands "$@"
 }
 (( $+functions[_txc__subcmd__vault__subcmd__help__subcmd__compare_commands] )) ||
 _txc__subcmd__vault__subcmd__help__subcmd__compare_commands() {

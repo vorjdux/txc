@@ -913,6 +913,24 @@ pub fn command() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("code")
+                .about("Show the current one-time code of an entry's TOTP seed")
+                .long_about(
+                    "Show the current one-time code of an entry's TOTP seed.\n\n\
+                     The seed, a base32 secret or an otpauth:// URI, is kept in a secret field, \
+                     named totp by default (txc vault edit ENTRY --secret-field totp). Only the \
+                     code is shown, never the seed.",
+                )
+                .arg(reference())
+                .arg(
+                    Arg::new("field")
+                        .long("field")
+                        .value_name("NAME")
+                        .default_value("totp")
+                        .help("The field holding the seed"),
+                ),
+        )
+        .subcommand(
             Command::new("restore")
                 .about("Bring back an entry removed from a synced vault in the last 30 days")
                 .long_about(
@@ -1285,6 +1303,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
             synced_command::migrate(&context.synced(), &keyring, sub)
         }
         "list" | "add" | "show" | "copy" | "edit" | "rm" | "restore" | "grant" | "favourite"
+        | "code"
             if context.names_synced(name, sub) =>
         {
             synced_command::entry(&context.synced(), name, sub)
@@ -1313,6 +1332,7 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "show" => context.show(sub),
         "favourite" => context.favourite(sub),
         "copy" => context.copy(sub),
+        "code" => context.code(sub),
         "edit" => context.edit(sub),
         "rm" => context.remove(sub),
         "restore" => anyhow::bail!(
@@ -1332,6 +1352,17 @@ pub fn run(matches: &ArgMatches) -> Result<()> {
         "redeem" => context.redeem(sub),
         other => unreachable!("clap accepted an unknown subcommand {other}"),
     }
+}
+
+/// Prints the current code of a TOTP seed, and how long it lasts.
+pub(crate) fn show_code(seed: &str) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let (code, left) = crate::vault::totp::code(seed, now)?;
+    output(&code)?;
+    eprintln!("Valid for {left} more seconds.");
+    Ok(())
 }
 
 /// Overwrites a file once with zeros, flushes it, and deletes it.
@@ -2332,6 +2363,18 @@ impl Session {
             .map_err(|error| anyhow!("{error}; use --print to send it to a pipe instead"))?;
         drop(secret);
         wait_then_clear(held, seconds, &format!("{label} of {reference}"))
+    }
+
+    fn code(&self, sub: &ArgMatches) -> Result<()> {
+        let reference: Reference = required(sub, "ENTRY").parse()?;
+        let field = required(sub, "field");
+        let keyring = self.unlock()?;
+        let vault = keyring.open(&reference.vault)?;
+        let entry_name = vault.entry(&reference.entry)?.name.clone();
+        let seed = vault.reveal(&keyring, &entry_name, field)?;
+        drop(vault);
+        drop(keyring);
+        show_code(seed.expose_secret())
     }
 
     fn edit(&self, sub: &ArgMatches) -> Result<()> {

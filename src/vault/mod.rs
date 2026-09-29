@@ -79,6 +79,7 @@ pub mod synced;
 pub mod synced_command;
 pub mod synced_model;
 pub mod template;
+pub mod totp;
 mod trust;
 pub mod wire;
 

@@ -2101,6 +2101,20 @@ pub fn entry(context: &Context<'_>, verb: &str, sub: &ArgMatches) -> Result<()> 
             Ok(())
         }
         "grant" => grant(context, sub),
+        "code" => {
+            let reference: Reference = required(sub, "ENTRY").parse()?;
+            // A protected seed needs its security key, whose plugin
+            // confinement shuts out.
+            let vault = context.open(&reference.vault)?;
+            let seed = reveal_to(
+                &vault,
+                &reference.entry,
+                Some(required(sub, "field")),
+                Channel::Code,
+            )?;
+            drop(vault);
+            crate::vault::command::show_code(seed.expose_secret())
+        }
         other => bail!("{other} is not available for synced vaults yet"),
     }
 }
@@ -2248,6 +2262,9 @@ pub enum Channel {
     File,
     /// A grant for a machine.
     Grant,
+    /// A one-time code derived from a TOTP seed; the seed itself is never
+    /// shown.
+    Code,
 }
 
 /// One field's single value, decrypted, for one channel: the named field,
@@ -2269,7 +2286,7 @@ pub fn reveal_to(
     let view = find(&views, entry)?;
     let protected = matches!(view.sensitivity, Sensitivity::High | Sensitivity::RootGrade);
     ensure!(
-        !protected || channel == Channel::File,
+        !protected || matches!(channel, Channel::File | Channel::Code),
         "{entry} is protected: it goes only to a program as a file, as in \
          txc vault run --set NAME=txc+file://{}/{entry}",
         vault.name
