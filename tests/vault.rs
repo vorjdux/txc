@@ -1557,10 +1557,12 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
     assert_eq!(status.lines().count(), 2, "{status}");
     if cfg!(target_os = "linux") {
         // Landlock and seccomp are both in place here, so --all adds only
-        // that no security key holds this device's keys.
+        // that no security key holds this device's keys, and how many
+        // devices this admin may still add.
         let all = succeeds(&sandbox.vault(&["status", "--all"]));
-        assert_eq!(all.lines().count(), 3, "{all}");
+        assert_eq!(all.lines().count(), 4, "{all}");
         assert!(all.contains("no security key"), "{all}");
+        assert!(all.contains("has added 0 of 4"), "{all}");
     }
 
     succeeds(&sandbox.vault_piped(
@@ -2429,4 +2431,39 @@ fn a_rotation_keeps_both_values_until_it_is_committed_or_aborted() {
     succeeds(&sandbox.vault(&["rotate", "db", "--generate"]));
     succeeds(&sandbox.vault(&["rotate", "db", "--abort"]));
     assert_eq!(succeeds(&sandbox.vault(&["copy", "--print", "db"])), "new");
+}
+
+#[test]
+fn a_yellow_line_snoozes_for_a_month_and_unlock_reminds_once_a_day() {
+    let sandbox = Sandbox::new("synced-snooze");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("recovery sheets not written down"),
+        "{status}"
+    );
+
+    let first = stderr(&sandbox.vault(&["unlock"]));
+    assert!(
+        first.contains("recovery sheets not written down"),
+        "unlock reminds: {first}"
+    );
+    let again = stderr(&sandbox.vault(&["unlock"]));
+    assert!(
+        !again.contains("recovery sheets"),
+        "at most once a day: {again}"
+    );
+    succeeds(&sandbox.vault(&["lock"]));
+
+    let snoozed = stderr(&sandbox.vault(&["status", "--snooze"]));
+    assert!(snoozed.contains("Snoozed 1 yellow line"), "{snoozed}");
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(!status.contains("recovery sheets"), "{status}");
+    let all = succeeds(&sandbox.vault(&["status", "--all"]));
+    assert!(
+        all.contains("recovery sheets not written down") && all.contains("snoozed until"),
+        "{all}"
+    );
+    assert!(all.contains("has added 0 of 4"), "{all}");
 }

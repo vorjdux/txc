@@ -47,6 +47,8 @@ const SECOND: &str = "second.age";
 const PLUGINS: &str = "plugins";
 const ACKNOWLEDGED: &str = "acknowledged";
 const CHECKS: &str = "checks";
+const SNOOZED: &str = "snoozed";
+const REMINDED: &str = "reminded";
 const KEYSTORE_SERVICE: &str = "txc vault";
 const CARD_WORDS: usize = 8;
 const SHEETS: u8 = 3;
@@ -521,6 +523,8 @@ fn wipe(dir: &Path, device: &Id) {
         HARDWARE,
         KIT,
         CHECKS,
+        SNOOZED,
+        REMINDED,
         PLUGINS,
         ACKNOWLEDGED,
         FOLDER,
@@ -533,6 +537,78 @@ fn wipe(dir: &Path, device: &Id) {
         }
     }
     fs::remove_dir(dir).ok();
+}
+
+/// How long a yellow status line stays snoozed.
+pub const SNOOZE_FOR: u64 = 30 * 24 * 60 * 60;
+
+/// The key a status line is snoozed by: its text, so a line that changes,
+/// as a count going up, shows again.
+#[must_use]
+pub fn line_key(line: &str) -> String {
+    hex(&crate::vault::crypto::sha256(&[line.as_bytes()])[..8])
+}
+
+/// The status lines snoozed on this device and until when, expired ones
+/// left out.
+///
+/// # Errors
+///
+/// Returns an error when the file exists but cannot be read.
+pub fn snoozed(home: &Home, name: &str) -> Result<std::collections::BTreeMap<String, u64>> {
+    let path = dir(home, name).join(SNOOZED);
+    if !home::exists(&path) {
+        return Ok(std::collections::BTreeMap::new());
+    }
+    let bytes = home::read_private(&path, 64 * 1024, PRIVATE)?;
+    let at = now();
+    Ok(String::from_utf8_lossy(&bytes)
+        .lines()
+        .filter_map(|line| {
+            let (key, until) = line.split_once(' ')?;
+            let until: u64 = until.parse().ok()?;
+            (until > at).then(|| (key.to_owned(), until))
+        })
+        .collect())
+}
+
+/// Snoozes status lines, by their keys, until `until`.
+///
+/// # Errors
+///
+/// Returns an error when the write fails.
+pub fn snooze(home: &Home, name: &str, keys: &[String], until: u64) -> Result<()> {
+    let mut all = snoozed(home, name)?;
+    for key in keys {
+        all.insert(key.clone(), until);
+    }
+    let text = all
+        .iter()
+        .map(|(key, until)| format!("{key} {until}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    home::write_atomic(&dir(home, name).join(SNOOZED), text.as_bytes(), None)
+}
+
+/// When this device last reminded of a vault's yellow lines at unlock.
+#[must_use]
+pub fn reminded(home: &Home, name: &str) -> Option<u64> {
+    home::read_private(&dir(home, name).join(REMINDED), 64, PRIVATE)
+        .ok()
+        .and_then(|bytes| String::from_utf8_lossy(&bytes).trim().parse().ok())
+}
+
+/// Records a reminder at unlock.
+///
+/// # Errors
+///
+/// Returns an error when the write fails.
+pub fn record_reminded(home: &Home, name: &str, at: u64) -> Result<()> {
+    home::write_atomic(
+        &dir(home, name).join(REMINDED),
+        at.to_string().as_bytes(),
+        None,
+    )
 }
 
 /// The sync folder a synced vault on this device reads.

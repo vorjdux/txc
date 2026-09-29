@@ -59,6 +59,12 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **A quieter status.** `txc vault status --snooze` hides the yellow lines
+  shown now for 30 days (a line that changes shows again, and red lines are
+  never snoozed); `status --all` lists them with their date, and how many
+  devices and security keys each admin has added of those it may.
+  `txc vault unlock` shows each synced vault's red lines every time and its
+  yellow ones at most once a day.
 - **Swap, X11 and the screen lock.** Where swap or the hibernation target is
   not encrypted (Linux: not on dm-crypt, nor zram), protected entries refuse
   to release and `status` says why; macOS swap is always encrypted, and

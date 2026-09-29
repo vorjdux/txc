@@ -681,7 +681,13 @@ pub fn command() -> Command {
                     Arg::new("all")
                         .long("all")
                         .action(ArgAction::SetTrue)
-                        .help("Also show what this system cannot protect, and the lines folded into one"),
+                        .help("Also show what this system cannot protect, the lines folded into one, and snoozed lines"),
+                )
+                .arg(
+                    Arg::new("snooze")
+                        .long("snooze")
+                        .action(ArgAction::SetTrue)
+                        .help("Hide the yellow lines shown now for 30 days; red lines always show"),
                 ),
         )
         .subcommand(
@@ -1954,6 +1960,9 @@ impl Session {
             std::time::Duration::from_secs(minutes.saturating_mul(60)),
             std::time::Duration::from_secs(hours.saturating_mul(3600)),
         )?;
+        for (name, kek) in &contents.synced {
+            self.remind(name, kek.clone());
+        }
         eprintln!(
             "Unlocked. The session ends after {} minutes without use, after {} hours at most, \
              when the computer sleeps, or with: txc vault lock",
@@ -1961,6 +1970,38 @@ impl Session {
             opened.max.as_secs() / 3600
         );
         Ok(())
+    }
+
+    /// At unlock, what a synced vault needs: its red lines every time, its
+    /// yellow ones at most once a day (study section 19). Best effort: a
+    /// vault that does not open here says nothing.
+    fn remind(&self, name: &str, kek: zeroize::Zeroizing<[u8; 32]>) {
+        let Ok(mut vault) = Synced::open_with(&self.home, name, kek) else {
+            return;
+        };
+        if vault.sync().is_err() {
+            return;
+        }
+        let Ok(lines) = synced_command::status_lines(&self.home, &vault, None) else {
+            return;
+        };
+        let now = synced::now();
+        let yellow_due = synced::reminded(&self.home, name)
+            .is_none_or(|last| now.saturating_sub(last) >= 24 * 60 * 60);
+        let shown: Vec<&String> = lines
+            .iter()
+            .filter(|line| line.starts_with("● red") || yellow_due)
+            .collect();
+        if shown.is_empty() {
+            return;
+        }
+        eprintln!("The vault \"{name}\":");
+        for line in shown {
+            eprintln!("{line}");
+        }
+        if yellow_due && lines.iter().any(|line| line.starts_with("● yellow")) {
+            synced::record_reminded(&self.home, name, now).ok();
+        }
     }
 
     /// Unlocks the write key, asking for its own passphrase. A reader-only home

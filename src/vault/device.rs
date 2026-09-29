@@ -2302,6 +2302,23 @@ impl Device {
             .collect()
     }
 
+    /// Each admin in the view with the additions it made and may make:
+    /// devices and security keys (study section 5).
+    #[must_use]
+    pub fn mint_budget(&self) -> Vec<(Id, u64, u64)> {
+        self.view()
+            .into_iter()
+            .filter(|(_, certificate)| certificate.role == Role::Admin)
+            .map(|(device, _)| {
+                (
+                    device,
+                    self.adds_by(&device, u64::MAX),
+                    self.allowance(&device),
+                )
+            })
+            .collect()
+    }
+
     /// When this device last wrote a checkpoint, by its own clock.
     #[must_use]
     pub fn last_checkpoint(&self) -> Option<u64> {

@@ -599,6 +599,25 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let name = context.which(sub.get_one::<String>("VAULT"))?;
     let (mut vault, confinement) = context.open_confined(&name)?;
     vault.checkpoint()?;
+    if sub.get_flag("snooze") {
+        let keys: Vec<String> = status_lines(context.home, &vault, None)?
+            .iter()
+            .filter(|line| line.starts_with("● yellow"))
+            .map(|line| synced::line_key(line))
+            .collect();
+        synced::snooze(
+            context.home,
+            &name,
+            &keys,
+            now().saturating_add(synced::SNOOZE_FOR),
+        )?;
+        eprintln!(
+            "Snoozed {} yellow line{} for 30 days; txc vault status {name} --all still shows them. \
+             Red lines are never snoozed.",
+            keys.len(),
+            if keys.len() == 1 { "" } else { "s" }
+        );
+    }
     let mut lines = status_lines(
         context.home,
         &vault,
@@ -761,6 +780,14 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
         ),
         _ => {}
     }
+    if all.is_some() {
+        for (device, used, allowed) in vault.device().mint_budget() {
+            lines.push(format!(
+                "● green   device {} has added {used} of {allowed} devices and security keys it may add",
+                data_encoding::HEXLOWER.encode(&device[..4])
+            ));
+        }
+    }
     let filter_path = home.root().join(crate::vault::breach::FILE_NAME);
     if let Ok(mut filter) = crate::vault::breach::Filter::open(&filter_path) {
         let found = breached(vault, &mut filter)?.len();
@@ -769,6 +796,20 @@ pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> R
                 "● yellow  {found} password{} in the breach list  → txc vault breach check {name}",
                 if found == 1 { " is" } else { "s are" }
             ));
+        }
+    }
+    // A snoozed yellow line leaves the screen for 30 days; --all lists it
+    // with its date. Red lines are never snoozed.
+    let snoozed = synced::snoozed(home, name)?;
+    if all.is_none() {
+        lines.retain(|line| {
+            !(line.starts_with("● yellow") && snoozed.contains_key(&synced::line_key(line)))
+        });
+    } else {
+        for line in &mut lines {
+            if let Some(until) = snoozed.get(&synced::line_key(line)) {
+                *line = format!("{line}  (snoozed until {})", date_of(*until));
+            }
         }
     }
     Ok(lines)

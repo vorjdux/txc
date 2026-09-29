@@ -1529,7 +1529,8 @@ complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcomman
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l passphrase-file -d 'Read the passphrase from a file only you can read, rather than asking' -r
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l write-passphrase-file -d 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.' -r
-complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l all -d 'Also show what this system cannot protect, and the lines folded into one'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l all -d 'Also show what this system cannot protect, the lines folded into one, and snoozed lines'
+complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l snooze -d 'Hide the yellow lines shown now for 30 days; red lines always show'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -l no-session -d 'Ask for the passphrase even when a session is open (see: txc vault unlock)'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from status" -s h -l help -d 'Print help'
 complete -c txc -n "__fish_txc_using_subcommand vault; and __fish_seen_subcommand_from ssh-ca" -l home -d 'Use this vault directory rather than the default, as TXC_VAULT_HOME does' -r

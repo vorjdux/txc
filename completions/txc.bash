@@ -13063,7 +13063,7 @@ _txc() {
             return 0
             ;;
         txc__subcmd__vault__subcmd__status)
-            opts="-h --all --no-session --home --passphrase-file --write-passphrase-file --help"
+            opts="-h --all --snooze --no-session --home --passphrase-file --write-passphrase-file --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
