@@ -64,6 +64,8 @@ enum Request {
         name: String,
     },
     Sync,
+    Status,
+    Classes,
 }
 
 /// What the keyholder answers.
@@ -72,6 +74,8 @@ enum Response {
     Done,
     Entries(Vec<Entry>),
     Secret(String),
+    Lines(Vec<String>),
+    Classes(Vec<(String, String)>),
     Failed(String),
 }
 
@@ -204,6 +208,8 @@ fn answer(
             synced_model::remove(vault, &name)?;
             Response::Done
         }
+        Request::Status => Response::Lines(synced_command::status_lines(home, vault, None)?),
+        Request::Classes => Response::Classes(synced_model::classes(vault)?),
         Request::Sync => {
             vault.sync()?;
             Response::Done
@@ -449,6 +455,33 @@ impl Holder {
         self.done(Request::Remove {
             name: name.to_owned(),
         })
+    }
+
+    /// What needs the person, as `txc vault status` shows it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the keyholder fails.
+    pub fn status(&mut self) -> Result<Vec<String>> {
+        match self.ask(Request::Status)? {
+            Response::Lines(lines) => Ok(lines),
+            Response::Failed(message) => Err(anyhow!("{message}")),
+            _ => bail!("the keyholder answered out of turn"),
+        }
+    }
+
+    /// Each entry's class, by name, for entries that are not normal:
+    /// `protected` or `operation-only`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the keyholder fails.
+    pub fn classes(&mut self) -> Result<Vec<(String, String)>> {
+        match self.ask(Request::Classes)? {
+            Response::Classes(classes) => Ok(classes),
+            Response::Failed(message) => Err(anyhow!("{message}")),
+            _ => bail!("the keyholder answered out of turn"),
+        }
     }
 
     /// Reads what other devices wrote.

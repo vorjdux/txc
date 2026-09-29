@@ -74,6 +74,32 @@ pub fn entries(vault: &Synced) -> Result<Vec<Entry>> {
     Ok(out)
 }
 
+/// The entries that are not normal, by name: `protected` for high and
+/// root-grade ones, `operation-only` for keys used only inside txc.
+///
+/// # Errors
+///
+/// Returns an error when an object is malformed.
+pub fn classes(vault: &Synced) -> Result<Vec<(String, String)>> {
+    use crate::vault::entries::Sensitivity;
+    Ok(vault
+        .entries()?
+        .list()
+        .into_iter()
+        .filter_map(|view| {
+            let class = match view.sensitivity {
+                Sensitivity::Normal => return None,
+                Sensitivity::OperationOnly => "operation-only",
+                Sensitivity::High | Sensitivity::RootGrade => "protected",
+            };
+            Some((
+                view.names.first().cloned().unwrap_or_default(),
+                class.to_owned(),
+            ))
+        })
+        .collect())
+}
+
 fn find<'a>(views: &'a [EntryView], name: &str) -> Result<&'a EntryView> {
     let found: Vec<&EntryView> = views
         .iter()

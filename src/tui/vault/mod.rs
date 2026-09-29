@@ -113,6 +113,31 @@ pub struct LoadedVault {
 pub struct SyncedLoaded {
     holder: Holder,
     entries: Vec<Entry>,
+    /// Entries that are not normal, by name: protected or operation-only.
+    classes: std::collections::BTreeMap<String, String>,
+    /// What needs the person, as `txc vault status` shows it.
+    status: Vec<String>,
+}
+
+impl SyncedLoaded {
+    fn new(holder: Holder) -> anyhow::Result<Self> {
+        let mut loaded = Self {
+            holder,
+            entries: Vec::new(),
+            classes: std::collections::BTreeMap::new(),
+            status: Vec::new(),
+        };
+        loaded.refresh()?;
+        Ok(loaded)
+    }
+
+    /// Reads the entries, their classes and the status lines again.
+    fn refresh(&mut self) -> anyhow::Result<()> {
+        self.entries = self.holder.entries()?;
+        self.classes = self.holder.classes()?.into_iter().collect();
+        self.status = self.holder.status()?;
+        Ok(())
+    }
 }
 
 impl LoadedVault {
@@ -139,12 +164,8 @@ impl LoadedVault {
     }
 
     fn synced(name: String, result: Result<Holder, String>) -> Self {
-        let loaded = result.and_then(|mut holder| {
-            holder
-                .entries()
-                .map(|entries| SyncedLoaded { holder, entries })
-                .map_err(|error| format!("{error:#}"))
-        });
+        let loaded = result
+            .and_then(|holder| SyncedLoaded::new(holder).map_err(|error| format!("{error:#}")));
         match loaded {
             Ok(synced) => Self {
                 name,
@@ -427,6 +448,35 @@ impl VaultScreen {
         self.keyring.as_ref().map(Keyring::public_key)
     }
 
+    /// What needs the person in each synced vault, as `txc vault status`
+    /// shows it: the vault's name and the line.
+    #[must_use]
+    pub fn status_lines(&self) -> Vec<(&str, &str)> {
+        self.vaults
+            .iter()
+            .filter_map(|vault| {
+                vault
+                    .synced
+                    .as_ref()
+                    .map(|synced| (vault.name.as_str(), synced))
+            })
+            .flat_map(|(name, synced)| synced.status.iter().map(move |line| (name, line.as_str())))
+            .collect()
+    }
+
+    /// An entry's class in a synced vault, when it is not normal:
+    /// `protected` or `operation-only`.
+    #[must_use]
+    pub fn class_of(&self, vault: usize, entry: &str) -> Option<&str> {
+        self.vaults
+            .get(vault)?
+            .synced
+            .as_ref()?
+            .classes
+            .get(entry)
+            .map(String::as_str)
+    }
+
     /// The vaults, while unlocked.
     #[must_use]
     pub fn vaults(&self) -> &[LoadedVault] {
@@ -641,7 +691,7 @@ impl VaultScreen {
         if self.home.is_err() {
             return None;
         }
-        if !self.has_identity() {
+        if !self.has_anything() {
             return Some("txc vault init".to_string());
         }
         if !self.is_unlocked() {
@@ -649,13 +699,22 @@ impl VaultScreen {
         }
         if let Some((_, vault)) = self.problem() {
             return Some(if vault.untrusted {
-                format!("txc vault trust {}", vault.name)
+                format!("txc vault advanced trust {}", vault.name)
             } else {
                 format!("txc vault list {}", vault.name)
             });
         }
         if let Some((vault, entry)) = self.selected() {
             let reference = shell_word(&format!("{}/{}", self.vaults[vault].name, entry.name));
+            match self.class_of(vault, &entry.name) {
+                Some("protected") => {
+                    return Some(format!(
+                        "txc vault run --set SECRET=txc+file://{reference} -- <program>"
+                    ));
+                }
+                Some(_) => return Some("txc vault ssh <host>".to_string()),
+                None => {}
+            }
             let field = entry
                 .fields
                 .get(self.field_index)
@@ -672,6 +731,7 @@ impl VaultScreen {
             Section::Recent => "txc vault list --recent".to_string(),
             Section::Kind(kind) => format!("txc vault list --kind {}", kind.id()),
             Section::Vault(index) => format!("txc vault list {}", self.vaults[index].name),
+            Section::All if !self.status_lines().is_empty() => "txc vault status".to_string(),
             Section::All => "txc vault add <name> --generate".to_string(),
         })
     }
@@ -1181,10 +1241,7 @@ impl VaultScreen {
                 ),
             };
             result.map_err(|error| format!("{error:#}"))?;
-            synced.entries = synced
-                .holder
-                .entries()
-                .map_err(|error| format!("{error:#}"))?;
+            synced.refresh().map_err(|error| format!("{error:#}"))?;
             return Ok(());
         }
         let change = |opened: &mut Opened| match edit {
@@ -1232,6 +1289,12 @@ impl VaultScreen {
 
     /// Opens the new-vault dialog, unlocking the write key first.
     fn begin_create(&mut self) {
+        if !self.has_identity() {
+            self.status =
+                "make a synced vault with: txc vault create <name> --folder <sync folder>"
+                    .to_string();
+            return;
+        }
         if let Err(message) = self.require_write_key() {
             self.status = message;
             return;
@@ -1685,8 +1748,9 @@ impl VaultScreen {
             .get_mut(vault)
             .and_then(|loaded| loaded.synced.as_mut())
         {
-            if let Ok(entries) = synced.holder.sync().and_then(|()| synced.holder.entries()) {
-                synced.entries = entries;
+            // Best effort: what is shown stays as it was when this fails.
+            if synced.holder.sync().is_ok() {
+                synced.refresh().ok();
             }
             return;
         }
@@ -2642,7 +2706,7 @@ pub(crate) mod tests {
         assert!(vault.untrusted);
         assert_eq!(
             screen.command_hint().as_deref(),
-            Some("txc vault trust personal")
+            Some("txc vault advanced trust personal")
         );
 
         press(&mut screen, KeyCode::Char('t'));
@@ -2840,5 +2904,94 @@ pub(crate) mod tests {
             screen.dialog,
             Some(Dialog::Unlock { error: Some(_), .. })
         ));
+    }
+
+    #[test]
+    fn a_synced_vault_shows_its_status_and_hints_what_the_cli_does() {
+        let mut created = crate::vault::synced::tests::created_pending("tui-synced-status");
+        // An operation-only entry, as txc vault ssh-ca makes.
+        let entries = created.vault.entries().unwrap();
+        let mut changes = crate::vault::entries::Changes::new(&entries, 1);
+        let entry = changes.create("infra").unwrap();
+        changes.set_kind(&entry, "ssh-ca").unwrap();
+        changes
+            .classify(&entry, crate::vault::entries::Sensitivity::OperationOnly)
+            .unwrap();
+        changes
+            .add_field(
+                &entry,
+                crate::vault::entries::FieldKind::SshCa,
+                "ca-key",
+                b"key",
+            )
+            .unwrap();
+        created.vault.write(changes).unwrap();
+        let home = created.home.clone();
+        drop(created.vault);
+
+        let mut screen = VaultScreen::new(Ok(home));
+        screen.enter();
+        type_text(&mut screen, "correct horse battery staple");
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(screen.is_unlocked(), "{}", screen.status);
+
+        let lines = screen.status_lines();
+        assert!(
+            lines
+                .iter()
+                .any(|(vault, line)| *vault == "personal" && line.contains("recovery sheets")),
+            "{lines:?}"
+        );
+        assert!(
+            screen
+                .sidebar()
+                .iter()
+                .any(|row| matches!(row, SidebarRow::Section(Section::Vault(_))))
+        );
+        let vault = screen
+            .vaults()
+            .iter()
+            .position(LoadedVault::is_synced)
+            .unwrap();
+        assert_eq!(
+            section_label_for_test(&screen, vault),
+            "  personal (synced)"
+        );
+
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        assert_eq!(
+            screen.command_hint().as_deref(),
+            Some("txc vault ssh <host>")
+        );
+        press(&mut screen, KeyCode::Char('c'));
+        assert!(
+            screen.pending_copy.is_none(),
+            "an operation-only key is never copied"
+        );
+
+        // With nothing selected, the hint is the status screen.
+        screen.search = "no such entry".to_string();
+        screen.move_item(0);
+        assert_eq!(screen.command_hint().as_deref(), Some("txc vault status"));
+        screen.search.clear();
+
+        press(&mut screen, KeyCode::Char('n'));
+        assert!(screen.dialog.is_none());
+        assert!(
+            screen.status.contains("txc vault create"),
+            "{}",
+            screen.status
+        );
+    }
+
+    fn section_label_for_test(screen: &VaultScreen, vault: usize) -> String {
+        let loaded = &screen.vaults()[vault];
+        format!(
+            "  {}{}",
+            loaded.name,
+            if loaded.is_synced() { " (synced)" } else { "" }
+        )
     }
 }

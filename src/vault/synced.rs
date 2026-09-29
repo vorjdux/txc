@@ -1057,6 +1057,23 @@ pub(crate) mod tests {
         _dirs: (Scratch, Scratch),
     }
 
+    /// The same, with the recovery kit still waiting to be written down.
+    pub(crate) fn created_pending(label: &str) -> Created {
+        with_keystore();
+        let (home_dir, folder) = (
+            scratch(&format!("{label}-home")),
+            scratch(&format!("{label}-folder")),
+        );
+        let home = Home::at(&home_dir.0);
+        let passphrase = SecretString::from("correct horse battery staple".to_owned());
+        let vault = Synced::create(&home, "personal", &folder.0, &passphrase, TEST_PARAMS).unwrap();
+        Created {
+            vault,
+            home,
+            _dirs: (home_dir, folder),
+        }
+    }
+
     pub(crate) fn created(label: &str) -> Created {
         with_keystore();
         let (home_dir, folder) = (

@@ -103,6 +103,22 @@ fn draw_header(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
         Span::styled("Vault ", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(state, muted()),
     ]);
+    let needs = screen.status_lines();
+    let line = if needs.is_empty() {
+        line
+    } else {
+        let red = needs.iter().any(|(_, text)| text.starts_with("● red"));
+        let mut spans = line.spans;
+        spans.push(Span::styled(
+            format!(
+                "  ● {} need{} you",
+                needs.len(),
+                if needs.len() == 1 { "s" } else { "" }
+            ),
+            Style::default().fg(if red { ERROR } else { Color::Yellow }),
+        ));
+        Line::from(spans)
+    };
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -183,7 +199,8 @@ fn section_label(screen: &VaultScreen, section: Section) -> String {
         Section::Vault(index) => {
             let vault = &screen.vaults()[index];
             let marker = if vault.problem.is_some() { " !" } else { "" };
-            format!("  {}{marker}", vault.name)
+            let synced = if vault.is_synced() { " (synced)" } else { "" };
+            format!("  {}{synced}{marker}", vault.name)
         }
     }
 }
@@ -379,6 +396,27 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
             ("l", "lock"),
         ];
         let mut text = vec![Line::raw("")];
+        for (vault, line) in screen.status_lines() {
+            let colour = if line.starts_with("● red") {
+                ERROR
+            } else {
+                Color::Yellow
+            };
+            for (index, part) in line.lines().enumerate() {
+                let prefix = if index == 0 {
+                    format!(" {vault}: ")
+                } else {
+                    " ".repeat(vault.chars().count() + 3)
+                };
+                text.push(Line::styled(
+                    format!("{prefix}{}", part.trim_start()),
+                    Style::default().fg(colour),
+                ));
+            }
+        }
+        if text.len() > 1 {
+            text.push(Line::raw(""));
+        }
         for (key, label) in tips {
             text.push(Line::from(vec![
                 Span::styled(format!(" {key:6}"), key_style()),

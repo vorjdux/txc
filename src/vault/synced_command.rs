@@ -482,6 +482,31 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     let name = context.which(sub.get_one::<String>("VAULT"))?;
     let (mut vault, confinement) = context.open_confined(&name)?;
     vault.checkpoint()?;
+    let mut lines = status_lines(
+        context.home,
+        &vault,
+        sub.get_flag("all").then_some(&confinement),
+    )?;
+    let members = vault.device().members().len();
+    lines.insert(
+        0,
+        format!(
+            "● green   vault \"{name}\", {members} device{}",
+            if members == 1 { "" } else { "s" }
+        ),
+    );
+    output(&lines.join("\n"))
+}
+
+/// What needs the person, one line each with the command to run: the
+/// status screen's lines after its green one, which the interactive
+/// screen shows too. With `all`, also what this system cannot protect.
+///
+/// # Errors
+///
+/// Returns an error when the vault's files are damaged.
+pub fn status_lines(home: &Home, vault: &Synced, all: Option<&Confinement>) -> Result<Vec<String>> {
+    let name = &vault.name;
     let mut lines = Vec::new();
     let device = vault.device();
     for alarm in device.alarms() {
@@ -531,7 +556,7 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     }
     // What this platform cannot provide is a permanent condition: shown
     // with --all, not on every status (study section 19).
-    if sub.get_flag("all") {
+    if let Some(confinement) = all {
         if vault.hardware()?.is_none() {
             lines.push(
                 "● yellow  no security key: this device's keys rest on the passphrase and the system keystore → txc vault hardware add"
@@ -544,9 +569,9 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             ));
         }
     }
-    let filter_path = context.home.root().join(crate::vault::breach::FILE_NAME);
+    let filter_path = home.root().join(crate::vault::breach::FILE_NAME);
     if let Ok(mut filter) = crate::vault::breach::Filter::open(&filter_path) {
-        let found = breached(&vault, &mut filter)?.len();
+        let found = breached(vault, &mut filter)?.len();
         if found > 0 {
             lines.push(format!(
                 "● yellow  {found} password{} in the breach list  → txc vault breach check {name}",
@@ -554,15 +579,7 @@ pub fn status(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
             ));
         }
     }
-    let members = device.members().len();
-    lines.insert(
-        0,
-        format!(
-            "● green   vault \"{name}\", {members} device{}",
-            if members == 1 { "" } else { "s" }
-        ),
-    );
-    output(&lines.join("\n"))
+    Ok(lines)
 }
 
 // ---------------------------------------------------------- compare, doctor --

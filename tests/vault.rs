@@ -1931,6 +1931,15 @@ fn the_keyholder_process_holds_a_synced_vault_and_releases_one_secret_at_a_time(
         holder.reveal("github", "password").unwrap().expose_secret(),
         "hunter2"
     );
+    // The screen's status lines come from the keyholder, as the CLI's do.
+    assert!(
+        holder
+            .status()
+            .unwrap()
+            .iter()
+            .any(|line| line.contains("recovery sheets"))
+    );
+    assert!(holder.classes().unwrap().is_empty());
 
     // On Linux the keyholder has confined itself: seccomp is on.
     #[cfg(target_os = "linux")]
