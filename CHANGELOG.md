@@ -6,6 +6,8 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-29
+
 ### Added
 
 - **A smaller command surface.** The keys, trust and format commands of vaults
@@ -431,7 +433,8 @@ are all generated.
 
 - Initial draft.
 
-[Unreleased]: https://github.com/vorjdux/txc/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/vorjdux/txc/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/vorjdux/txc/compare/v0.7.2...v0.8.0
 [0.5.2]: https://github.com/vorjdux/txc/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/vorjdux/txc/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/vorjdux/txc/compare/v0.4.1...v0.5.0

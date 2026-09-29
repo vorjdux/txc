@@ -55,7 +55,7 @@ operation on the left, type in the input panel, and the output updates as you
 type.
 
 ```
- txc  0.7.2 Shift letters by a fixed amount
+ txc  0.8.0 Shift letters by a fixed amount
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Input (43 characters, sample) ───────────────╮
 │All           ││caesar                    ││The quick brown fox jumps over the lazy dog   │
 │Case          │╰──────────────────────────╯│                                              │
@@ -108,7 +108,7 @@ configure, such as `upper`, has no options panel. The output takes the space
 back.
 
 ```
- txc  0.7.2 Generate UUIDs
+ txc  0.8.0 Generate UUIDs
 ╭ Categories ──╮╭ Search ──────────────────╮╭ Options ─────────────────────────────────────╮
 │All           ││uuid                      ││  version    4                                │
 │Case          │╰──────────────────────────╯│  count      1                                │
@@ -261,7 +261,7 @@ export OPENAI_API_KEY="$(txc vault copy work/openai --print)"
 and each vault. The list is in the middle and the selected entry on the right.
 
 ```
- txc  0.7.2 Vault unlocked · 3 entries in 1 vault
+ txc  0.8.0 Vault unlocked · 3 entries in 1 vault
 ╭ Browse ────────────────╮╭ Search ──────────────────────────────╮╭ GitHub ──────────────────────────────────╮
 │★ Favourites          1 ││/ to search                           ││ Login · personal  ★ favourite            │
 │◷ Recently used       0 │╰──────────────────────────────────────╯│                                          │
@@ -499,13 +499,13 @@ rests on keys alone.
   identity. A vault that is new to the device, rebuilt with another key,
   encrypted to different recipients, older than the version last opened, or
   changed by two devices at the same generation is refused until
-  `txc vault trust <name>` shows you what differs and you accept it. Trusting
+  `txc vault advanced trust <name>` shows you what differs and you accept it. Trusting
   prints the vault's fingerprint, a short string derived from its key that
-  `txc vault fingerprint <name>` also shows, so two devices can confirm out of
+  `txc vault advanced fingerprint <name>` also shows, so two devices can confirm out of
   band that they mean the same vault. `--yes` accepts only a vault that is new
   to the device, never one that changed under a name you already trust; to
   accept a change without a person present, verify the fingerprint elsewhere and
-  pass `txc vault trust <name> --expect <fingerprint>`. `txc vault history
+  pass `txc vault advanced trust <name> --expect <fingerprint>`. `txc vault advanced history
   <name>` lists what this device has trusted for that name and what each
   decision replaced.
 - **Reading and writing are separate.** Changing a vault needs a **write key**,
@@ -517,7 +517,7 @@ rests on keys alone.
   produce a vault any txc will open, which means a stray `recipients --add` or
   `move` by something holding only the identity can no longer hand your secrets
   to another key. The write passphrase is never read from `--passphrase-file`.
-  `txc vault writer` shows this device's writer key, `txc vault writers` pins
+  `txc vault advanced writer` shows this device's writer key, `txc vault advanced writers` pins
   others, and `txc vault init --reader-only` provisions a read-only device.
 - **On disk** every file is written to a temporary file and renamed into
   place, readable by you alone, and refused when it is a link, belongs to
@@ -565,18 +565,18 @@ identity, not by the machine, so copying it across carries your trust decisions
 too; `recent.age` belongs to each device.
 
 A vault can also be encrypted to other keys: a second device with its own
-identity, a backup key kept offline, or a colleague. `txc vault identity`
+identity, a backup key kept offline, or a colleague. `txc vault advanced identity`
 prints your public key, and the owner of a vault adds it with
 `txc vault create team --recipient age1...` or
-`txc vault recipients personal --add age1...`. Every secret is sealed again for
+`txc vault advanced recipients personal --add age1...`. Every secret is sealed again for
 the new set of keys. Removing a key does the same, but it cannot reach copies
 of the vault made before, so change any secret that key could read. For another
 person to open a vault you wrote, they pin your writer key with
-`txc vault writers --add`, the way you would confirm an SSH host key. Several
+`txc vault advanced writers --add`, the way you would confirm an SSH host key. Several
 writers can be pinned at once, so two of your devices can both write. If a write
-key is lost or you retire a device, `txc vault writer --rotate` makes a fresh
+key is lost or you retire a device, `txc vault advanced writer --rotate` makes a fresh
 key and re-signs every vault, keeping the old key pinned until you retire it
-with `txc vault writers --remove`, so nothing stops opening in between.
+with `txc vault advanced writers --remove`, so nothing stops opening in between.
 
 ### Secrets straight into a program
 
