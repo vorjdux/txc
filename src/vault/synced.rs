@@ -539,6 +539,52 @@ fn wipe(dir: &Path, device: &Id) {
     fs::remove_dir(dir).ok();
 }
 
+/// Sync folders found on this computer, with the name of the tool that
+/// keeps each (study section 19: setup detects instead of asking).
+#[must_use]
+pub fn sync_folders() -> Vec<(&'static str, PathBuf)> {
+    let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    let mut offer = |tool: &'static str, path: PathBuf| {
+        if path.is_dir() && !found.iter().any(|(_, known)| *known == path) {
+            found.push((tool, path));
+        }
+    };
+    offer("Dropbox", home.join("Dropbox"));
+    offer("Syncthing", home.join("Sync"));
+    offer("Nextcloud", home.join("Nextcloud"));
+    offer("Google Drive", home.join("Google Drive"));
+    offer("OneDrive", home.join("OneDrive"));
+    if let Some(one_drive) = std::env::var_os("OneDrive") {
+        offer("OneDrive", PathBuf::from(one_drive));
+    }
+    offer(
+        "iCloud Drive",
+        home.join("Library/Mobile Documents/com~apple~CloudDocs"),
+    );
+    if let Ok(entries) = fs::read_dir(home.join("Library/CloudStorage")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let tool = if name.starts_with("Dropbox") {
+                "Dropbox"
+            } else if name.starts_with("GoogleDrive") {
+                "Google Drive"
+            } else if name.starts_with("OneDrive") {
+                "OneDrive"
+            } else {
+                continue;
+            };
+            offer(tool, entry.path());
+        }
+    }
+    found
+}
+
 /// How long a yellow status line stays snoozed.
 pub const SNOOZE_FOR: u64 = 30 * 24 * 60 * 60;
 

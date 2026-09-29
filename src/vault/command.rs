@@ -1728,7 +1728,11 @@ impl Session {
         let mut vaults = Vec::new();
         for name in &names {
             if synced_command::is_synced(&self.home, name) {
-                vaults.push(synced_command::export_vault(&self.synced(), name)?);
+                vaults.push(synced_command::export_vault(
+                    &self.synced(),
+                    name,
+                    plaintext,
+                )?);
                 continue;
             }
             let keyring = keyring
@@ -2040,9 +2044,20 @@ impl Session {
                 prompt::MIN_PASSPHRASE_CHARS
             );
             let passphrase = self.passphrase.ask_new("New passphrase: ")?;
-            working("Protecting your identity...", || {
+            let keyring = working("Protecting your identity...", || {
                 Keyring::create(&self.home, &passphrase)
-            })?
+            })?;
+            if io::stderr().is_terminal()
+                && let Some((tool, folder)) = synced::sync_folders().into_iter().next()
+            {
+                eprintln!(
+                    "{tool} keeps {} in step between your computers. To share a vault between \
+                     them, make it there: txc vault create shared --folder {}",
+                    folder.display(),
+                    folder.join("txc").display()
+                );
+            }
+            keyring
         };
 
         if reader_only {

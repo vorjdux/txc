@@ -59,6 +59,17 @@ All notable changes to txc are recorded here. The format follows
     allowance, as a new device does.
   - `txc vault device forget` removes a vault's keys from this device, as
     before a border crossing.
+- **Setup that suggests.** A new passphrase at the terminal comes with a
+  suggested one of seven random words, and one that looks weak (under about
+  50 bits) gets a word of warning. `txc vault init` points at a sync folder
+  it finds (Dropbox, Syncthing, Nextcloud, Google Drive, OneDrive, iCloud
+  Drive) for a synced vault, and `--folder` makes the last folder of the
+  path when its parent exists.
+- **Exports of protected entries.** A synced vault's export asks, one by
+  one, whether to include each protected entry, instead of always leaving
+  them out; root-grade and operation-only entries are never exported. A
+  plaintext export from a device with a security key also asks for the
+  passphrase and a touch.
 - **A quieter status.** `txc vault status --snooze` hides the yellow lines
   shown now for 30 days (a line that changes shows again, and red lines are
   never snoozed); `status --all` lists them with their date, and how many

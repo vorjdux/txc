@@ -172,6 +172,11 @@ pub fn init(context: &Context<'_>, sub: &ArgMatches, folder: &str) -> Result<()>
         .find_map(|id| sub.try_get_one::<String>(id).ok().flatten())
         .map_or(DEFAULT_VAULT, String::as_str);
     check_vault_name(name)?;
+    // A new folder inside one that exists, as a sync tool's, is made.
+    let wanted = Path::new(folder);
+    if !wanted.exists() && wanted.parent().is_some_and(Path::is_dir) {
+        std::fs::create_dir(wanted).with_context(|| format!("cannot create {folder}"))?;
+    }
     let folder = std::fs::canonicalize(folder)
         .with_context(|| format!("the folder {folder} does not exist"))?;
     eprintln!(
@@ -1158,18 +1163,48 @@ pub fn redeem(sealed: &[u8], sub: &ArgMatches) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error when the vault does not open or a secret does not.
-pub fn export_vault(context: &Context<'_>, name: &str) -> Result<serde_json::Value> {
-    let (vault, _) = context.open_confined(name)?;
+pub fn export_vault(
+    context: &Context<'_>,
+    name: &str,
+    plaintext: bool,
+) -> Result<serde_json::Value> {
+    // Protected values are opened with the security key, whose plugins
+    // confinement shuts out.
+    let vault = context.open(name)?;
+    if plaintext && vault.hardware()?.is_some() {
+        // A plaintext export is a physical act too (study section 19).
+        let passphrase = context.passphrase.ask(&format!(
+            "Passphrase, to export \"{name}\" unencrypted (your security key may ask for a touch): "
+        ))?;
+        vault.confirm_passphrase(&passphrase, &crate::vault::hardware::Terminal)?;
+    }
     let entries = vault.entries()?;
     let views = entries.list();
     let mut exported = Vec::new();
     let mut withheld = Vec::new();
     for entry in crate::vault::synced_model::entries(&vault)? {
-        let operation_only = views
+        let sensitivity = views
             .iter()
             .find(|view| view.names.contains(&entry.name))
-            .is_some_and(|view| view.sensitivity != Sensitivity::Normal);
-        if operation_only {
+            .map_or(Sensitivity::Normal, |view| view.sensitivity);
+        // Protected entries go only when the person says so, one by one;
+        // root-grade and operation-only ones never.
+        let include = match sensitivity {
+            Sensitivity::Normal => true,
+            Sensitivity::High => {
+                io::stdin().is_terminal()
+                    && prompt::confirm(
+                        &format!(
+                            "Include the protected entry {} in the export{}?",
+                            entry.name,
+                            if plaintext { ", unencrypted" } else { "" }
+                        ),
+                        "",
+                    )?
+            }
+            Sensitivity::RootGrade | Sensitivity::OperationOnly => false,
+        };
+        if !include {
             withheld.push(entry.name.clone());
             continue;
         }
@@ -1178,7 +1213,7 @@ pub fn export_vault(context: &Context<'_>, name: &str) -> Result<serde_json::Val
             let (value, secret) = match &field.value {
                 crate::vault::model::Value::Plain(text) => (text.clone(), false),
                 crate::vault::model::Value::Sealed(_) => (
-                    reveal(&vault, &entry.name, Some(&field.name))?
+                    reveal_to(&vault, &entry.name, Some(&field.name), Channel::File)?
                         .expose_secret()
                         .to_owned(),
                     true,
