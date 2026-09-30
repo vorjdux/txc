@@ -11,8 +11,9 @@
 143 operations across 10 categories: encode, decode, hash, convert, inspect and
 generate. Use them as an argument, over a pipe, or from a full-screen interface.
 Plus a local, age-encrypted vault for passwords, payment cards, API keys and
-notes. Nothing ever leaves your machine: no network call, nothing to paste into
-a web form.
+notes, which your own devices can share through any sync folder. Nothing ever
+leaves your machine but encrypted files you choose to sync: no network call,
+nothing to paste into a web form.
 
 ## Install
 
@@ -236,6 +237,12 @@ secret is shown only when you ask, and leaves the vault only by being copied
 to the clipboard, which is cleared again, or by being piped into another
 program.
 
+A vault is either a single encrypted file on this computer, or a **synced
+vault** in a folder your sync tool shares between your devices, with
+recovery sheets, security keys and device management (see
+[Sharing a vault between your devices](#sharing-a-vault-between-your-devices)).
+The everyday commands below work the same on both.
+
 ```sh
 txc vault init                     # create your identity and the personal vault
 txc vault add github --username octocat --url https://github.com --generate --favourite
@@ -275,7 +282,7 @@ and each vault. The list is in the middle and the selected entry on the right.
 │ Vaults                 │┃                                      ┃│                                          │
 │  personal            3 │┃                                      ┃│                                          │
 ╰────────────────────────╯┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛╰──────────────────────────────────────────╯
- c copy   u user   r reveal   f star   a add   e edit   d delete   / search   1 2 3 jump   l lock
+ c copy  u user  p 2FA code  r reveal  f star  a add  e edit  d delete  m move  / search  1 2 3 jump  l lock
 ```
 
 | Key | Action |
@@ -288,6 +295,7 @@ and each vault. The list is in the middle and the selected entry on the right.
 | `c` | Copy the main secret; in the fields panel, the selected field |
 | `enter` | Copy, or open a note to read |
 | `u` | Copy the username |
+| `p` | Copy the current 2FA code, from the entry's 2FA key |
 | `r` | Show the secret for 15 seconds, or open a note to read |
 | `f` | Star or unstar the entry |
 | `a` | Add an entry: choose its kind, then fill in that kind's form |
@@ -309,8 +317,12 @@ another field that takes several lines. `esc` asks before throwing away what
 you typed.
 
 Checking the passphrase takes a moment on purpose, so a spinner says so while
-it runs. The vault locks itself after five minutes without a key and whenever
-the interface closes.
+it runs. The vault locks itself after five minutes without a key, whenever
+the interface closes, and, on Linux, when the screen locks, which also ends
+the session `txc vault unlock` opened. Synced vaults appear beside the others,
+marked "(synced)", and the entry panel shows their status lines when nothing
+is selected. Adding security keys, devices and recovery are done on the
+command line.
 
 ### Entries
 
@@ -341,6 +353,22 @@ tags: `--tag` when adding or editing, `--untag` to take one off, and
 `txc vault list --tag work` to see them. A secret field given
 with `--field` is refused, so a card's security code cannot end up in your
 shell history by mistake. `txc vault add --help` prints the same list.
+
+A login's **2FA key** (`totp`) holds the setup key a site shows, under its QR
+code, when you turn on two-factor login, or the `otpauth://` link. Kept there,
+`txc vault code github` prints the six-digit code the site asks for, as an
+authenticator app would, and `p` copies it in the interactive interface. Only
+the code is ever shown, never the key:
+
+```sh
+txc vault edit github --secret-field totp   # paste the setup key when asked
+txc vault code github                       # 123456, and how many seconds it lasts
+```
+
+Entry names that mix Latin letters with look-alike Greek, Cyrillic, Armenian
+or Cherokee ones in one word are marked "(mixed scripts)", and a website whose
+host has letters beyond ASCII is shown in punycode, as
+`https://xn--pple-43d.com`, so a look-alike cannot pass for the real one.
 
 Favourites are stored in the vault, so a starred entry is starred on every
 device that opens it. What you used recently stays on this device, in a file
@@ -398,15 +426,21 @@ age -d -i backup-key.txt backup.age                  # every entry, as JSON
 ```
 
 `--plaintext` writes the JSON unencrypted instead, only to a new file, and
-only after you type a confirmation.
+only after you type a confirmation. From a synced vault, each protected entry
+is included only when you say so, root-grade and operation-only entries never
+are, and a plaintext export on a device with a security key also asks for the
+passphrase and a touch.
 
 ### Sharing a vault between your devices
 
 A synced vault lives in a folder your sync tool already keeps in step
-(Dropbox, iCloud Drive, OneDrive, Syncthing): the folder holds only encrypted
-objects with random names, so the provider sees no names, no authors and no
-edits. Each device has its own keys; nothing secret ever travels through the
-folder in a form a removed device can read.
+(Dropbox, iCloud Drive, OneDrive, Google Drive, Nextcloud, Syncthing): the
+folder holds only encrypted objects with random names, so the provider sees
+no names, no authors and no edits. Each device has its own keys; nothing
+secret ever travels through the folder in a form a removed device can read.
+Everything in it is post-quantum from end to end: files are sealed to age
+`mlkem768x25519` recipients and signed with composite ML-DSA-65 and Ed25519
+signatures.
 
 ```sh
 txc vault init --folder ~/Dropbox/txc            # this device, first admin
@@ -415,48 +449,158 @@ txc vault device add                             # on this device...
 txc vault join --folder ~/Dropbox/txc            # ...and on the new one
 ```
 
+`init` points at a sync folder it finds when you make an ordinary vault, and
+`--folder` makes the last folder of the path if its parent exists.
+`txc vault create work --folder DIR` makes another synced vault, and
+`txc vault migrate personal --folder DIR` copies an existing vault into one,
+tags and favourites included; the old vault stays as it is.
+
 Pairing shows a line to paste into the other device, twice, and a six-digit
 code on each screen; you type the code the other screen shows. After that the
-everyday verbs (`add`, `list`, `show`, `copy`, `edit`, `rm`, `run`) work on
-the synced vault by name, as on any other. Two devices editing the same entry
-at once keep both versions until you pick one with `txc vault resolve`.
-`txc vault status` is one screen: green, or a line saying what needs you and
-the command to run.
+everyday verbs (`add`, `list`, `show`, `copy`, `code`, `edit`, `rm`, `run`,
+`export`) work on the synced vault by name, as on any other, and the
+interactive interface lists it with the others, marked "(synced)". Two
+devices editing the same entry at once keep both versions until you pick one
+with `txc vault resolve`.
 
-- **Keys at rest** need both your passphrase and a second secret held by the
-  system keystore (Secret Service, the Keychain, or the Windows Credential
-  Manager), so a copied disk alone opens nothing.
+#### What needs you: status
+
+`txc vault status` is one screen: green, or one line for each thing that
+needs you, with the command to run. It covers the recovery sheets, entries
+with two versions, security keys another device added, devices to remove,
+secrets to change, rotations left half done, breached passwords, backups
+gone stale, and devices you have not heard from in a week.
+
+```
+● green   vault "personal", 2 devices
+● yellow  recovery sheets not written down   → txc vault recovery print personal
+```
+
+- `--snooze` hides the yellow lines shown now for 30 days; a line that
+  changes shows again, and red lines are never snoozed.
+- `--all` also shows what this system cannot protect, the lines folded into
+  one, snoozed lines, and how many devices each admin has added of those it
+  may.
+- `txc vault unlock` shows each vault's red lines every time and its yellow
+  ones at most once a day.
+- `txc vault doctor` prints a report for a bug report with no secret and no
+  entry name in it, and `txc vault compare` prints digests to compare with
+  another device, to see that the folder shows you both the same history.
+
+#### Devices
+
+```sh
+txc vault device list                    # devices, and the security keys they hold
+txc vault device add --role reader       # a device that can only read
+txc vault device approve                 # renewals and keys other devices asked for
+txc vault device remove 3f2a --wipe      # it reads nothing new, and wipes its keys
+txc vault list personal --stale          # the secrets it could read: change them
+txc vault device forget                  # drop this vault's keys here, as before a border crossing
+```
+
+- **Removing a device** means it reads nothing written afterwards: every
+  device changes its keys before it writes again. The entries it could read
+  are flagged until their secrets change, on any device. Its security keys go
+  with it unless another device uses them; `--key-lost` removes those too.
+  `--wipe` also has it wipe its keys the next time txc opens the vault there.
+- **The first device can add devices**; the others read and write, or only
+  read. Letting another device add devices (`device promote`), letting one
+  add more than its allowance of four devices or security keys
+  (`device allow --more N`), and removing such a device all take two recovery
+  sheets and the card.
+- **A week without news** from any other device refuses adding devices,
+  approving and reissuing the sheets until the folder syncs again, since this
+  device might not have seen a removal. Removing a device never waits.
+- **Receipts.** Device changes print a receipt; `txc vault compare --receipt
+  ID` shows what it was and who signed it.
+
+#### Security keys and protected entries
+
+```sh
+age-plugin-yubikey --generate > yubikey.txt      # or age-plugin-se, age-plugin-tpm, ...
+txc vault hardware add --recipient age1yubikey1... --identity-file yubikey.txt
+txc vault add bank-root --protect --secret-from-stdin
+txc vault add ca-root --root-grade --secret-from-stdin
+```
+
+- **`hardware add`** seals this device's second key factor to a security key,
+  the Secure Enclave or a TPM, through its age plugin, which is pinned by
+  path and hash and never looked up again. Unlocking then takes the
+  passphrase and the hardware.
+- **A protected entry** (`--protect`) is sealed to every security key in the
+  vault and to the recovery key. Each use needs a touch, and it goes only to a
+  program as a file (`txc+file://`, see below), never to the clipboard or the
+  screen. A **root-grade** entry (`--root-grade`) also asks for the passphrase
+  again at every use, whatever the session holds.
+- A security key another device adds shows as a red line on every device
+  until one approves it (`txc vault device approve`), so a key cannot be
+  added quietly. `txc vault hardware pin NAME` pins the plugin for other
+  devices' keys, `hardware rewrap` seals protected entries again to the keys
+  there are now, and `hardware remove KEY` removes a lost one.
+- **Protected entries stay locked where swap is not encrypted.** A released
+  secret could be written to swap or to a hibernation image, so on a Linux
+  system whose swap is not on dm-crypt (zram is fine) they refuse to open,
+  and `status` says why. macOS always encrypts swap.
+
+#### Rotating a secret safely
+
+Changing a password is two changes, one in the vault and one on the site,
+and either can fail. `rotate` keeps both values until you say which stays:
+
+```sh
+txc vault rotate work/db --generate      # the new value, beside the old one
+txc vault copy work/db --pending         # set it where it is used
+txc vault rotate work/db --commit        # it works: keep it (or --abort)
+```
+
+#### Recovery sheets and backups
+
 - **Recovery** is three sheets and a card: any two sheets and the card
   recover every secret and every right, with any SLIP-39 tool. Until they are
-  written down, adding a second device is refused. `txc vault recovery check`
-  checks one sheet, `recovery drill` rehearses a full recovery and keeps
-  nothing, and after losing every device `txc vault recovery restore NAME
-  --from OLD --folder NEW` rebuilds the vault from its folder with two sheets
-  and the card. `status` reminds you to check a sheet twice a year and to
-  drill once a year. If a sheet is lost or the card was seen, `txc vault
-  recovery reissue` replaces all of them, signed by two of the old sheets
-  and the card; the old ones then sign nothing and read nothing new.
+  written down, adding a second device is refused. `recovery print` shows
+  them one at a time to write down; `--printer` prints them with `lp` from
+  memory, and `--pdf FILE` writes a PDF, which `status` asks you to delete
+  until it is gone.
+- **Checks.** Each sheet carries two marks that are not secret:
+  `txc vault recovery check --root MARK --share MARK` confirms a sheet belongs
+  to the vault without typing anything secret, and `recovery check` alone
+  checks a sheet's words and the card. `recovery drill` rehearses a full
+  recovery and keeps nothing. `status` reminds you to check a sheet twice a
+  year and to drill once a year.
+- **After losing every device**, `txc vault recovery restore NAME --from OLD
+  --folder NEW` rebuilds the vault from its folder with two sheets and the
+  card, into a new vault with new sheets.
+- **A lost sheet or a card that was seen**: `txc vault recovery reissue`
+  replaces all of them, signed by two of the old sheets and the card; the old
+  ones then sign nothing and read nothing new.
 - **Offline backups**: `txc vault backup --to /media/usb` writes an age file
   that two sheets and the card open with age alone (`txc vault recovery key
-  > key.txt; age -d -i key.txt BACKUP`); while that folder is there, a new
-  one is written each week. Without txc at all, two sheets, the card, a SLIP-39
-  tool and age still read one: see
-  [recovering without txc](docs/recovery-without-txc.md).
+  > key.txt; age -d -i key.txt BACKUP`), with a signature beside it that
+  `backup --verify` checks. While that folder is there, a new one is written
+  each week. Without txc at all, two sheets, the card, a SLIP-39 tool and age
+  still read one: see [recovering without txc](docs/recovery-without-txc.md).
 - **Removed entries** come back for 30 days: `txc vault list VAULT
   --removed`, then `txc vault restore VAULT/ENTRY`.
-- **Removing a device** (`txc vault device remove`) means it reads nothing
-  written afterwards: every device changes its keys before it writes again,
-  and `txc vault list VAULT --stale` lists the secrets it could read that
-  you have not changed yet. `--wipe` also has it wipe its keys the next time
-  txc opens the vault there. `txc vault device forget` drops a vault's keys
-  from this device, as before a border crossing.
+
+#### Also for synced vaults
+
+- **Breached passwords, offline**: import the Pwned Passwords list once with
+  `txc vault breach import FILE`, then `txc vault breach check` lists the
+  entries whose password is in it. Nothing is sent anywhere.
 - **SSH without keys on disk**: `txc vault ssh-ca infra` makes a certificate
   authority whose key never leaves txc, and `txc vault ssh host` connects with
   a fresh key and a certificate that lives for minutes. `txc vault ssh
   --setup` prints the line servers need.
-- **Moving an existing vault** is `txc vault migrate personal --folder DIR`;
-  the old vault stays as it is.
-- **Another synced vault** is `txc vault create work --folder DIR`.
+- **Keys at rest** need both your passphrase and a second secret held by the
+  system keystore (Secret Service, the Keychain, or the Windows Credential
+  Manager) or by a security key, so a copied disk alone opens nothing.
+- **Confinement.** Commands on a synced vault, and the process that holds
+  its keys for the interactive interface, confine themselves once the vault
+  is open: no network, no other programs, no files outside the txc home and
+  the vault's folder (Landlock and seccomp on Linux, the sandbox on macOS). On
+  Windows only running programs can be forbidden; `status --all` says what
+  the system could not provide. The key-holding process also locks its
+  memory out of swap where the system allows.
 
 The keys, trust and format details of vaults that are not synced
 (`identity`, `writer`, `writers`, `recipients`, `trust`, `fingerprint`,
@@ -485,6 +629,13 @@ your logon session. The session ends after 15 minutes without use
 sleeps, or with `txc vault lock`. It never holds the write key, so changing a
 vault still asks for the write passphrase. `--no-session` asks for the
 passphrase even while a session is open.
+
+Under X11 any program on the display can read what you type, so txc does not
+ask for a passphrase there, at the terminal or in the interactive interface,
+unless `TXC_VAULT_ALLOW_X11=1` is set; `--passphrase-file` and an open session
+still work. Wayland and text consoles are not affected. A new passphrase comes
+with a suggested one of seven random words, and one that looks weak gets a
+word of warning.
 
 On Linux a session needs `XDG_RUNTIME_DIR`, the per-login directory kept in
 memory, which every desktop and SSH login sets. A sleep is noticed the next
@@ -697,6 +848,19 @@ echo '<sealed value>' | base64 -d | rage -d -i identity.age
   core dump and debugger protections. The default directory inside your user
   profile is what keeps other users out, so a vault directory set elsewhere
   with `--home` or `TXC_VAULT_HOME` is not protected at all there.
+
+For synced vaults, also:
+
+- A folder provider can hold back the newest objects without that being
+  noticed; `status` reports a device not heard from in a week, and
+  `txc vault compare` shows whether two devices see the same history.
+- Malware running as you while a session is open can read normal entries,
+  though not protected ones, which each need a touch.
+- After `recovery reissue`, the old sheets and card still decrypt what was
+  written before, for as long as the sync provider keeps old versions of the
+  folder's files.
+- macOS and Windows are built and linted in CI, but their confinement,
+  sessions and hardware have been exercised far less than on Linux.
 
 To build txc without the vault, and without its dependencies, use
 `cargo install txc --no-default-features`.

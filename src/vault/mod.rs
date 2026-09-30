@@ -37,6 +37,19 @@
 //! decrypts a vault to JSON, and each sealed value in it is base64 of another
 //! age file the same identity decrypts.
 //!
+//! # Synced vaults
+//!
+//! A synced vault ([`synced`]) lives in a sync folder that several devices
+//! share, as signed, encrypted objects with random names ([`object`],
+//! [`store`]): post-quantum throughout, with age `mlkem768x25519` ([`pq`])
+//! and composite ML-DSA-65 and Ed25519 signatures ([`composite`]). Each
+//! device folds what it can read into its view ([`device`]): membership as
+//! facts ([`control`]), entries as multi-value registers ([`entries`],
+//! [`core`]). Authority comes from three recovery sheets under a 2-of-3
+//! multisignature ([`authority`], [`slip39`]), which also rebuild the vault
+//! with no device left, and offline backups ([`backup`]) open with age
+//! alone. Security keys reach it through pinned age plugins ([`hardware`]).
+//!
 //! # What it does not protect against
 //!
 //! Malware already running as you while the vault is unlocked, a keylogger

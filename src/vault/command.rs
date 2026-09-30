@@ -128,7 +128,10 @@ pub fn command() -> Command {
              a passphrase. Secrets are never taken as arguments: they are typed without echo, \
              generated, or piped in. They are shown only when you ask for them, and are copied \
              to the clipboard, which is cleared again.\n\n\
-             Start with: txc vault init",
+             A synced vault lives in a folder your sync tool shares between your devices, \
+             with recovery sheets, security keys and device management; the everyday \
+             commands work the same on it.\n\n\
+             Start with: txc vault init, or txc vault init --folder DIR for a synced vault",
         )
         .subcommand_required(true)
         .arg_required_else_help(true)
