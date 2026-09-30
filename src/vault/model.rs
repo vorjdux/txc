@@ -156,7 +156,8 @@ static LOGIN: &[FieldSpec] = &[
     FieldSpec::plain("username", "Username"),
     FieldSpec::password("password", "Password"),
     FieldSpec::plain("url", "Website").hinted("https://example.com"),
-    FieldSpec::secret("totp", "One-time code seed").hinted("otpauth://... or base32"),
+    FieldSpec::secret("totp", "2FA key")
+        .hinted("optional: the setup key a site shows when you turn on two-factor login"),
     NOTES,
 ];
 

@@ -124,11 +124,13 @@ All notable changes to txc are recorded here. The format follows
   --pending` gets the new one to set where it is used, and `rotate --commit`
   makes it current, or `--abort` keeps the old. `status` lists a rotation
   until it is finished, so a change that failed halfway loses nothing.
-- **One-time codes.** A login has a `totp` field for its TOTP seed, a base32
-  secret or an `otpauth://` URI, and `txc vault code ENTRY` shows the
-  current code, in either kind of vault (RFC 6238, SHA-1, SHA-256 and
-  SHA-512). In the interactive screen, `p` copies it. The seed itself is
-  never shown; a protected entry's code asks for its security key.
+- **2FA codes.** A login has a 2FA key field (`totp`) for the setup key a
+  site shows when you turn on two-factor login, or its `otpauth://` link,
+  and `txc vault code ENTRY` shows the current six-digit code, as an
+  authenticator app would, in either kind of vault (RFC 6238, SHA-1,
+  SHA-256 and SHA-512). In the interactive screen, `p` copies it, and the
+  details pane says so beside the key. The key itself is never shown; a
+  protected entry's code asks for its security key.
 - **Checkpoints, staleness and receipts.** Opening a synced vault writes a
   checkpoint at least once an hour, dated by the device's clock. When no
   other device has written one for a week, `status` says so and adding

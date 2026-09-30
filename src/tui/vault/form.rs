@@ -1003,7 +1003,7 @@ mod tests {
         // Emptying the username removes it; emptying the note does too, once touched.
         form.row = Row::Field(0);
         ctrl(&mut form, 'u');
-        // Username, password, website, one-time code seed, then notes.
+        // Username, password, website, 2FA key, then notes.
         form.row = Row::Field(4);
         let Input::Note(text) = &field(&form, "notes").input else {
             panic!("the notes are not a note");

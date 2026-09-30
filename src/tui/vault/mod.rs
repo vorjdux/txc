@@ -1220,15 +1220,14 @@ impl VaultScreen {
         }
     }
 
-    /// Copies the current one-time code of the entry's TOTP seed, as
-    /// `txc vault code` shows it; the seed itself never leaves.
+    /// Copies the current 2FA code of the entry's TOTP key, as
+    /// `txc vault code` shows it; the key itself never leaves.
     fn copy_code(&mut self) {
-        let (vault, entry, field, _, _) = match self.target(Some("totp".to_string())) {
-            Ok(target) => target,
-            Err(message) => {
-                self.status = message;
-                return;
-            }
+        let Ok((vault, entry, field, _, _)) = self.target(Some("totp".to_string())) else {
+            self.status = "no 2FA key here: edit the entry (e) and paste the setup key the site \
+                           showed when you turned on two-factor login"
+                .to_string();
+            return;
         };
         let seed = match self.decrypt(vault, &entry, &field) {
             Ok(seed) => seed,
@@ -1244,7 +1243,7 @@ impl VaultScreen {
             Ok((code, left)) => {
                 self.pending_copy = Some((
                     SecretString::from(code),
-                    format!("one-time code of {entry}, which changes in {left}s,"),
+                    format!("2FA code of {entry}, which changes in {left}s,"),
                 ));
                 self.note_use(vault, &entry);
                 self.status = "copying".to_string();
@@ -2608,11 +2607,11 @@ pub(crate) mod tests {
             "{}",
             code.expose_secret()
         );
-        assert!(what.starts_with("one-time code of GitHub"), "{what}");
+        assert!(what.starts_with("2FA code of GitHub"), "{what}");
         screen.move_item(1);
         press(&mut screen, KeyCode::Char('p'));
         assert!(screen.pending_copy.is_none());
-        assert!(screen.status.contains("has no"), "{}", screen.status);
+        assert!(screen.status.contains("no 2FA key"), "{}", screen.status);
     }
 
     #[test]

@@ -247,7 +247,7 @@ txc vault list --recent            # what you used last on this device
 txc vault show visa                # secrets are shown masked
 txc vault copy github              # the password, cleared from the clipboard after 20s
 txc vault copy visa --field cvv
-txc vault code github              # the one-time code of its TOTP seed (field totp)
+txc vault code github              # its current 2FA code, from the setup key kept in totp
 txc vault rotate work/db --generate  # a synced vault keeps old and new until --commit
 txc vault edit github --generate   # change a field, or generate a new password
 txc vault move github work         # added it to the wrong vault? move it, secrets and all

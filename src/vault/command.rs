@@ -1049,12 +1049,14 @@ pub fn command() -> Command {
         )
         .subcommand(
             Command::new("code")
-                .about("Show the current one-time code of an entry's TOTP seed")
+                .about("Show the current 2FA code of an entry, as an authenticator app would")
                 .long_about(
-                    "Show the current one-time code of an entry's TOTP seed.\n\n\
-                     The seed, a base32 secret or an otpauth:// URI, is kept in a secret field, \
-                     named totp by default (txc vault edit ENTRY --secret-field totp). Only the \
-                     code is shown, never the seed.",
+                    "Show the current 2FA code of an entry, as an authenticator app would.\n\n\
+                     When a site turns on two-factor login it shows a QR code and, under it, a \
+                     setup key. Keep that key in the entry's 2FA key field (a login's totp: \
+                     txc vault edit ENTRY --secret-field totp, then paste it; an otpauth:// \
+                     link works too), and this prints the six-digit code the site asks for. \
+                     Only the code is shown, never the key.",
                 )
                 .arg(reference())
                 .arg(

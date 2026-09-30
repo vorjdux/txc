@@ -6440,7 +6440,7 @@ _txc__subcmd__help__subcmd__vault_commands() {
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'rotate:Change a secret in two steps, so a failed change elsewhere loses nothing' \
-'code:Show the current one-time code of an entry'\''s TOTP seed' \
+'code:Show the current 2FA code of an entry, as an authenticator app would' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \
@@ -7409,7 +7409,7 @@ _txc__subcmd__vault_commands() {
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'rotate:Change a secret in two steps, so a failed change elsewhere loses nothing' \
-'code:Show the current one-time code of an entry'\''s TOTP seed' \
+'code:Show the current 2FA code of an entry, as an authenticator app would' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'mv:Move an entry into another vault, re-sealing its secrets there' \
@@ -7855,7 +7855,7 @@ _txc__subcmd__vault__subcmd__help_commands() {
 'migrate:Copy a vault into a synced vault, to share it between devices; the original stays as it is' \
 'rm:Remove an entry' \
 'rotate:Change a secret in two steps, so a failed change elsewhere loses nothing' \
-'code:Show the current one-time code of an entry'\''s TOTP seed' \
+'code:Show the current 2FA code of an entry, as an authenticator app would' \
 'restore:Bring back an entry removed from a synced vault in the last 30 days' \
 'move:Move an entry into another vault, re-sealing its secrets there' \
 'delete:Delete a whole vault, keeping a recovery copy beside it' \

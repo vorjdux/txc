@@ -479,8 +479,8 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
                     [head, vec![Span::styled("enter or r to read", muted())]].concat(),
                 ));
             }
-            (_, Value::Sealed(_)) => match screen.shown_secret(vault, &entry.name, &field.name) {
-                Some(secret) => {
+            (_, Value::Sealed(_)) => {
+                if let Some(secret) = screen.shown_secret(vault, &entry.name, &field.name) {
                     let left = screen.reveal_left(now).unwrap_or(0);
                     let mut first = true;
                     for part in secret.expose_secret().split('\n') {
@@ -497,11 +497,15 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
                         lines.push(Line::from(spans));
                         first = false;
                     }
+                } else {
+                    let mut spans = [head, vec![Span::styled(MASK, muted())]].concat();
+                    // The key itself is never shown; what it is for is.
+                    if field.name == "totp" {
+                        spans.push(Span::styled("  p copies the current 2FA code", accent()));
+                    }
+                    lines.push(Line::from(spans));
                 }
-                None => lines.push(Line::from(
-                    [head, vec![Span::styled(MASK, muted())]].concat(),
-                )),
-            },
+            }
         }
     }
 
@@ -571,7 +575,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                 Pane::Items => &[
                     ("c", "copy"),
                     ("u", "user"),
-                    ("p", "one-time code"),
+                    ("p", "2FA code"),
                     ("r", "reveal"),
                     ("f", "star"),
                     ("a", "add"),
@@ -585,7 +589,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                 Pane::Details => &[
                     ("↑↓", "field"),
                     ("c", "copy"),
-                    ("p", "one-time code"),
+                    ("p", "2FA code"),
                     ("r", "reveal or read"),
                     ("e", "edit"),
                     ("m", "move"),
@@ -936,6 +940,8 @@ fn draw_form(frame: &mut Frame, area: Rect, form: &EntryForm) {
                                 "unchanged; type or paste to replace"
                             } else if field.generator.is_some() {
                                 "type or paste, or ctrl+g to generate"
+                            } else if !field.hint.is_empty() {
+                                field.hint
                             } else {
                                 "type or paste"
                             };
