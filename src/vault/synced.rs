@@ -12,6 +12,9 @@
 //! - `recovery.age`: the recovery sheets and card, sealed to the device
 //!   until they are written down, then erased.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -2293,6 +2296,103 @@ pub(crate) mod tests {
                 .confirm_passphrase(&SecretString::from("wrong".to_owned()), terminal)
                 .is_err()
         );
+    }
+
+    /// The folder budget of study section 13: a thousand entries after a
+    /// synthetic year of edits on two devices stay under 5 MB and a few
+    /// hundred files, and a warm open that finds nothing new is quick.
+    #[test]
+    #[ignore = "a CI gate, slow in debug builds: cargo test --release -- --ignored"]
+    fn a_year_of_edits_stays_within_the_folder_budget() {
+        let Pair {
+            mut first,
+            mut second,
+            _dirs,
+            ..
+        } = pair("budget");
+        let folder = read_folder(&first.dir).unwrap();
+        for batch in 0..50 {
+            let entries = first.entries().unwrap();
+            let mut changes = Changes::new(&entries, now());
+            for index in 0..20 {
+                let entry = changes
+                    .create(&format!("entry-{}", batch * 20 + index))
+                    .unwrap();
+                changes
+                    .add_field(&entry, FieldKind::Secret, "password", b"correct horse")
+                    .unwrap();
+                changes
+                    .add_field(
+                        &entry,
+                        FieldKind::Username,
+                        "username",
+                        b"someone@example.com",
+                    )
+                    .unwrap();
+            }
+            first.write(changes).unwrap();
+            first.sync().unwrap();
+        }
+        // A year: two thousand password changes in five hundred sessions,
+        // the two devices taking turns, checkpointing now and then.
+        for session in 0..500_usize {
+            let device = if session % 2 == 0 {
+                &mut first
+            } else {
+                &mut second
+            };
+            device.sync().unwrap();
+            let entries = device.entries().unwrap();
+            let views = entries.list();
+            let mut changes = Changes::new(&entries, now());
+            for step in 0..4 {
+                let view = &views[(session * 4 + step) % views.len()];
+                let field = view.fields.iter().find(|f| f.kind.is_secret()).unwrap();
+                changes
+                    .set_field(
+                        &view.id,
+                        &field.id,
+                        FieldKind::Secret,
+                        format!("pw-{session}-{step}").as_bytes(),
+                    )
+                    .unwrap();
+            }
+            device.write(changes).unwrap();
+            if session % 10 == 9 {
+                for vault in [&mut first, &mut second] {
+                    vault.sync().unwrap();
+                    vault.checkpoint().unwrap();
+                }
+            }
+        }
+        for _ in 0..2 {
+            for vault in [&mut first, &mut second] {
+                vault.sync().unwrap();
+                vault.checkpoint().unwrap();
+            }
+        }
+        let (mut files, mut bytes) = (0_usize, 0_u64);
+        let mut pending = vec![folder.clone()];
+        while let Some(dir) = pending.pop() {
+            for entry in fs::read_dir(&dir).unwrap().flatten() {
+                let metadata = entry.metadata().unwrap();
+                if metadata.is_dir() {
+                    pending.push(entry.path());
+                } else {
+                    files += 1;
+                    bytes += metadata.len();
+                }
+            }
+        }
+        let started = std::time::Instant::now();
+        first.sync().unwrap();
+        let warm = started.elapsed();
+        eprintln!("budget: {files} files, {bytes} bytes, warm open {warm:?}");
+        assert!(files < 500, "{files} files");
+        assert!(bytes < 5 * 1024 * 1024, "{bytes} bytes");
+        if !cfg!(debug_assertions) {
+            assert!(warm < std::time::Duration::from_millis(500), "{warm:?}");
+        }
     }
 
     #[test]

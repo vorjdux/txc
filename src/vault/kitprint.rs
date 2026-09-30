@@ -7,6 +7,8 @@
 //! vault they show the sheet belongs to it, with nothing secret on that
 //! device.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // Only page, line and object numbers of a four-page document are added
 // here, never anything near an integer's limit.
 #![allow(clippy::arithmetic_side_effects)]

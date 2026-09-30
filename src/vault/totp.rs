@@ -5,6 +5,9 @@
 //! A seed is either the base32 secret sites show, or an `otpauth://` URI,
 //! whose `secret`, `digits`, `period` and `algorithm` are honoured.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use anyhow::{Context as _, Result, bail, ensure};
 use hmac::{Hmac, KeyInit, Mac};
 use zeroize::Zeroizing;

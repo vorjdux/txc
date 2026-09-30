@@ -15,6 +15,9 @@
 //! inherent and stated wherever a grant is made: it is a snapshot, and it
 //! cannot be revoked once issued; rotating the secret is the revocation.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::io::{Read, Write};
 
 use age::secrecy::SecretString;

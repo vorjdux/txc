@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/vorjdux/txc"
 keywords = ["cli", "text", "encoding", "hash", "tui"]
 categories = ["command-line-utilities", "text-processing", "cryptography"]
-exclude = ["debian/", ".github/", "packaging/", "install.sh", "install.ps1"]
+exclude = ["debian/", ".github/", "packaging/", "fuzz/", "install.sh", "install.ps1"]
 
 [lib]
 name = "txc"

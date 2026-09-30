@@ -14,6 +14,9 @@
 //! simulation before they were written here; the same simulation runs in the
 //! tests below, against this code.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 pub mod fold;
 pub mod membership;
 

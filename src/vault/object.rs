@@ -19,6 +19,8 @@
 //! Every symmetric construction here is a standard AEAD or HMAC under an
 //! HKDF-derived key, and nothing is invented.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // Every offset is bounded by a length checked just before it, and every
 // slice is of a fixed, checked length.
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]

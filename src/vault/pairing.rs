@@ -21,6 +21,9 @@
 //! Each side's state is consumed by its next step, so a nonce is never used
 //! twice: a mismatch means starting again.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use anyhow::{Context, Result, anyhow, ensure};
 use data_encoding::BASE64URL_NOPAD;
 use sha2::{Digest, Sha384};

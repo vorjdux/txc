@@ -3,6 +3,9 @@
 //! checkpoints, with the counters that tell a gap from an object that was
 //! never addressed to this device.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Result, anyhow, bail, ensure};

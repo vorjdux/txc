@@ -15,6 +15,9 @@
 //! would not give integrity. A state that fails its signature is discarded
 //! and rebuilt from the folder.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 

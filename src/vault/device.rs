@@ -17,6 +17,9 @@
 //! The device never reads a clock: `now` is passed in where certificates
 //! are issued or expiry is judged, and never reaches the fold.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use age_core::secrecy::ExposeSecret;

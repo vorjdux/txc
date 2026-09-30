@@ -1,0 +1,72 @@
+# cargo-deny: what txc may depend on (study section 13).
+#
+# txc never touches the network. A dependency that could, an HTTP or TLS
+# client or server, or a crate that opens network sockets, fails the build,
+# including when it arrives transitively with an update. D-Bus (zbus, for the
+# Secret Service keystore) and the terminal's event loop (mio) use local
+# sockets only and are allowed.
+
+[graph]
+all-features = true
+
+[advisories]
+# The same advisories cargo audit reads. rsa, which cargo audit flags from the
+# lock file (see .cargo/audit.toml), is not in the resolved graph at all.
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+deny = [
+    # HTTP clients and servers.
+    { crate = "reqwest" },
+    { crate = "hyper" },
+    { crate = "hyper-util" },
+    { crate = "h2" },
+    { crate = "h3" },
+    { crate = "ureq" },
+    { crate = "curl" },
+    { crate = "curl-sys" },
+    { crate = "isahc" },
+    { crate = "attohttpc" },
+    { crate = "surf" },
+    { crate = "tungstenite" },
+    { crate = "quinn" },
+    # TLS.
+    { crate = "rustls" },
+    { crate = "native-tls" },
+    { crate = "openssl" },
+    { crate = "openssl-sys" },
+    { crate = "tokio-rustls" },
+    { crate = "hyper-tls" },
+    { crate = "webpki-roots" },
+    # Generic network sockets and resolvers.
+    { crate = "socket2" },
+    { crate = "trust-dns-resolver" },
+    { crate = "hickory-resolver" },
+]
+
+[licenses]
+# Permissive licences only, as txc's own MIT OR Apache-2.0.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "MPL-2.0",
+    "BSL-1.0",
+    "0BSD",
+]
+confidence-threshold = 0.9
+# The list is a policy, not an inventory: a licence may be allowed before a
+# dependency uses it.
+unused-allowed-license = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

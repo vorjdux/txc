@@ -299,7 +299,14 @@ mod tests {
             },
         )
         .unwrap();
+        crate::vault::entries::OPENED.with(|opened| opened.set(0));
         let listed = entries(&vault).unwrap();
+        let _ = classes(&vault).unwrap();
+        assert_eq!(
+            crate::vault::entries::OPENED.with(std::cell::Cell::get),
+            0,
+            "the interface lists without decrypting a secret"
+        );
         assert_eq!(listed.len(), 1);
         let entry = &listed[0];
         assert_eq!((entry.name.as_str(), entry.kind), ("github", Kind::Login));

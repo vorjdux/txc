@@ -13,6 +13,9 @@
 //!   certificates by an admin; renewals rotate the device's keys and are
 //!   signed with both the old and the new key.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::collections::BTreeSet;
 
 use anyhow::{Result, anyhow, bail, ensure};

@@ -24,6 +24,20 @@ All notable changes to txc are recorded here. The format follows
 
 ### Added
 
+- **Supply chain and verification.**
+  - `deny.toml`, checked in CI with cargo-deny, bans every HTTP, TLS and
+    network-socket crate, allows only permissive licences and crates.io.
+  - The protocol and keyholder modules `forbid(unsafe_code)`.
+  - Property tests feed arbitrary input to every parser of the folder, the
+    local files and people's text, and `fuzz/` holds cargo-fuzz targets
+    for the same, run a minute each in CI.
+  - CI gates: listing and the interface's view decrypt no secret, and a
+    thousand entries after a year of edits on two devices stay under 5 MB
+    and 500 files, with a quick warm open (160 files, 1.7 MB and about
+    30 ms here).
+  - Releases carry a CycloneDX SBOM, are built with fixed paths, and a
+    second build from another directory must match byte for byte.
+
 - **`txc vault restore VAULT/ENTRY`** brings back an entry removed from a
   synced vault in the last 30 days, with the values it had; fields removed on
   their own before it stay removed. `txc vault list VAULT --removed` lists

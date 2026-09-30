@@ -17,6 +17,9 @@
 //!
 //! [`core::fold`]: crate::vault::core::fold
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Result, anyhow, bail, ensure};
@@ -297,7 +300,16 @@ fn seal_value(key: &[u8; 32], entry: &Id, field: &Id, plain: &[u8]) -> Result<Ve
     Ok(out)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many secret fields this thread decrypted: the CI gate that
+    /// listing and status decrypt none (study section 13).
+    pub(crate) static OPENED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn open_value(key: &[u8; 32], entry: &Id, field: &Id, sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
+    #[cfg(test)]
+    OPENED.with(|opened| opened.set(opened.get().saturating_add(1)));
     let mut input = Reader(sealed);
     let version: [u8; 16] = input.fixed()?;
     let nonce: [u8; 24] = input.fixed()?;
@@ -2218,6 +2230,74 @@ mod tests {
         assert!(entries.removed().is_empty());
         let mut changes = Changes::new(&entries, NOW + 5);
         assert!(changes.restore_entry(&entry).is_err());
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+        /// Batches, snapshots and local state from arbitrary bytes fail
+        /// cleanly; none panics.
+        #[test]
+        fn hostile_batches_and_snapshots_never_panic(
+            tail in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..512),
+            which in 0_u8..3,
+        ) {
+            let prefix: &[u8] = match which {
+                0 => BATCH_TAG,
+                1 => SNAPSHOT_TAG,
+                _ => b"",
+            };
+            let input = [prefix, &tail].concat();
+            let _ = Batch::decode(&input);
+            let _ = SnapshotBody::decode(&input);
+            let _ = Device::decode_state(Me::generate(), &input);
+        }
+    }
+
+    #[test]
+    fn listing_decrypts_no_secret() {
+        let (_scratch, store, mut admin, mut laptop) = setup();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW);
+        for index in 0..20 {
+            let entry = changes.create(&format!("entry-{index}")).unwrap();
+            changes
+                .add_field(&entry, FieldKind::Secret, "password", b"secret")
+                .unwrap();
+            changes
+                .add_field(&entry, FieldKind::Username, "username", b"user")
+                .unwrap();
+        }
+        changes.write(&mut admin, &store).unwrap();
+        let entries = Entries::read(&admin).unwrap();
+        let mut changes = Changes::new(&entries, NOW + 1);
+        let gone = entries.list()[0].id;
+        changes.delete_entry(&gone).unwrap();
+        changes.write(&mut admin, &store).unwrap();
+        laptop.sync(&store).unwrap();
+
+        OPENED.with(|opened| opened.set(0));
+        for device in [&admin, &laptop] {
+            let entries = Entries::read(device).unwrap();
+            let listed = entries.list();
+            assert_eq!(listed.len(), 19);
+            for view in &listed {
+                let _ = entries.secret_version(&view.id);
+            }
+            let _ = entries.removed();
+            let _ = entries.waiting();
+            let _ = entries.registers();
+        }
+        assert_eq!(OPENED.with(std::cell::Cell::get), 0);
+        let entries = Entries::read(&admin).unwrap();
+        let view = &entries.list()[0];
+        let field = view.fields.iter().find(|f| f.kind.is_secret()).unwrap();
+        entries.reveal(&view.id, &field.id, Slot::Value).unwrap();
+        assert_eq!(
+            OPENED.with(std::cell::Cell::get),
+            1,
+            "a reveal decrypts one"
+        );
     }
 
     #[test]

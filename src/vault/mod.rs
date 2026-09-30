@@ -73,6 +73,8 @@ pub mod pairing;
 pub mod pq;
 pub mod prompt;
 mod recent;
+#[cfg(test)]
+mod robustness;
 pub mod session;
 pub mod slip39;
 pub mod sshca;

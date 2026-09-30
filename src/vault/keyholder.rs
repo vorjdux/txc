@@ -11,6 +11,9 @@
 //!
 //! Messages are length-prefixed JSON; both ends are the same txc binary.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};

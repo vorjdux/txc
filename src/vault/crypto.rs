@@ -5,6 +5,8 @@
 //! their own. The only additions are HMAC-SHA256 tags, for proving that a
 //! record was written by someone holding a key.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // The age errors are deliberately not shown: a secrets tool reports "wrong
 // passphrase, or damaged" rather than leaking which, so map_err discards them
 // on purpose here.

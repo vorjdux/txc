@@ -14,6 +14,8 @@
 //! attacks; Ed25519 verification is strict, refusing non-canonical and
 //! small-order encodings. The draft's own test vector is checked in the tests.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // Every slice here is of a fixed, checked length, and every size sum is of
 // small constants.
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]

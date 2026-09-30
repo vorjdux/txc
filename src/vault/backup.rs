@@ -21,6 +21,9 @@
 //! A protected field stays sealed as it is in the vault, an age file to the
 //! security keys and the recovery recipient: the same identity opens it.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, anyhow, ensure};

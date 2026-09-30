@@ -14,6 +14,8 @@
 //! [c2sp.org/age]: https://c2sp.org/age#the-mlkem768-x25519-ie-x-wing-hybrid-post-quantum-recipient-type
 //! [C2SP/CCTV]: https://github.com/C2SP/CCTV/tree/main/age
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // Every slice here is of a fixed, checked length; the sizes are type-level
 // constants of the KEM.
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]

@@ -3,6 +3,8 @@
 //! 64-bit length. Readers refuse short input, oversized counts and trailing
 //! bytes, so each value has exactly one encoding.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // Every slice is of a length checked just before it.
 #![allow(clippy::indexing_slicing)]
 

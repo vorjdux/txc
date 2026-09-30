@@ -9,6 +9,8 @@
 //! checksum over 10-bit words. The reference implementation's vectors are
 //! the tests.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // Every index is into a fixed-size table with a byte, or into a list of a
 // length checked just before.
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]

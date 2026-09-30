@@ -1,0 +1,30 @@
+[package]
+name = "txc-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+txc = { path = ".." }
+
+# Not part of txc's workspace: built only with cargo fuzz, on nightly.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "objects"
+path = "fuzz_targets/objects.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "text"
+path = "fuzz_targets/text.rs"
+test = false
+doc = false
+bench = false

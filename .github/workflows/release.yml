@@ -147,8 +147,15 @@ jobs:
         if: contains(matrix.target, 'musl')
         run: sudo apt-get update -qq && sudo apt-get install -y musl-tools
 
+      # Paths of the build machine are mapped to fixed ones, so the binary
+      # does not depend on where it was built: the reproduce job checks it.
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        shell: bash
+        env:
+          SOURCE_DATE_EPOCH: 0
+        run: |
+          export RUSTFLAGS="--remap-path-prefix=$PWD=/build --remap-path-prefix=$HOME/.cargo=/cargo"
+          cargo build --release --locked --target ${{ matrix.target }}
 
       # Proves the artifact actually runs, which a compile alone does not.
       # Skipped where the binary is for another architecture.
@@ -261,9 +268,62 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────
   # Collect, checksum, render the package manifests and publish.
   # ────────────────────────────────────────────────────────────────────────
+  # A second, independent build of the Linux binary from another directory
+  # must give the same bytes (study section 13): a first step towards a
+  # builder that is not this workflow reproducing each release.
+  reproduce:
+    name: Reproducible build
+    needs: [check-version, verify]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: first
+      - uses: actions/checkout@v4
+        with:
+          path: second/elsewhere
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - name: Install musl tools
+        run: sudo apt-get update -qq && sudo apt-get install -y musl-tools
+      - name: Build twice and compare
+        env:
+          SOURCE_DATE_EPOCH: 0
+        run: |
+          set -eu
+          for dir in first second/elsewhere; do
+            (cd "$dir" && RUSTFLAGS="--remap-path-prefix=$PWD=/build --remap-path-prefix=$HOME/.cargo=/cargo" \
+              cargo build --release --locked --target x86_64-unknown-linux-musl)
+          done
+          a=$(sha256sum first/target/x86_64-unknown-linux-musl/release/txc | cut -d' ' -f1)
+          b=$(sha256sum second/elsewhere/target/x86_64-unknown-linux-musl/release/txc | cut -d' ' -f1)
+          echo "first=$a second=$b"
+          [ "$a" = "$b" ] || { echo "::error::the two builds differ"; exit 1; }
+
+  # The software bill of materials: every crate in the build, as CycloneDX.
+  sbom:
+    name: SBOM
+    needs: [check-version, verify]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Write the SBOM
+        run: |
+          cargo install cargo-cyclonedx --locked
+          cargo cyclonedx --format json --override-filename txc.cdx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: txc.cdx.json
+          if-no-files-found: error
+
   publish:
     name: Publish
-    needs: [build, packages]
+    needs: [build, packages, reproduce, sbom]
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -279,7 +339,7 @@ jobs:
           set -eu
           mkdir -p dist
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \
-            -o -name '*.deb' -o -name '*.rpm' \) -exec cp {} dist/ \;
+            -o -name '*.deb' -o -name '*.rpm' -o -name '*.cdx.json' \) -exec cp {} dist/ \;
           cp install.sh install.ps1 dist/
           checksum() (
             # SHA256SUMS is excluded from its own listing by name. The
