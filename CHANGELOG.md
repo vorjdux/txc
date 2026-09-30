@@ -6,21 +6,7 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-
-- A synced vault's recovery kit, sealed on the device until it is written
-  down, could no longer be opened once the device had renewed its keys, as
-  on adding a security key; it now opens with the retired keys too.
-
-- `txc vault add --protect` on a vault that is not synced ignored the flag
-  and stored a normal entry; it now refuses, pointing at `txc vault migrate`.
-
-- A device that asked for new keys dropped, for good, control objects and
-  sender keys sealed to its renewed certificate when it read them before
-  the certificate itself; they are now opened with the pending keys, or
-  wait. Two certificates of one device issued in the same second were
-  picked between at random; a renewal now always outranks what it renews,
-  and an admin certificate the member one it promotes.
+## [0.8.0] - 2026-09-30
 
 ### Added
 
@@ -152,10 +138,6 @@ All notable changes to txc are recorded here. The format follows
   snapshot, which a device that adds devices writes at its next sync. Device
   changes and reissues print a receipt, which `txc vault compare --receipt`
   checks against the signed history.
-
-## [0.8.0] - 2026-09-29
-
-### Added
 
 - **A smaller command surface.** The keys, trust and format commands of vaults
   that are not synced (`identity`, `writer`, `writers`, `recipients`, `trust`,
