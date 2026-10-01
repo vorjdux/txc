@@ -195,7 +195,18 @@ mod platform {
     }
 
     pub(super) fn confine(writable: &[&Path], _readable: &[&Path]) -> Confinement {
-        let Some(paths) = writable
+        // The sandbox matches real paths: /var and /tmp are links into
+        // /private, so each path is allowed as given and as it resolves.
+        let mut all: Vec<std::path::PathBuf> = Vec::new();
+        for path in writable {
+            all.push(path.to_path_buf());
+            if let Ok(real) = std::fs::canonicalize(path)
+                && real != *path
+            {
+                all.push(real);
+            }
+        }
+        let Some(paths) = all
             .iter()
             .map(|path| quoted(path))
             .collect::<Option<Vec<_>>>()
