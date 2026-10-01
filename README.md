@@ -776,7 +776,7 @@ txc vault run --set OPENAI_API_KEY=txc://work/openai -- python agent.py
   spaces or other characters are percent-encoded.
 - `txc+file://` gives the program a path to open instead, for keys and
   certificates read from files: a sealed in-memory file on Linux (`/dev/fd/N`,
-  mode 0600, that nothing can change once written), a pipe on macOS (read
+  mode 0600, that nothing can change once written), a socket on macOS (read
   once), and a named pipe only you can open on Windows. Nothing is written to
   disk.
 - Lines without a reference pass through as ordinary settings. `--set` takes

@@ -326,7 +326,7 @@ pub fn command() -> Command {
                      txc://VAULT/ENTRY puts the entry's main secret, or with /FIELD a named \
                      field, in the program's environment. txc+file:// gives the program a path \
                      to open instead, for programs that read keys and certificates from files: a \
-                     sealed in-memory file on Linux, a pipe on macOS, a named pipe only you can \
+                     sealed in-memory file on Linux, a socket on macOS, a named pipe only you can \
                      open on Windows. Nothing is written to disk, nothing reaches this shell, and \
                      the program's exit code is passed on.",
                 )

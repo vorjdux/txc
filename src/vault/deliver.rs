@@ -7,8 +7,11 @@
 //! - **Linux:** a sealed memfd, mode 0600, that nobody can change once
 //!   written. The program sees `/dev/fd/N` and can read it as often as it
 //!   likes.
-//! - **macOS and other Unix:** a pipe, seen as `/dev/fd/N`. It can be read
-//!   once, which is what most programs do.
+//! - **macOS and other Unix:** one end of a socket pair, seen as
+//!   `/dev/fd/N`. It can be read once, which is what most programs do. Not a
+//!   pipe: macOS reports every pipe as mode 0660, which `ssh` refuses for a
+//!   private key and nothing can change, while a socket shows no permission
+//!   bits at all.
 //! - **Windows:** a one-shot named pipe that only the current user may open,
 //!   served once and then gone.
 
@@ -121,14 +124,16 @@ mod platform {
 
     pub(super) fn prepare(bytes: Zeroizing<Vec<u8>>, _: &mut Command) -> Result<(String, Inner)> {
         let mut fds = [0; 2];
-        // SAFETY: the pointer is to an array of two descriptors, as pipe needs.
-        if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        // SAFETY: the pointer is to an array of two descriptors, as
+        // socketpair needs.
+        if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) } != 0 {
             return Err(anyhow!(
-                "cannot create a pipe: {}",
+                "cannot create a socket pair: {}",
                 std::io::Error::last_os_error()
             ));
         }
-        // SAFETY: pipe returned two fresh descriptors this code now owns.
+        // SAFETY: socketpair returned two fresh descriptors this code now
+        // owns.
         let (reader, writer) =
             unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
         // SAFETY: plain calls on the descriptors owned above: the writer stays
@@ -139,14 +144,15 @@ mod platform {
         };
         ensure!(
             ok,
-            "cannot prepare the pipe: {}",
+            "cannot prepare the socket pair: {}",
             std::io::Error::last_os_error()
         );
-        // Written from a thread, so a secret larger than the pipe's buffer
-        // does not block txc before the child starts reading.
+        // Written from a thread, so a secret larger than the socket's buffer
+        // does not block txc before the child starts reading; closing the
+        // writing end then gives the reader its end of file.
         std::thread::spawn(move || {
             let mut file = File::from(writer);
-            // A child that never reads the pipe is its own business.
+            // A child that never reads it is its own business.
             file.write_all(&bytes).ok();
         });
         Ok((format!("/dev/fd/{}", reader.as_raw_fd()), Inner(reader)))
