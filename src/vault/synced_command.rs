@@ -1603,7 +1603,7 @@ pub fn ssh(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
 
     let program = ssh_program();
     let mut command = std::process::Command::new(&program);
-    let key = crate::vault::deliver::Delivery::prepare(
+    let mut key = crate::vault::deliver::PrivateKey::prepare(
         &SecretString::from(issued.key.to_string()),
         &mut command,
     )?;
@@ -1613,7 +1613,7 @@ pub fn ssh(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
     )?;
     command
         .arg("-i")
-        .arg(&key.path)
+        .arg(key.path())
         .arg("-o")
         .arg(format!("CertificateFile={}", certificate.path))
         .arg("-o")
@@ -1623,14 +1623,19 @@ pub fn ssh(context: &Context<'_>, sub: &ArgMatches) -> Result<()> {
         command.args(rest);
     }
     drop(issued);
-    let mut child = command
-        .spawn()
-        .with_context(|| format!("cannot run {program}"))?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            key.finish();
+            return Err(error).with_context(|| format!("cannot run {program}"));
+        }
+    };
     drop(command);
     key.after_spawn();
     certificate.after_spawn();
-    let status = child.wait()?;
-    std::process::exit(crate::vault::command::exit_code(status));
+    let status = child.wait();
+    key.finish();
+    std::process::exit(crate::vault::command::exit_code(status?));
 }
 
 /// `ssh`, or in a debug build a stand-in the tests name.

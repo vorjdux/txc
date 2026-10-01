@@ -53,6 +53,107 @@ impl Delivery {
     }
 }
 
+/// A private key for `ssh`, which refuses a key whose file others could
+/// read. On Linux and Windows it is a [`Delivery`]. On macOS and other Unix
+/// systems neither a pipe nor a socket can show an owner-only mode, so the
+/// key, made for this one connection and certified for minutes, is written
+/// to a file of mode 0600 in a new directory of mode 0700 inside the
+/// per-user temporary directory, and erased as soon as `ssh` exits.
+pub struct PrivateKey {
+    path: String,
+    inherited: Option<Delivery>,
+    #[cfg(all(unix, not(target_os = "linux")))]
+    dir: Option<std::path::PathBuf>,
+}
+
+impl PrivateKey {
+    /// Prepares the key for `command`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the descriptor or the file cannot be made.
+    pub fn prepare(secret: &SecretString, command: &mut Command) -> Result<Self> {
+        #[cfg(all(unix, not(target_os = "linux")))]
+        {
+            let _ = command;
+            let (path, dir) = private_file(secret)?;
+            Ok(Self {
+                path,
+                inherited: None,
+                dir: Some(dir),
+            })
+        }
+        #[cfg(not(all(unix, not(target_os = "linux"))))]
+        {
+            let delivery = Delivery::prepare(secret, command)?;
+            Ok(Self {
+                path: delivery.path.clone(),
+                inherited: Some(delivery),
+            })
+        }
+    }
+
+    /// The path `ssh` reads the key from.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Releases the parent's descriptor once the child has its own.
+    pub fn after_spawn(&mut self) {
+        if let Some(delivery) = self.inherited.take() {
+            delivery.after_spawn();
+        }
+    }
+
+    /// Erases the key file, if there is one, once the child is done.
+    pub fn finish(self) {
+        #[cfg(all(unix, not(target_os = "linux")))]
+        if let Some(dir) = &self.dir {
+            erase(dir);
+        }
+    }
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn private_file(secret: &SecretString) -> Result<(String, std::path::PathBuf)> {
+    use std::io::Write as _;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+
+    let dir = std::env::temp_dir().join(format!("txc-ssh-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&dir)
+        .map_err(|error| anyhow::anyhow!("cannot make a private directory for the key: {error}"))?;
+    let path = dir.join("key");
+    let written = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .and_then(|mut file| {
+            file.write_all(secret.expose_secret().as_bytes())?;
+            file.sync_all()
+        });
+    if let Err(error) = written {
+        erase(&dir);
+        anyhow::bail!("cannot write the key for ssh: {error}");
+    }
+    Ok((path.to_string_lossy().into_owned(), dir))
+}
+
+/// Overwrites the key with zeros and removes it and its directory.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn erase(dir: &std::path::Path) {
+    let path = dir.join("key");
+    if let Ok(metadata) = std::fs::metadata(&path) {
+        let zeros = vec![0_u8; usize::try_from(metadata.len()).unwrap_or(0)];
+        std::fs::write(&path, zeros).ok();
+    }
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_dir(dir).ok();
+}
+
 #[cfg(target_os = "linux")]
 mod platform {
     use std::fs::File;
@@ -267,4 +368,27 @@ mod platform {
     }
 
     pub(super) const fn after_spawn(_: Inner) {}
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[cfg(all(unix, not(target_os = "linux")))]
+    fn an_ssh_key_file_is_private_and_erased_when_done() {
+        use std::os::unix::fs::PermissionsExt;
+        let mut command = std::process::Command::new("true");
+        let key = super::PrivateKey::prepare(
+            &age::secrecy::SecretString::from("key".to_owned()),
+            &mut command,
+        )
+        .unwrap();
+        let path = std::path::PathBuf::from(key.path());
+        let mode =
+            |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&path), 0o600);
+        assert_eq!(mode(path.parent().unwrap()), 0o700);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "key");
+        key.finish();
+        assert!(!path.exists() && !path.parent().unwrap().exists());
+    }
 }

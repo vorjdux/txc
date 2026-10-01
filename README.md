@@ -590,7 +590,10 @@ txc vault rotate work/db --commit        # it works: keep it (or --abort)
 - **SSH without keys on disk**: `txc vault ssh-ca infra` makes a certificate
   authority whose key never leaves txc, and `txc vault ssh host` connects with
   a fresh key and a certificate that lives for minutes. `txc vault ssh
-  --setup` prints the line servers need.
+  --setup` prints the line servers need. On Linux and Windows the key reaches
+  ssh from memory; macOS offers no in-memory file ssh accepts for a private
+  key, so there the one-connection key sits in an owner-only file in your
+  private temporary folder while ssh runs, and is erased when it exits.
 - **Keys at rest** need both your passphrase and a second secret held by the
   system keystore (Secret Service, the Keychain, or the Windows Credential
   Manager) or by a security key, so a copied disk alone opens nothing.
