@@ -11,8 +11,25 @@ use txc::cli;
 use txc::input::Source;
 use txc::registry::{self, Category};
 
+/// The stack txc runs on. Post-quantum keys and signatures (ML-KEM, ML-DSA)
+/// keep large values on the stack, more than the 1 MiB main thread Windows
+/// gives; every platform gets the same, so none behaves differently.
+const STACK_BYTES: usize = 16 * 1024 * 1024;
+
 fn main() -> ExitCode {
-    match run() {
+    // The main thread only waits: everything, confinement included, runs on
+    // a thread with a stack large enough everywhere.
+    let result = match std::thread::Builder::new()
+        .name("txc".to_owned())
+        .stack_size(STACK_BYTES)
+        .spawn(run)
+    {
+        Ok(worker) => worker
+            .join()
+            .unwrap_or_else(|_| Err(anyhow::anyhow!("txc stopped on an internal error"))),
+        Err(_) => run(),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("txc: {error}");
