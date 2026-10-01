@@ -78,8 +78,8 @@ impl Name {
             return None;
         }
         let mut bytes = [0; NAME_BYTES];
-        for (byte, pair) in bytes.iter_mut().zip(text.as_bytes().chunks_exact(2)) {
-            let [high, low] = pair else { return None };
+        let (pairs, _) = text.as_bytes().as_chunks::<2>();
+        for (byte, [high, low]) in bytes.iter_mut().zip(pairs) {
             *byte = (nibble(*high)? << 4) | nibble(*low)?;
         }
         Some(Self(bytes))
@@ -420,7 +420,18 @@ mod platform {
 
     #[cfg(target_os = "macos")]
     pub(super) fn open_object(dir: &File, name: &str) -> io::Result<File> {
-        openat(dir, &c_name(name)?, READ_FLAGS | libc::O_NOFOLLOW_ANY)
+        let path = c_name(name)?;
+        // macOS refuses O_NOFOLLOW and O_NOFOLLOW_ANY together with EINVAL,
+        // so the stricter one goes alone; a system too old to know it says
+        // EINVAL too, and gets O_NOFOLLOW on the single checked component,
+        // which cannot leave the held directory either.
+        let strict = (READ_FLAGS & !libc::O_NOFOLLOW) | libc::O_NOFOLLOW_ANY;
+        match openat(dir, &path, strict) {
+            Err(error) if error.raw_os_error() == Some(libc::EINVAL) => {
+                openat(dir, &path, READ_FLAGS)
+            }
+            other => other,
+        }
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]

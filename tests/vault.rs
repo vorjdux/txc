@@ -1557,11 +1557,16 @@ fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
     );
     assert_eq!(status.lines().count(), 2, "{status}");
     if cfg!(target_os = "linux") {
-        // Landlock and seccomp are both in place here, so --all adds only
-        // that no security key holds this device's keys, and how many
-        // devices this admin may still add.
+        // --all adds that no security key holds this device's keys, how
+        // many devices this admin may still add, the missing backup, and
+        // whatever this kernel's confinement lacks ("on this system ...",
+        // which varies between machines and is not counted).
         let all = succeeds(&sandbox.vault(&["status", "--all"]));
-        assert_eq!(all.lines().count(), 5, "{all}");
+        let counted = all
+            .lines()
+            .filter(|line| !line.contains("on this system"))
+            .count();
+        assert_eq!(counted, 5, "{all}");
         assert!(all.contains("no offline backup yet"), "{all}");
         assert!(all.contains("no security key"), "{all}");
         assert!(all.contains("has added 0 of 4"), "{all}");
