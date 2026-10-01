@@ -83,8 +83,9 @@
 
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
-// Unsafe code is refused everywhere except the one vault module that makes
-// system calls to harden the process, which opts out explicitly.
+// Unsafe code is refused everywhere except the few vault modules that make
+// system calls (hardening, confinement, sessions, delivery to programs, safe
+// file opening), which opt out explicitly; the protocol modules forbid it.
 #![deny(unsafe_code)]
 // Two lints worth having from the nursery group. They are named individually
 // rather than enabling the group, which changes between Rust releases and

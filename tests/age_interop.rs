@@ -1,0 +1,535 @@
+//! Cross-implementation checks against Go age, the reference implementation
+//! of the `mlkem768x25519` recipient type txc composes itself (study
+//! sections 6 and 13).
+//!
+//! These run only when `TXC_AGE_DIR` names a directory holding the `age` and
+//! `age-keygen` binaries of age 1.3 or later; CI downloads them. Without it
+//! each test says so and passes, so a plain `cargo test` needs no Go.
+
+#![cfg(feature = "vault")]
+
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use age::secrecy::ExposeSecret;
+use txc::vault::authority::recovery_identity;
+use txc::vault::composite::SigningKey;
+use txc::vault::object::{Addressing, Kind, Payload, Signed, open_control, seal_control};
+use txc::vault::pq;
+
+fn age_dir() -> Option<PathBuf> {
+    let dir = PathBuf::from(std::env::var_os("TXC_AGE_DIR")?);
+    assert!(
+        dir.join("age").exists() || dir.join("age.exe").exists(),
+        "TXC_AGE_DIR has no age binary"
+    );
+    Some(dir)
+}
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(label: &str) -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("txc-age-{label}-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn run(dir: &Path, program: &str, args: &[&str], input: &[u8]) -> Vec<u8> {
+    let mut child = Command::new(dir.join(program))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|error| panic!("{program} does not start: {error}"));
+    child.stdin.take().unwrap().write_all(input).unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{program} {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output.stdout
+}
+
+fn encrypt(recipient: &pq::Recipient, plain: &[u8]) -> Vec<u8> {
+    let encryptor =
+        age::Encryptor::with_recipients(std::iter::once(recipient as &dyn age::Recipient)).unwrap();
+    let mut out = Vec::new();
+    let mut writer = encryptor.wrap_output(&mut out).unwrap();
+    writer.write_all(plain).unwrap();
+    writer.finish().unwrap();
+    out
+}
+
+fn decrypt(identity: &pq::Identity, sealed: &[u8]) -> Vec<u8> {
+    let decryptor = age::Decryptor::new(sealed).unwrap();
+    let mut reader = decryptor
+        .decrypt(std::iter::once(identity as &dyn age::Identity))
+        .unwrap();
+    let mut out = Vec::new();
+    reader.read_to_end(&mut out).unwrap();
+    out
+}
+
+#[test]
+fn keys_mean_the_same_to_txc_and_go_age() {
+    let Some(dir) = age_dir() else {
+        return eprintln!("TXC_AGE_DIR is not set; skipped");
+    };
+    let scratch = Scratch::new("keys");
+
+    // A key Go age made, read by txc.
+    let key = scratch.0.join("go.key");
+    run(
+        &dir,
+        "age-keygen",
+        &["-pq", "-o", key.to_str().unwrap()],
+        b"",
+    );
+    let text = std::fs::read_to_string(&key).unwrap();
+    let secret = text
+        .lines()
+        .find(|line| line.starts_with("AGE-SECRET-KEY-PQ-"))
+        .unwrap();
+    let identity: pq::Identity = secret.parse().unwrap();
+    let go_recipient =
+        String::from_utf8(run(&dir, "age-keygen", &["-y", key.to_str().unwrap()], b"")).unwrap();
+    assert_eq!(identity.to_public().to_string(), go_recipient.trim());
+
+    // A key txc made, read by Go age.
+    let ours = pq::Identity::generate();
+    let ours_file = scratch.0.join("txc.key");
+    std::fs::write(
+        &ours_file,
+        format!("{}\n", ours.to_string().expose_secret()),
+    )
+    .unwrap();
+    let derived = String::from_utf8(run(
+        &dir,
+        "age-keygen",
+        &["-y", ours_file.to_str().unwrap()],
+        b"",
+    ))
+    .unwrap();
+    assert_eq!(derived.trim(), ours.to_public().to_string());
+}
+
+#[test]
+fn files_cross_between_txc_and_go_age_both_ways() {
+    let Some(dir) = age_dir() else {
+        return eprintln!("TXC_AGE_DIR is not set; skipped");
+    };
+    let scratch = Scratch::new("files");
+    let identity = pq::Identity::generate();
+    let key = scratch.0.join("txc.key");
+    std::fs::write(&key, format!("{}\n", identity.to_string().expose_secret())).unwrap();
+    let recipient = identity.to_public().to_string();
+
+    let message = b"sealed by txc, opened by Go age";
+    let sealed = encrypt(&identity.to_public(), message);
+    assert_eq!(
+        run(&dir, "age", &["-d", "-i", key.to_str().unwrap()], &sealed),
+        message
+    );
+
+    let message = b"sealed by Go age, opened by txc";
+    let sealed = run(&dir, "age", &["-r", &recipient], message);
+    assert_eq!(decrypt(&identity, &sealed), message);
+}
+
+#[test]
+fn a_vault_control_object_opens_with_go_age_and_the_recovery_identity() {
+    let Some(dir) = age_dir() else {
+        return eprintln!("TXC_AGE_DIR is not set; skipped");
+    };
+    let scratch = Scratch::new("control");
+
+    // The recovery identity is the recovery secret used as the seed, so
+    // standard tools can rebuild it from two sheets and the card.
+    let recovery = recovery_identity(&[0x5a; 32]);
+    let key = scratch.0.join("recovery.key");
+    std::fs::write(&key, format!("{}\n", recovery.to_string().expose_secret())).unwrap();
+
+    let author = SigningKey::generate();
+    let payload = Payload {
+        genesis: [1; 48],
+        kind: Kind::Fact,
+        author: [2; 16],
+        author_cert: [3; 16],
+        seq: 0,
+        prev: [0; 48],
+        deps: Vec::new(),
+        fact_set: [4; 48],
+        addressing: Addressing::Control(vec![([5; 16], [6; 16], 0)]),
+        body: b"a membership fact".to_vec(),
+    };
+    let signed = Signed::sign(&payload, &author).unwrap();
+    let member = pq::Identity::generate();
+    // Two real recipients and two filler stanzas, as every control object.
+    let sealed = seal_control(&signed, &[member.to_public(), recovery.to_public()]).unwrap();
+
+    let plain = run(&dir, "age", &["-d", "-i", key.to_str().unwrap()], &sealed);
+    let encoded = payload.encode();
+    assert!(
+        plain
+            .windows(encoded.len())
+            .any(|window| window == encoded.as_slice())
+    );
+    assert_eq!(open_control(&sealed, &member).unwrap().unwrap(), signed);
+}
+
+/// Answers nothing: age-plugin-pq never asks.
+struct Silent;
+
+impl txc::vault::hardware::Prompter for Silent {
+    fn message(&self, _text: &str) {}
+    fn secret(&self, _question: &str) -> Option<age::secrecy::SecretString> {
+        None
+    }
+    fn public(&self, _question: &str) -> Option<String> {
+        None
+    }
+    fn confirm(&self, _question: &str, _yes: &str, _no: Option<&str>) -> Option<bool> {
+        None
+    }
+}
+
+#[test]
+fn a_secret_sealed_through_a_pinned_plugin_opens_through_it_and_a_changed_plugin_is_refused() {
+    use txc::vault::hardware::Hardware;
+
+    let Some(dir) = age_dir() else {
+        return eprintln!("TXC_AGE_DIR is not set; skipped");
+    };
+    let scratch = Scratch::new("plugin");
+    // age-plugin-pq is a software plugin: it stands in for hardware here,
+    // speaking the same protocol a security key's plugin does.
+    let native = pq::Identity::generate();
+    let recipient = native.to_public().to_string();
+    let converted = run(
+        &dir,
+        "age-plugin-pq",
+        &["-identity"],
+        format!("{}\n", native.to_string().expose_secret()).as_bytes(),
+    );
+    let plugin_identity = String::from_utf8(converted)
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("AGE-PLUGIN-PQ-"))
+        .unwrap()
+        .to_owned();
+    let plugin = dir.join("age-plugin-pq");
+    let hardware =
+        Hardware::set_up(&recipient, &plugin_identity, Some(&plugin), Some(&plugin)).unwrap();
+
+    let sealed = hardware.seal(b"second factor", &Silent).unwrap();
+    assert_eq!(
+        &hardware.open(&sealed, &Silent).unwrap()[..],
+        b"second factor"
+    );
+    // What the plugin sealed is a plain age file Go age opens natively.
+    let key = scratch.0.join("native.key");
+    std::fs::write(&key, format!("{}\n", native.to_string().expose_secret())).unwrap();
+    assert_eq!(
+        run(&dir, "age", &["-d", "-i", key.to_str().unwrap()], &sealed),
+        b"second factor"
+    );
+
+    // A plugin binary that changed after it was pinned is never run.
+    let copy = scratch.0.join("age-plugin-pq");
+    std::fs::copy(&plugin, &copy).unwrap();
+    let pinned = Hardware::set_up(&recipient, &plugin_identity, Some(&copy), Some(&copy)).unwrap();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&copy)
+        .unwrap()
+        .write_all(b"tampered")
+        .unwrap();
+    assert!(pinned.open(&sealed, &Silent).is_err());
+    assert!(pinned.seal(b"x", &Silent).is_err());
+}
+
+#[test]
+fn a_synced_vault_moves_its_second_factor_to_a_plugin_and_needs_it_from_then_on() {
+    let Some(dir) = age_dir() else {
+        return eprintln!("TXC_AGE_DIR is not set; skipped");
+    };
+    let scratch = Scratch::new("hardware-vault");
+    let (home, folder, keystore, run_dir) = (
+        scratch.0.join("home"),
+        scratch.0.join("sync"),
+        scratch.0.join("keystore"),
+        scratch.0.join("run"),
+    );
+    for path in [&folder, &keystore, &run_dir] {
+        std::fs::create_dir_all(path).unwrap();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let pass = scratch.0.join("pass");
+    std::fs::write(&pass, "correct horse battery staple\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&pass, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    // Debug builds take the swap's state from the test: CI runners swap to
+    // plain files, which would lock protected entries.
+    let txc_with = |swap: &str, args: &[&str], input: &[u8]| -> std::process::Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_txc"))
+            .arg("vault")
+            .arg("--home")
+            .arg(&home)
+            .arg("--passphrase-file")
+            .arg(&pass)
+            .args(args)
+            .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+            .env("TXC_VAULT_TEST_KEYSTORE", &keystore)
+            .env("TXC_VAULT_TEST_SWAP", swap)
+            .env("TXC_VAULT_TEST_KIT", "1")
+            .env("XDG_RUNTIME_DIR", &run_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(input).unwrap();
+        child.wait_with_output().unwrap()
+    };
+    let txc = |args: &[&str], input: &[u8]| txc_with("safe", args, input);
+    let ok = |output: std::process::Output| {
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+    ok(txc(&["init", "--folder", folder.to_str().unwrap()], b""));
+    ok(txc(&["add", "mail", "--secret-from-stdin"], b"s3cret"));
+
+    // A pinned copy of the plugin stands in for the hardware's.
+    let plugin = scratch.0.join("age-plugin-pq");
+    std::fs::copy(dir.join("age-plugin-pq"), &plugin).unwrap();
+    let native = pq::Identity::generate();
+    let converted = run(
+        &dir,
+        "age-plugin-pq",
+        &["-identity"],
+        format!("{}\n", native.to_string().expose_secret()).as_bytes(),
+    );
+    let identity_file = scratch.0.join("hardware.key");
+    std::fs::write(&identity_file, converted).unwrap();
+    ok(txc(
+        &[
+            "hardware",
+            "add",
+            "--recipient",
+            &native.to_public().to_string(),
+            "--identity-file",
+            identity_file.to_str().unwrap(),
+            "--recipient-plugin",
+            plugin.to_str().unwrap(),
+            "--identity-plugin",
+            plugin.to_str().unwrap(),
+        ],
+        b"",
+    ));
+    assert_eq!(
+        std::fs::read_dir(&keystore).unwrap().count(),
+        0,
+        "the keystore factor was forgotten"
+    );
+    assert_eq!(ok(txc(&["copy", "--print", "mail"], b"")), "s3cret");
+    let status = ok(txc(&["status"], b""));
+    assert!(
+        !status.contains("red"),
+        "its own authenticator is not an alarm: {status}"
+    );
+    let report = ok(txc(&["doctor"], b""));
+    assert!(
+        report.contains("authenticators: 1") && report.contains("hardware on this device: true"),
+        "{report}"
+    );
+
+    // A protected entry: sealed to the registered authenticator and the
+    // recovery recipient, released only to a program as a file.
+    ok(txc(
+        &["add", "bank", "--protect", "--secret-from-stdin"],
+        b"pin-4321",
+    ));
+    assert!(!txc(&["copy", "--print", "bank"], b"").status.success());
+    assert!(
+        !txc(
+            &["run", "--set", "PIN=txc://personal/bank", "--", "true"],
+            b""
+        )
+        .status
+        .success()
+    );
+    if cfg!(unix) {
+        let shown = ok(txc(
+            &[
+                "run",
+                "--set",
+                "PIN=txc+file://personal/bank",
+                "--",
+                "sh",
+                "-c",
+                "cat \"$PIN\"",
+            ],
+            b"",
+        ));
+        assert_eq!(shown, "pin-4321");
+    }
+    // With swap that is not encrypted, protected entries stay locked, and
+    // status says why.
+    if cfg!(unix) {
+        let refused = txc_with(
+            "unencrypted",
+            &["run", "--set", "PIN=txc+file://personal/bank", "--", "true"],
+            b"",
+        );
+        assert!(!refused.status.success());
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("not encrypted"));
+        let status = ok(txc_with("unencrypted", &["status"], b""));
+        assert!(status.contains("protected entries are locked"), "{status}");
+    }
+
+    // A root-grade entry: as protected, and every release asks for the
+    // passphrase again (here from the passphrase file).
+    ok(txc(
+        &["add", "vault-root", "--root-grade", "--secret-from-stdin"],
+        b"root-secret",
+    ));
+    assert!(
+        !txc(&["code", "vault-root", "--field", "password"], b"")
+            .status
+            .success()
+    );
+    assert!(
+        !txc(&["copy", "--print", "vault-root"], b"")
+            .status
+            .success()
+    );
+    if cfg!(unix) {
+        let shown = ok(txc(
+            &[
+                "run",
+                "--set",
+                "ROOT=txc+file://personal/vault-root",
+                "--",
+                "sh",
+                "-c",
+                "cat \"$ROOT\"",
+            ],
+            b"",
+        ));
+        assert_eq!(shown, "root-secret");
+    }
+    ok(txc(&["hardware", "rewrap"], b""));
+    if cfg!(unix) {
+        let shown = ok(txc(
+            &[
+                "run",
+                "--set",
+                "PIN=txc+file://personal/bank",
+                "--",
+                "sh",
+                "-c",
+                "cat \"$PIN\"",
+            ],
+            b"",
+        ));
+        assert_eq!(shown, "pin-4321", "still opens after rewrapping");
+    }
+
+    // The passphrase changes with the hardware still holding the factor.
+    let new_pass = scratch.0.join("new-pass");
+    std::fs::write(&new_pass, "an entirely new passphrase here\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&new_pass, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    ok(txc(
+        &[
+            "passwd",
+            "--new-passphrase-file",
+            new_pass.to_str().unwrap(),
+        ],
+        b"",
+    ));
+    std::fs::copy(&new_pass, &pass).unwrap();
+    assert_eq!(ok(txc(&["copy", "--print", "mail"], b"")), "s3cret");
+
+    // An offline backup opens with Go age and the key two sheets and the
+    // card give, and holds the protected entry still sealed.
+    let kit = ok(txc(&["recovery", "print"], b""));
+    let kit: Vec<&str> = kit.lines().collect();
+    let media = scratch.0.join("usb");
+    std::fs::create_dir_all(&media).unwrap();
+    ok(txc(&["backup", "--to", media.to_str().unwrap()], b""));
+    let backup = std::fs::read_dir(&media)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "age"))
+        .unwrap();
+    let key = ok(txc(
+        &["recovery", "key"],
+        format!("{}\n{}\n{}\n", kit[1], kit[2], kit[3]).as_bytes(),
+    ));
+    let key_file = scratch.0.join("recovery.txt");
+    std::fs::write(&key_file, key).unwrap();
+    let plain = run(
+        &dir,
+        "age",
+        &[
+            "-d",
+            "-i",
+            key_file.to_str().unwrap(),
+            backup.to_str().unwrap(),
+        ],
+        b"",
+    );
+    let json: serde_json::Value = serde_json::from_slice(&plain).unwrap();
+    assert_eq!(json["format"], "txc-backup-v1");
+    let text = String::from_utf8_lossy(&plain);
+    assert!(
+        text.contains("s3cret") && text.contains("\"protected\""),
+        "{text}"
+    );
+
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&plugin)
+        .unwrap()
+        .write_all(b"tampered")
+        .unwrap();
+    let refused = txc(&["copy", "--print", "mail"], b"");
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("changed"),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+}

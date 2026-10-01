@@ -206,7 +206,7 @@ impl Home {
 }
 
 /// Creates a directory if it is missing, then checks it.
-fn private_dir(path: &Path, forbidden: u32) -> Result<()> {
+pub(crate) fn private_dir(path: &Path, forbidden: u32) -> Result<()> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]

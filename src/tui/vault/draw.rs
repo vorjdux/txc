@@ -103,6 +103,22 @@ fn draw_header(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
         Span::styled("Vault ", Style::default().add_modifier(Modifier::BOLD)),
         Span::styled(state, muted()),
     ]);
+    let needs = screen.status_lines();
+    let line = if needs.is_empty() {
+        line
+    } else {
+        let red = needs.iter().any(|(_, text)| text.starts_with("● red"));
+        let mut spans = line.spans;
+        spans.push(Span::styled(
+            format!(
+                "  ● {} need{} you",
+                needs.len(),
+                if needs.len() == 1 { "s" } else { "" }
+            ),
+            Style::default().fg(if red { ERROR } else { Color::Yellow }),
+        ));
+        Line::from(spans)
+    };
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -183,7 +199,8 @@ fn section_label(screen: &VaultScreen, section: Section) -> String {
         Section::Vault(index) => {
             let vault = &screen.vaults()[index];
             let marker = if vault.problem.is_some() { " !" } else { "" };
-            format!("  {}{marker}", vault.name)
+            let synced = if vault.is_synced() { " (synced)" } else { "" };
+            format!("  {}{synced}{marker}", vault.name)
         }
     }
 }
@@ -314,7 +331,10 @@ fn draw_items(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
             ListItem::new(vec![
                 Line::from(vec![
                     Span::styled(star, accent()),
-                    Span::raw(truncate(&entry.name, width.saturating_sub(2))),
+                    Span::raw(truncate(
+                        &crate::vault::model::flagged_name(&entry.name),
+                        width.saturating_sub(2),
+                    )),
                 ]),
                 Line::styled(
                     format!("    {}", truncate(&detail, width.saturating_sub(4))),
@@ -379,6 +399,27 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
             ("l", "lock"),
         ];
         let mut text = vec![Line::raw("")];
+        for (vault, line) in screen.status_lines() {
+            let colour = if line.starts_with("● red") {
+                ERROR
+            } else {
+                Color::Yellow
+            };
+            for (index, part) in line.lines().enumerate() {
+                let prefix = if index == 0 {
+                    format!(" {vault}: ")
+                } else {
+                    " ".repeat(vault.chars().count() + 3)
+                };
+                text.push(Line::styled(
+                    format!("{prefix}{}", part.trim_start()),
+                    Style::default().fg(colour),
+                ));
+            }
+        }
+        if text.len() > 1 {
+            text.push(Line::raw(""));
+        }
         for (key, label) in tips {
             text.push(Line::from(vec![
                 Span::styled(format!(" {key:6}"), key_style()),
@@ -424,8 +465,13 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
                 } else {
                     Style::default()
                 };
+                let value = if field.name == "url" {
+                    crate::vault::model::origin_for_display(value)
+                } else {
+                    value.clone()
+                };
                 lines.push(Line::from(
-                    [head, vec![Span::styled(value.clone(), style)]].concat(),
+                    [head, vec![Span::styled(value, style)]].concat(),
                 ));
             }
             (Sensitivity::Private, _) => {
@@ -433,8 +479,8 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
                     [head, vec![Span::styled("enter or r to read", muted())]].concat(),
                 ));
             }
-            (_, Value::Sealed(_)) => match screen.shown_secret(vault, &entry.name, &field.name) {
-                Some(secret) => {
+            (_, Value::Sealed(_)) => {
+                if let Some(secret) = screen.shown_secret(vault, &entry.name, &field.name) {
                     let left = screen.reveal_left(now).unwrap_or(0);
                     let mut first = true;
                     for part in secret.expose_secret().split('\n') {
@@ -451,11 +497,15 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
                         lines.push(Line::from(spans));
                         first = false;
                     }
+                } else {
+                    let mut spans = [head, vec![Span::styled(MASK, muted())]].concat();
+                    // The key itself is never shown; what it is for is.
+                    if field.name == "totp" {
+                        spans.push(Span::styled("  p copies the current 2FA code", accent()));
+                    }
+                    lines.push(Line::from(spans));
                 }
-                None => lines.push(Line::from(
-                    [head, vec![Span::styled(MASK, muted())]].concat(),
-                )),
-            },
+            }
         }
     }
 
@@ -477,7 +527,10 @@ fn draw_details(frame: &mut Frame, area: Rect, screen: &VaultScreen) {
     ));
 
     frame.render_widget(
-        Paragraph::new(lines).block(panel(&entry.name, focused)),
+        Paragraph::new(lines).block(panel(
+            &crate::vault::model::flagged_name(&entry.name),
+            focused,
+        )),
         area,
     );
 }
@@ -522,6 +575,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                 Pane::Items => &[
                     ("c", "copy"),
                     ("u", "user"),
+                    ("p", "2FA code"),
                     ("r", "reveal"),
                     ("f", "star"),
                     ("a", "add"),
@@ -535,6 +589,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, screen: &VaultScreen, hint: Option
                 Pane::Details => &[
                     ("↑↓", "field"),
                     ("c", "copy"),
+                    ("p", "2FA code"),
                     ("r", "reveal or read"),
                     ("e", "edit"),
                     ("m", "move"),
@@ -885,6 +940,8 @@ fn draw_form(frame: &mut Frame, area: Rect, form: &EntryForm) {
                                 "unchanged; type or paste to replace"
                             } else if field.generator.is_some() {
                                 "type or paste, or ctrl+g to generate"
+                            } else if !field.hint.is_empty() {
+                                field.hint
                             } else {
                                 "type or paste"
                             };

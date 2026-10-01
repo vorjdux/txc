@@ -92,8 +92,22 @@ impl Passphrase {
     }
 
     fn ask_new_hinted(&self, prompt: &str, hint: &'static str) -> Result<SecretString> {
+        if *self == Self::Terminal && std::io::stderr().is_terminal() {
+            let words = crate::vault::slip39::random_words(SUGGESTED_WORDS).join(" ");
+            eprintln!(
+                "A strong one, if you want it (about {} bits): {words}",
+                SUGGESTED_WORDS * 10
+            );
+        }
         let passphrase = self.ask_hinted(prompt, hint)?;
         check_new_passphrase(&passphrase)?;
+        let bits = strength_bits(passphrase.expose_secret());
+        if bits < WEAK_BITS {
+            eprintln!(
+                "That passphrase is on the weak side, about {bits} bits: every guess is slow, but \
+                 a longer one, or a few random words, is much stronger."
+            );
+        }
         if *self == Self::Terminal {
             let again = hidden("Type it again: ", hint)?;
             ensure!(
@@ -103,6 +117,61 @@ impl Passphrase {
         }
         Ok(passphrase)
     }
+}
+
+/// How many words a suggested passphrase has, each worth 10 bits.
+const SUGGESTED_WORDS: usize = 7;
+/// Below this estimate a new passphrase gets a word of warning.
+const WEAK_BITS: u32 = 50;
+
+/// A rough estimate of a passphrase's strength, in bits: words of letters
+/// count as dictionary words, anything else by the characters it draws
+/// from, discounted for repeats. A guide for the person, not a gate.
+#[must_use]
+pub fn strength_bits(passphrase: &str) -> u32 {
+    let words: Vec<&str> = passphrase.split_whitespace().collect();
+    if words.len() >= 3
+        && words
+            .iter()
+            .all(|word| word.chars().all(char::is_alphabetic))
+    {
+        // As if drawn from a list of about two thousand words.
+        return u32::try_from(words.len())
+            .unwrap_or(u32::MAX)
+            .saturating_mul(11);
+    }
+    let mut pool = 0_u32;
+    let chars: Vec<char> = passphrase.chars().collect();
+    if chars.iter().any(char::is_ascii_lowercase) {
+        pool = pool.saturating_add(26);
+    }
+    if chars.iter().any(char::is_ascii_uppercase) {
+        pool = pool.saturating_add(26);
+    }
+    if chars.iter().any(char::is_ascii_digit) {
+        pool = pool.saturating_add(10);
+    }
+    if chars.iter().any(|c| c.is_ascii_punctuation() || *c == ' ') {
+        pool = pool.saturating_add(33);
+    }
+    if chars.iter().any(|c| !c.is_ascii()) {
+        pool = pool.saturating_add(100);
+    }
+    let distinct = chars
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    // Repeats add little: count each character past the distinct ones at
+    // half weight.
+    let effective = distinct.saturating_add(chars.len().saturating_sub(distinct) / 2);
+    let per_char = f64::from(pool.max(1)).log2();
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let bits = (per_char * effective as f64) as u32;
+    bits
 }
 
 /// Holds a new passphrase to the minimum length.
@@ -234,6 +303,12 @@ fn normalise(text: &str) -> String {
 /// Reads without echo. rpassword asks the controlling terminal directly, so
 /// this works even while standard input is a pipe carrying a secret.
 fn hidden(prompt: &str, without_terminal: &'static str) -> Result<SecretString> {
+    ensure!(
+        !crate::vault::harden::under_x11() || crate::vault::harden::x11_allowed(),
+        "under X11 any program on the display can read what you type, so txc does not ask for \
+         a passphrase here; give it with --passphrase-file, unlock from a Wayland or text \
+         session, or set TXC_VAULT_ALLOW_X11=1 to type it anyway"
+    );
     let typed = rpassword::prompt_password(prompt).map_err(|_| anyhow!(without_terminal))?;
     Ok(SecretString::from(typed))
 }
@@ -290,6 +365,15 @@ fn secret_from_bytes(bytes: &[u8], limit: usize, what: &str) -> Result<SecretStr
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn strength_counts_words_and_characters_roughly() {
+        use super::strength_bits;
+        assert_eq!(strength_bits("correct horse battery staple"), 44);
+        assert!(strength_bits("aaaaaaaaaaaaaaaa") < 50);
+        assert!(strength_bits("Tr0ub4dor&3-Xq9!vLm2#Pz") > 100);
+        assert!(strength_bits("seven random words from a long list") >= 77);
+    }
+
     use super::*;
 
     #[test]

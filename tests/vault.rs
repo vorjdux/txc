@@ -78,6 +78,21 @@ impl Sandbox {
             .args(args)
             // Debug builds read this, so identities are made in milliseconds.
             .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+            // Where each platform keeps session files: private to this test.
+            .env("XDG_RUNTIME_DIR", self.private("run"))
+            .env("TMPDIR", self.private("tmp"))
+            .env("LOCALAPPDATA", self.private("local"))
+            // Debug builds keep the synced vaults' second factor here rather
+            // than in the OS keystore, which CI runners do not have.
+            .env("TXC_VAULT_TEST_KEYSTORE", self.private("keystore"))
+            .env("TXC_VAULT_TEST_SSH", self.root.join("fake-ssh"))
+            // Debug builds print the recovery kit here instead of showing it
+            // one sheet at a time at a terminal.
+            .env("TXC_VAULT_TEST_KIT", "1")
+            .env("TXC_VAULT_TEST_LP", self.root.join("fake-lp"))
+            // Debug builds take the swap's state from here: CI runners swap
+            // to plain files, which would change what status says.
+            .env("TXC_VAULT_TEST_SWAP", "safe")
             .env_remove("TXC_VAULT_HOME")
             .stdin(if input.is_some() {
                 Stdio::piped()
@@ -100,6 +115,45 @@ impl Sandbox {
 
     fn init(&self) {
         succeeds(&self.vault(&["init"]));
+    }
+
+    /// A directory only this user can open, created on first use.
+    fn private(&self, name: &str) -> PathBuf {
+        let dir = self.root.join(name);
+        if !dir.exists() {
+            std::fs::create_dir_all(&dir).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+        }
+        dir
+    }
+
+    /// Opens a session, or returns false when this machine cannot keep one
+    /// (a container without a kernel keyring, for instance).
+    fn unlock(&self, args: &[&str]) -> bool {
+        let mut all = vec!["unlock"];
+        all.extend_from_slice(args);
+        let output = self.vault(&all);
+        if output.status.success() {
+            return true;
+        }
+        let error = stderr(&output);
+        assert!(
+            error.contains("keyring") || error.contains("Keychain") || error.contains("DPAPI"),
+            "unlock failed for another reason: {error}"
+        );
+        eprintln!("skipping: this machine cannot keep a session ({error})");
+        false
+    }
+
+    /// Runs a command with a wrong passphrase, so it can only succeed through
+    /// an open session.
+    fn vault_without_passphrase(&self, args: &[&str]) -> Output {
+        let wrong = self.passphrase_file("wrong", "not the passphrase at all");
+        self.vault_with(&self.home(), &wrong, args, None)
     }
 }
 
@@ -1154,4 +1208,1420 @@ fn rotating_needs_the_current_write_key() {
     );
     // The writer is unchanged.
     assert_eq!(succeeds(&s.vault(&["writers"])).lines().count(), 1);
+}
+
+#[test]
+fn a_session_opens_the_vault_without_the_passphrase() {
+    let sandbox = Sandbox::new("session");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
+    if !sandbox.unlock(&[]) {
+        return;
+    }
+
+    let copied = succeeds(&sandbox.vault_without_passphrase(&["copy", "github", "--print"]));
+    assert_eq!(copied.trim(), "hunter2");
+
+    // --no-session asks for the passphrase, and the wrong one fails.
+    fails(&sandbox.vault_without_passphrase(&["--no-session", "copy", "github", "--print"]));
+
+    assert!(stderr(&sandbox.vault(&["lock"])).contains("closed"));
+    fails(&sandbox.vault_without_passphrase(&["copy", "github", "--print"]));
+    assert!(stderr(&sandbox.vault(&["lock"])).contains("no open session"));
+}
+
+#[test]
+fn an_idle_session_ends() {
+    let sandbox = Sandbox::new("session-idle");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
+    if !sandbox.unlock(&["--idle", "1"]) {
+        return;
+    }
+    // Pretend the last use was long ago.
+    let used: Vec<PathBuf> = ["run", "tmp", "local"]
+        .iter()
+        .flat_map(|dir| every_file(&sandbox.root.join(dir)))
+        .map(|(path, _)| path)
+        .filter(|path| path.extension().is_some_and(|ext| ext == "used"))
+        .collect();
+    assert_eq!(used.len(), 1, "one session in this sandbox");
+    std::fs::write(&used[0], 0_u64.to_be_bytes()).unwrap();
+
+    let output = sandbox.vault_without_passphrase(&["copy", "github", "--print"]);
+    fails(&output);
+    assert!(stderr(&output).contains("idle"), "{}", stderr(&output));
+}
+
+#[test]
+fn a_session_never_holds_the_write_key() {
+    let sandbox = Sandbox::new("session-write");
+    sandbox.init();
+    if !sandbox.unlock(&[]) {
+        return;
+    }
+    // The session opens the identity, but a change still needs the write
+    // passphrase, and this one is wrong.
+    sandbox.passphrase_file("write-pass", "not the write passphrase");
+    fails(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
+}
+
+/// Runs `txc vault run` from inside a project directory with its template.
+#[cfg(unix)]
+fn run_in(sandbox: &Sandbox, template: &str, args: &[&str]) -> Output {
+    let project = sandbox.private("project");
+    std::fs::write(project.join(".env.txc"), template).unwrap();
+    let mut command = Command::new(BIN);
+    command
+        .current_dir(&project)
+        .arg("vault")
+        .arg("--home")
+        .arg(sandbox.home())
+        .arg("--passphrase-file")
+        .arg(sandbox.root.join("pass"))
+        .arg("run")
+        .args(args)
+        .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+        .env("XDG_RUNTIME_DIR", sandbox.private("run"))
+        .env("TMPDIR", sandbox.private("tmp"))
+        .env_remove("TXC_VAULT_HOME")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    finish(command.spawn().expect("txc starts"), args)
+}
+
+#[cfg(unix)]
+#[test]
+fn run_puts_secrets_in_the_programs_environment_and_nowhere_else() {
+    let sandbox = Sandbox::new("run-env");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "db", "--secret-from-stdin"], "s3cret\n"));
+    let output = run_in(
+        &sandbox,
+        "# safe to commit\nDB=txc://personal/db\nLEVEL=debug\n",
+        &["--", "sh", "-c", "printf '%s|%s' \"$DB\" \"$LEVEL\""],
+    );
+    assert_eq!(succeeds(&output), "s3cret|debug");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_hands_a_secret_as_a_file_that_is_not_on_disk() {
+    let sandbox = Sandbox::new("run-file");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "tls", "--secret-from-stdin"], "PRIVATE KEY\n"));
+    let output = run_in(
+        &sandbox,
+        "KEY=txc+file://personal/tls\n",
+        &[
+            "--",
+            "sh",
+            "-c",
+            "case \"$KEY\" in /dev/fd/*) cat \"$KEY\";; *) echo not-a-descriptor;; esac",
+        ],
+    );
+    assert_eq!(succeeds(&output), "PRIVATE KEY");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_passes_on_the_programs_exit_code() {
+    let sandbox = Sandbox::new("run-exit");
+    sandbox.init();
+    // A template with no secret needs no unlock at all.
+    let output = run_in(&sandbox, "LEVEL=debug\n", &["--", "sh", "-c", "exit 7"]);
+    assert_eq!(output.status.code(), Some(7));
+}
+
+#[cfg(unix)]
+#[test]
+fn run_refuses_a_value_on_the_command_line() {
+    let sandbox = Sandbox::new("run-set");
+    sandbox.init();
+    let output = run_in(&sandbox, "", &["--set", "DB=hunter2", "--", "true"]);
+    assert!(
+        stderr(&output).contains("only references"),
+        "{}",
+        stderr(&output)
+    );
+    fails(&output);
+}
+
+#[cfg(unix)]
+#[test]
+fn run_names_the_variable_whose_secret_is_missing() {
+    let sandbox = Sandbox::new("run-missing");
+    sandbox.init();
+    let output = run_in(
+        &sandbox,
+        "DB=txc://personal/nothing-here\n",
+        &["--", "true"],
+    );
+    fails(&output);
+    assert!(
+        stderr(&output).contains("nothing-here"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn an_export_from_another_manager_is_imported_with_its_secrets() {
+    let sandbox = Sandbox::new("import");
+    sandbox.init();
+    let csv = sandbox.root.join("export.csv");
+    std::fs::write(
+        &csv,
+        "title,url,username,password,notes\nGitHub,https://github.com,octocat,hunter2,2fa\n",
+    )
+    .unwrap();
+    let path = csv.to_str().unwrap();
+
+    let dry = sandbox.vault(&["import", path, "--dry-run"]);
+    assert!(
+        stderr(&dry).contains("1 entries to import"),
+        "{}",
+        stderr(&dry)
+    );
+    assert!(!stdout(&sandbox.vault(&["list", "personal"])).contains("GitHub"));
+
+    succeeds(&sandbox.vault(&["import", path, "--remove-source"]));
+    assert!(!csv.exists(), "the plaintext export is gone");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "GitHub", "--print"])).trim(),
+        "hunter2"
+    );
+    // A second import numbers the clashing name instead of replacing it.
+    std::fs::write(&csv, "title,password\nGitHub,other\n").unwrap();
+    succeeds(&sandbox.vault(&["import", path]));
+    assert!(stdout(&sandbox.vault(&["list", "personal"])).contains("GitHub (2)"));
+}
+
+#[test]
+fn an_env_file_is_imported_as_secrets() {
+    let sandbox = Sandbox::new("import-env");
+    sandbox.init();
+    let env = sandbox.root.join("app.env");
+    std::fs::write(&env, "export OPENAI_API_KEY=sk-test\n").unwrap();
+    succeeds(&sandbox.vault(&["import", env.to_str().unwrap(), "--into", "personal"]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "OPENAI_API_KEY", "--print"])).trim(),
+        "sk-test"
+    );
+}
+
+#[test]
+fn an_export_is_an_age_file_any_age_tool_opens() {
+    use std::io::Read;
+
+    let sandbox = Sandbox::new("export");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2\n"));
+    let key = age::x25519::Identity::generate();
+    let output = sandbox.root.join("backup.age");
+    succeeds(&sandbox.vault(&[
+        "export",
+        "--to",
+        &key.to_public().to_string(),
+        "--output",
+        output.to_str().unwrap(),
+    ]));
+
+    let encrypted = std::fs::read(&output).unwrap();
+    let decryptor = age::Decryptor::new(&encrypted[..]).unwrap();
+    let mut json = String::new();
+    decryptor
+        .decrypt(std::iter::once(&key as &dyn age::Identity))
+        .unwrap()
+        .read_to_string(&mut json)
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(document["format"], "txc-export");
+    let entry = &document["vaults"][0]["entries"][0];
+    assert_eq!(entry["name"], "github");
+    assert!(
+        entry["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field["value"] == "hunter2" && field["secret"] == true)
+    );
+
+    // An existing file is never replaced.
+    fails(&sandbox.vault(&[
+        "export",
+        "--to",
+        &age::x25519::Identity::generate().to_public().to_string(),
+        "--output",
+        output.to_str().unwrap(),
+    ]));
+}
+
+#[test]
+fn a_plaintext_export_needs_a_person_to_confirm_it() {
+    let sandbox = Sandbox::new("export-plain");
+    sandbox.init();
+    let output = sandbox.root.join("plain.json");
+    let result = sandbox.vault(&[
+        "export",
+        "--plaintext",
+        "--output",
+        output.to_str().unwrap(),
+    ]);
+    fails(&result);
+    assert!(!output.exists());
+}
+
+// ------------------------------------------------------------ synced vaults --
+
+impl Sandbox {
+    /// A shared sync folder, the same directory for every device in a test.
+    fn folder(&self) -> PathBuf {
+        let folder = self.root.join("sync");
+        std::fs::create_dir_all(&folder).unwrap();
+        folder
+    }
+
+    /// Marks the recovery kit as written down, which the terminal-only
+    /// `recovery print` does, so pairing is allowed.
+    fn kit_written(&self, home: &Path, vault: &str) {
+        std::fs::remove_file(home.join("synced").join(vault).join("recovery.age")).unwrap();
+    }
+
+    /// Starts `txc vault` with piped standard input and output, for pairing.
+    fn spawn(&self, home: &Path, args: &[&str]) -> Child {
+        Command::new(BIN)
+            .arg("vault")
+            .arg("--home")
+            .arg(home)
+            .arg("--passphrase-file")
+            .arg(self.root.join("pass"))
+            .args(args)
+            .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+            .env("XDG_RUNTIME_DIR", self.private("run"))
+            .env("TMPDIR", self.private("tmp"))
+            .env("LOCALAPPDATA", self.private("local"))
+            .env("TXC_VAULT_TEST_KEYSTORE", self.private("keystore"))
+            .env("TXC_VAULT_TEST_SWAP", "safe")
+            .env_remove("TXC_VAULT_HOME")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("txc starts")
+    }
+}
+
+/// Reads one line a pairing process printed.
+fn line_from(reader: &mut impl std::io::BufRead) -> String {
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    line.trim().to_owned()
+}
+
+/// Reads standard error until the code line, and returns the code.
+fn code_from(reader: &mut impl std::io::BufRead) -> String {
+    loop {
+        let mut line = String::new();
+        assert!(
+            reader.read_line(&mut line).unwrap() > 0,
+            "the process ended without showing a code"
+        );
+        if let Some(code) = line.trim().strip_prefix("This screen shows the code: ") {
+            return code.to_owned();
+        }
+    }
+}
+
+#[test]
+fn a_synced_vault_does_the_everyday_verbs_and_says_what_needs_doing() {
+    let sandbox = Sandbox::new("synced-first-run");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    // The folder holds objects only: random names, nothing readable.
+    let objects: Vec<String> = std::fs::read_dir(folder.join("objects"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert!(objects.len() >= 2 && objects.iter().all(|name| name.len() == 64));
+
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("● green   vault \"personal\", 1 device"),
+        "{status}"
+    );
+    assert!(
+        status.contains("● yellow  recovery sheets not written down"),
+        "{status}"
+    );
+    assert_eq!(status.lines().count(), 2, "{status}");
+    if cfg!(target_os = "linux") {
+        // --all adds that no security key holds this device's keys, how
+        // many devices this admin may still add, the missing backup, and
+        // whatever this kernel's confinement lacks ("on this system ...",
+        // which varies between machines and is not counted).
+        let all = succeeds(&sandbox.vault(&["status", "--all"]));
+        let counted = all
+            .lines()
+            .filter(|line| !line.contains("on this system"))
+            .count();
+        assert_eq!(counted, 5, "{all}");
+        assert!(all.contains("no offline backup yet"), "{all}");
+        assert!(all.contains("no security key"), "{all}");
+        assert!(all.contains("has added 0 of 4"), "{all}");
+    }
+
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "github"])),
+        "hunter2"
+    );
+    let shown = succeeds(&sandbox.vault(&["show", "github"]));
+    assert!(
+        shown.contains("octocat") && !shown.contains("hunter2"),
+        "{shown}"
+    );
+    assert_eq!(
+        succeeds(&sandbox.vault(&["list"])).trim(),
+        "personal (synced)"
+    );
+    assert!(succeeds(&sandbox.vault(&["list", "personal"])).contains("github"));
+
+    succeeds(&sandbox.vault(&["edit", "github", "--username", "hubot"]));
+    succeeds(&sandbox.vault(&["edit", "github", "--tag", "work"]));
+    succeeds(&sandbox.vault(&["favourite", "github"]));
+    let shown = succeeds(&sandbox.vault(&["show", "github"]));
+    assert!(shown.contains("work") && shown.contains("★"), "{shown}");
+    assert!(succeeds(&sandbox.vault(&["list", "personal", "--favourites"])).contains("github"));
+    assert!(!succeeds(&sandbox.vault(&["list", "personal", "--tag", "home"])).contains("github"));
+    assert!(succeeds(&sandbox.vault(&["show", "github"])).contains("hubot"));
+    if cfg!(unix) {
+        let ran = succeeds(&sandbox.vault(&[
+            "run",
+            "--set",
+            "TOKEN=txc://personal/github",
+            "--",
+            "sh",
+            "-c",
+            "printf %s \"$TOKEN\"",
+        ]));
+        assert_eq!(ran, "hunter2");
+    }
+
+    // No name or secret is readable anywhere in the home or the folder.
+    for (path, bytes) in every_file(&sandbox.root) {
+        if path.starts_with(sandbox.root.join("pass"))
+            || path.starts_with(sandbox.root.join("write-pass"))
+        {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            !text.contains("hunter2") && !text.contains("octocat"),
+            "{}",
+            path.display()
+        );
+    }
+
+    let report = succeeds(&sandbox.vault(&["doctor"]));
+    assert!(
+        report.contains("devices: 1") && !report.contains("github"),
+        "{report}"
+    );
+    let compared = succeeds(&sandbox.vault(&["compare"]));
+    assert!(compared.contains("(this device)"), "{compared}");
+    let removed = stderr(&sandbox.vault(&["rm", "--yes", "github"]));
+    assert!(removed.contains("txc vault restore"), "{removed}");
+    fails(&sandbox.vault(&["copy", "--print", "github"]));
+    let listed = succeeds(&sandbox.vault(&["list", "personal", "--removed"]));
+    assert!(listed.contains("github"), "{listed}");
+    succeeds(&sandbox.vault(&["restore", "github"]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "github"])),
+        "hunter2"
+    );
+    assert!(!succeeds(&sandbox.vault(&["list", "personal", "--removed"])).contains("github"));
+    fails(&sandbox.vault(&["restore", "github"]));
+    succeeds(&sandbox.vault(&["rm", "--yes", "github"]));
+    // Pairing waits for the recovery sheets.
+    let refused = fails(&sandbox.vault(&["device", "add"]));
+    assert!(refused.contains("recovery sheets"), "{refused}");
+}
+
+#[test]
+fn two_devices_pair_through_pasted_lines_and_a_code_and_share_entries() {
+    use std::io::{BufReader, Write as _};
+
+    let sandbox = Sandbox::new("synced-pair");
+    let folder = sandbox.folder();
+    let (home_a, home_b) = (sandbox.root.join("home-a"), sandbox.root.join("home-b"));
+    succeeds(&sandbox.vault_with(
+        &home_a,
+        &sandbox.root.join("pass"),
+        &["init", "--folder", folder.to_str().unwrap()],
+        None,
+    ));
+    sandbox.kit_written(&home_a, "personal");
+    succeeds(&sandbox.vault_with(
+        &home_a,
+        &sandbox.root.join("pass"),
+        &["add", "mail", "--secret-from-stdin"],
+        Some("s3cret"),
+    ));
+
+    let mut admin = sandbox.spawn(&home_a, &["device", "add"]);
+    let mut admin_out = BufReader::new(admin.stdout.take().unwrap());
+    let mut admin_err = BufReader::new(admin.stderr.take().unwrap());
+    let mut admin_in = admin.stdin.take().unwrap();
+    let mut device = sandbox.spawn(&home_b, &["join", "--folder", folder.to_str().unwrap()]);
+    let mut device_out = BufReader::new(device.stdout.take().unwrap());
+    let mut device_err = BufReader::new(device.stderr.take().unwrap());
+    let mut device_in = device.stdin.take().unwrap();
+
+    writeln!(device_in, "{}", line_from(&mut admin_out)).unwrap();
+    writeln!(admin_in, "{}", line_from(&mut device_out)).unwrap();
+    writeln!(device_in, "{}", line_from(&mut admin_out)).unwrap();
+    let admin_code = code_from(&mut admin_err);
+    let device_code = code_from(&mut device_err);
+    assert_eq!(admin_code.len(), 7);
+    // Each person types the code the other screen shows.
+    writeln!(admin_in, "{device_code}").unwrap();
+    writeln!(device_in, "{admin_code}").unwrap();
+    drop((admin_in, device_in));
+    assert!(admin.wait().unwrap().success());
+    assert!(device.wait().unwrap().success());
+
+    let pass = sandbox.root.join("pass");
+    assert_eq!(
+        succeeds(&sandbox.vault_with(&home_b, &pass, &["copy", "--print", "mail"], None)),
+        "s3cret"
+    );
+    succeeds(&sandbox.vault_with(
+        &home_b,
+        &pass,
+        &["add", "bank", "--secret-from-stdin"],
+        Some("pin"),
+    ));
+    assert_eq!(
+        succeeds(&sandbox.vault_with(&home_a, &pass, &["copy", "--print", "bank"], None)),
+        "pin"
+    );
+    // Both devices see the same history: every checkpoint both hold shows
+    // the same digest on each.
+    let digests = |home: &Path| -> std::collections::BTreeMap<String, String> {
+        succeeds(&sandbox.vault_with(home, &pass, &["compare"], None))
+            .lines()
+            .skip(1)
+            .map(|line| {
+                let words: Vec<&str> = line.split_whitespace().collect();
+                (words[0].to_owned(), words[words.len() - 3..].join(" "))
+            })
+            .collect()
+    };
+    let (seen_a, seen_b) = (digests(&home_a), digests(&home_b));
+    let shared: Vec<&String> = seen_a
+        .keys()
+        .filter(|id| seen_b.contains_key(*id))
+        .collect();
+    assert!(!shared.is_empty(), "{seen_a:?} {seen_b:?}");
+    for id in shared {
+        assert_eq!(seen_a[id], seen_b[id]);
+    }
+    let devices = succeeds(&sandbox.vault_with(&home_a, &pass, &["device", "list"], None));
+    assert_eq!(devices.lines().count(), 3, "{devices}");
+
+    // Removing the second device with --wipe flags what it could read, and
+    // it wipes its keys when it next opens the vault.
+    let other = devices
+        .lines()
+        .skip(1)
+        .find(|line| !line.contains("this device"))
+        .and_then(|line| line.split_whitespace().next())
+        .unwrap()
+        .to_owned();
+    let removed = stderr(&sandbox.vault_with(
+        &home_a,
+        &pass,
+        &["device", "remove", &other, "--wipe", "--yes"],
+        None,
+    ));
+    assert!(removed.contains("--stale"), "{removed}");
+    let stale =
+        succeeds(&sandbox.vault_with(&home_a, &pass, &["list", "personal", "--stale"], None));
+    assert!(stale.contains("mail") && stale.contains("bank"), "{stale}");
+    let status = succeeds(&sandbox.vault_with(&home_a, &pass, &["status"], None));
+    assert!(
+        status.contains("2 entries a removed device could read"),
+        "{status}"
+    );
+    succeeds(&sandbox.vault_with(
+        &home_a,
+        &pass,
+        &["edit", "mail", "--secret-from-stdin"],
+        Some("new-mail"),
+    ));
+    let stale =
+        succeeds(&sandbox.vault_with(&home_a, &pass, &["list", "personal", "--stale"], None));
+    assert!(!stale.contains("mail") && stale.contains("bank"), "{stale}");
+    let wiped = fails(&sandbox.vault_with(&home_b, &pass, &["list", "personal"], None));
+    assert!(wiped.contains("wipe its keys"), "{wiped}");
+    assert!(!home_b.join("synced").join("personal").exists());
+}
+
+#[test]
+fn a_vault_migrates_into_a_synced_vault_and_the_old_one_stays() {
+    let sandbox = Sandbox::new("synced-migrate");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--tag",
+            "code",
+            "--favourite",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&[
+        "migrate",
+        "personal",
+        "--folder",
+        folder.to_str().unwrap(),
+        "--name",
+        "work",
+    ]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "work/github"])),
+        "hunter2"
+    );
+    let shown = succeeds(&sandbox.vault(&["show", "work/github"]));
+    assert!(shown.contains("octocat"), "{shown}");
+    assert!(shown.contains("code"), "tags are carried over: {shown}");
+    assert!(shown.contains('★'), "the star is carried over: {shown}");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "personal/github"])),
+        "hunter2"
+    );
+    // Migrating again copies nothing twice.
+    succeeds(&sandbox.vault(&["migrate", "personal", "--name", "work"]));
+    assert_eq!(
+        succeeds(&sandbox.vault(&["list", "work"]))
+            .matches("github")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_synced_grant_opens_for_its_runner_against_the_pinned_vault_id() {
+    use age::secrecy::ExposeSecret;
+
+    let sandbox = Sandbox::new("synced-grant");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &["add", "deploy", "--kind", "api-key", "--secret-from-stdin"],
+        "tok-123",
+    ));
+
+    let runner = txc::vault::pq::Identity::generate();
+    let key = sandbox.root.join("runner.key");
+    std::fs::write(&key, format!("{}\n", runner.to_string().expose_secret())).unwrap();
+    let issued = sandbox.vault(&[
+        "grant",
+        "deploy",
+        "--to",
+        &runner.to_public().to_string(),
+        "--origin",
+        "ci",
+    ]);
+    succeeds(&issued);
+    let grant = sandbox.root.join("deploy.grant");
+    std::fs::write(&grant, &issued.stdout).unwrap();
+    let said = stderr(&issued);
+    let vault_id = said
+        .split_whitespace()
+        .skip_while(|word| *word != "--vault-id")
+        .nth(1)
+        .unwrap()
+        .to_owned();
+    let (grant, key) = (grant.to_str().unwrap(), key.to_str().unwrap());
+
+    let redeemed = sandbox.vault(&["redeem", grant, "--identity", key, "--vault-id", &vault_id]);
+    assert_eq!(succeeds(&redeemed), "tok-123");
+    fails(&sandbox.vault(&[
+        "redeem",
+        grant,
+        "--identity",
+        key,
+        "--vault-id",
+        &"0".repeat(96),
+    ]));
+    fails(&sandbox.vault(&[
+        "redeem",
+        grant,
+        "--identity",
+        key,
+        "--vault-id",
+        &vault_id,
+        "--min-version",
+        "99999999999",
+    ]));
+    let other = sandbox.root.join("other.key");
+    std::fs::write(
+        &other,
+        format!(
+            "{}\n",
+            txc::vault::pq::Identity::generate()
+                .to_string()
+                .expose_secret()
+        ),
+    )
+    .unwrap();
+    fails(&sandbox.vault(&[
+        "redeem",
+        grant,
+        "--identity",
+        other.to_str().unwrap(),
+        "--vault-id",
+        &vault_id,
+    ]));
+}
+
+#[test]
+#[cfg(unix)]
+fn ssh_gets_a_fresh_key_and_a_short_certificate_from_a_ca_that_never_leaves() {
+    use std::os::unix::fs::PermissionsExt;
+
+    if Command::new("ssh-keygen").arg("-?").output().is_err() {
+        return eprintln!("ssh-keygen is not installed; skipped");
+    }
+    let sandbox = Sandbox::new("synced-ssh");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let setup = succeeds(&sandbox.vault(&["ssh-ca", "infra"]));
+    assert!(setup.starts_with("ssh-ed25519 "), "{setup}");
+    let public = sandbox.root.join("ca.pub");
+    std::fs::write(&public, &setup).unwrap();
+    let fingerprint = String::from_utf8(
+        Command::new("ssh-keygen")
+            .arg("-lf")
+            .arg(&public)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let fingerprint = fingerprint.split_whitespace().nth(1).unwrap().to_owned();
+
+    // The CA key is never released.
+    fails(&sandbox.vault(&["copy", "--print", "infra"]));
+    fails(&sandbox.vault(&["grant", "infra", "--to", "age1pq1x"]));
+    assert!(succeeds(&sandbox.vault(&["show", "infra"])).contains("••••"));
+
+    // A stand-in for ssh that checks what it was given with OpenSSH itself.
+    let fake = sandbox.root.join("fake-ssh");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\nset -e\nkey=\"$2\"\ncert=\"${4#CertificateFile=}\"\n\
+         ssh-keygen -L -f \"$cert\"\nssh-keygen -y -f \"$key\" >/dev/null\necho \"host $7\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let shown = succeeds(&sandbox.vault(&[
+        "ssh",
+        "--user",
+        "deploy",
+        "--minutes",
+        "2",
+        "server.example",
+    ]));
+    assert!(
+        shown.contains(&format!("Signing CA: ED25519 {fingerprint}")),
+        "{shown}"
+    );
+    assert!(shown.contains("deploy"), "{shown}");
+    assert!(
+        shown.contains("Type: ssh-ed25519-cert-v01@openssh.com user certificate"),
+        "{shown}"
+    );
+    assert!(shown.contains("host server.example"), "{shown}");
+}
+
+#[test]
+fn the_keyholder_process_holds_a_synced_vault_and_releases_one_secret_at_a_time() {
+    use age::secrecy::{ExposeSecret, SecretString};
+    use txc::vault::keyholder::Holder;
+
+    let sandbox = Sandbox::new("keyholder");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+
+    let mut command = Command::new(BIN);
+    command
+        .arg("vault")
+        .arg("--home")
+        .arg(sandbox.home())
+        .arg("keyholder")
+        .env("TXC_VAULT_TEST_WORK_FACTOR", "10")
+        .env("XDG_RUNTIME_DIR", sandbox.private("run"))
+        .env("TXC_VAULT_TEST_KEYSTORE", sandbox.private("keystore"));
+    let passphrase = SecretString::from(PASSPHRASE.to_owned());
+    let mut holder = Holder::start(command, "personal", Some(&passphrase)).unwrap();
+
+    let entries = holder.entries().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].plain("username"), Some("octocat"));
+    assert!(!serde_json::to_string(&entries).unwrap().contains("hunter2"));
+    assert_eq!(
+        holder.reveal("github", "password").unwrap().expose_secret(),
+        "hunter2"
+    );
+    // The screen's status lines come from the keyholder, as the CLI's do.
+    assert!(
+        holder
+            .status()
+            .unwrap()
+            .iter()
+            .any(|line| line.contains("recovery sheets"))
+    );
+    assert!(holder.classes().unwrap().is_empty());
+
+    // On Linux the keyholder has confined itself: seccomp is on.
+    #[cfg(target_os = "linux")]
+    {
+        let pid = holder.process_id().unwrap();
+        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+        assert!(
+            status
+                .lines()
+                .any(|line| line.starts_with("Seccomp:") && line.ends_with('2')),
+            "{status}"
+        );
+    }
+
+    let new = txc::vault::NewEntry {
+        name: "bank".into(),
+        kind: txc::vault::model::Kind::Login,
+        plain: Vec::new(),
+        secrets: vec![("password".into(), SecretString::from("1234".to_owned()))],
+        tags: Vec::new(),
+        favourite: false,
+    };
+    holder.add(&new).unwrap();
+    drop(holder);
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "bank"])),
+        "1234"
+    );
+}
+
+#[test]
+fn a_password_in_an_imported_breach_list_is_reported_offline() {
+    use sha1::{Digest, Sha1};
+
+    let sandbox = Sandbox::new("breach");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "weak", "--secret-from-stdin"], "password"));
+    succeeds(&sandbox.vault_piped(&["add", "strong", "--secret-from-stdin"], "xq7-Vt!9s-wP2e"));
+
+    let list = sandbox.root.join("pwned.txt");
+    let lines: Vec<String> = ["password", "123456", "qwerty"]
+        .iter()
+        .map(|leaked| {
+            format!(
+                "{}:1000",
+                data_encoding::HEXUPPER.encode(&Sha1::digest(leaked.as_bytes()))
+            )
+        })
+        .collect();
+    std::fs::write(&list, lines.join("\n")).unwrap();
+    succeeds(&sandbox.vault(&["breach", "import", list.to_str().unwrap()]));
+
+    let found = succeeds(&sandbox.vault(&["breach", "check"]));
+    assert!(found.contains("weak: password"), "{found}");
+    assert!(!found.contains("strong"), "{found}");
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("1 password is in the breach list"),
+        "{status}"
+    );
+}
+
+#[test]
+fn a_synced_vault_imports_in_one_change_and_exports_to_a_post_quantum_key() {
+    use std::io::Read as _;
+
+    let sandbox = Sandbox::new("synced-import-export");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let env = sandbox.root.join("app.env");
+    std::fs::write(&env, "API_TOKEN=tok-1\nDB_PASSWORD=pw-2\n").unwrap();
+    let before = std::fs::read_dir(folder.join("objects")).unwrap().count();
+    succeeds(&sandbox.vault(&["import", env.to_str().unwrap(), "--into", "personal"]));
+    let after = std::fs::read_dir(folder.join("objects")).unwrap().count();
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "API_TOKEN"])),
+        "tok-1"
+    );
+    // One object for the whole import, plus this device's sender key and
+    // checkpoint bookkeeping at most.
+    assert!(after - before <= 3, "{before} -> {after}");
+    succeeds(&sandbox.vault(&["ssh-ca", "infra"]));
+
+    let key = txc::vault::pq::Identity::generate();
+    let exported = sandbox.vault(&["export", "personal", "--to", &key.to_public().to_string()]);
+    succeeds(&exported);
+    let decryptor = age::Decryptor::new(exported.stdout.as_slice()).unwrap();
+    let mut reader = decryptor
+        .decrypt(std::iter::once(&key as &dyn age::Identity))
+        .unwrap();
+    let mut json = String::new();
+    reader.read_to_string(&mut json).unwrap();
+    assert!(json.contains("pw-2"), "{json}");
+    assert!(
+        !json.contains("infra"),
+        "an operation-only entry was exported"
+    );
+    assert!(stderr(&exported).contains("infra"));
+}
+
+#[test]
+fn format_details_live_under_advanced_and_create_makes_a_second_synced_vault() {
+    let sandbox = Sandbox::new("advanced");
+    sandbox.init();
+    let help = succeeds(&sandbox.vault(&["--help"]));
+    assert!(
+        help.contains("advanced") && !help.contains("  writers "),
+        "{help}"
+    );
+    // The grouped spelling and the old one both still work.
+    let grouped = succeeds(&sandbox.vault(&["advanced", "identity"]));
+    assert_eq!(grouped, succeeds(&sandbox.vault(&["identity"])));
+
+    let (first, second) = (sandbox.root.join("sync-one"), sandbox.root.join("sync-two"));
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    succeeds(&sandbox.vault(&[
+        "init",
+        "--folder",
+        first.to_str().unwrap(),
+        "--name",
+        "home",
+    ]));
+    succeeds(&sandbox.vault(&["create", "work", "--folder", second.to_str().unwrap()]));
+    let listed = succeeds(&sandbox.vault(&["list"]));
+    assert!(
+        listed.contains("home (synced)")
+            && listed.contains("work (synced)")
+            && listed.contains("personal"),
+        "{listed}"
+    );
+}
+
+#[test]
+fn passwd_changes_the_identity_and_the_synced_vaults_it_opens() {
+    let sandbox = Sandbox::new("passwd-synced");
+    sandbox.init();
+    let (one, two) = (sandbox.root.join("sync-one"), sandbox.root.join("sync-two"));
+    std::fs::create_dir_all(&one).unwrap();
+    std::fs::create_dir_all(&two).unwrap();
+    succeeds(&sandbox.vault(&["create", "home", "--folder", one.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "home/mail", "--secret-from-stdin"], "s3cret"));
+    let other = sandbox.passphrase_file("other-pass", "a different passphrase for work");
+    succeeds(&sandbox.vault_with(
+        &sandbox.home(),
+        &other,
+        &["create", "work", "--folder", two.to_str().unwrap()],
+        None,
+    ));
+
+    let new = sandbox.passphrase_file("new-pass", "a brand new passphrase for both");
+    let changed = sandbox.vault(&["passwd", "--new-passphrase-file", new.to_str().unwrap()]);
+    succeeds(&changed);
+    let said = stderr(&changed);
+    assert!(
+        said.contains("your identity")
+            && said.contains("home")
+            && said.contains("work keeps its own"),
+        "{said}"
+    );
+
+    let home = sandbox.home();
+    fails(&sandbox.vault(&["copy", "--print", "--no-session", "home/mail"]));
+    assert_eq!(
+        succeeds(&sandbox.vault_with(
+            &home,
+            &new,
+            &["copy", "--print", "--no-session", "home/mail"],
+            None
+        )),
+        "s3cret"
+    );
+    succeeds(&sandbox.vault_with(&home, &new, &["advanced", "identity"], None));
+    // The vault with its own passphrase is unchanged, and --vault changes only it.
+    succeeds(&sandbox.vault_with(&home, &other, &["list", "work", "--no-session"], None));
+    let third = sandbox.passphrase_file("third-pass", "yet another passphrase for work");
+    succeeds(&sandbox.vault_with(
+        &home,
+        &other,
+        &[
+            "passwd",
+            "--vault",
+            "work",
+            "--new-passphrase-file",
+            third.to_str().unwrap(),
+        ],
+        None,
+    ));
+    succeeds(&sandbox.vault_with(&home, &third, &["list", "work", "--no-session"], None));
+    fails(&sandbox.vault_with(&home, &other, &["list", "work", "--no-session"], None));
+}
+
+#[test]
+fn two_sheets_and_the_card_rehearse_and_restore_a_vault_from_its_folder() {
+    let sandbox = Sandbox::new("synced-recovery");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--tag",
+            "code",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    let kit = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let kit: Vec<&str> = kit.lines().collect();
+    assert_eq!(kit.len(), 4, "three sheets and a card");
+    let (sheets, card) = (&kit[..3], kit[3]);
+
+    let drilled = stderr(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{card}\n", sheets[0], sheets[2]),
+    ));
+    assert!(
+        drilled.contains("Drill passed: sheets 1 and 3"),
+        "{drilled}"
+    );
+    assert!(drilled.contains("of 1 entries"), "{drilled}");
+    let refused = fails(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{card}\n", sheets[0], sheets[0]),
+    ));
+    assert!(refused.contains("do not combine"), "{refused}");
+    fails(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\nwrong card words\n", sheets[0], sheets[1]),
+    ));
+
+    let new_folder = sandbox.root.join("sync-new");
+    std::fs::create_dir_all(&new_folder).unwrap();
+    let restored = stderr(&sandbox.vault_piped(
+        &[
+            "recovery",
+            "restore",
+            "restored",
+            "--from",
+            folder.to_str().unwrap(),
+            "--folder",
+            new_folder.to_str().unwrap(),
+        ],
+        &format!("{}\n{}\n{card}\n", sheets[1], sheets[2]),
+    ));
+    assert!(restored.contains("Restored 1 entries"), "{restored}");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "restored/github"])),
+        "hunter2"
+    );
+    let shown = succeeds(&sandbox.vault(&["show", "restored/github"]));
+    assert!(
+        shown.contains("octocat") && shown.contains("code"),
+        "{shown}"
+    );
+    // The restored vault has sheets of its own, and the old ones do not
+    // read it.
+    let new_kit = succeeds(&sandbox.vault(&["recovery", "print", "restored"]));
+    assert_eq!(new_kit.lines().count(), 4);
+    assert!(!new_kit.contains(sheets[0]));
+    fails(&sandbox.vault_piped(
+        &["recovery", "drill", "restored"],
+        &format!("{}\n{}\n{card}\n", sheets[0], sheets[1]),
+    ));
+}
+
+#[test]
+fn reissued_sheets_replace_the_old_ones_for_everything_written_afterwards() {
+    let sandbox = Sandbox::new("synced-reissue");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "github", "--secret-from-stdin"], "hunter2"));
+    let old = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let old: Vec<String> = old.lines().map(str::to_owned).collect();
+    let old_card = old[3].clone();
+    succeeds(&sandbox.vault_piped(&["recovery", "check"], &format!("{}\n{old_card}\n", old[1])));
+
+    succeeds(&sandbox.vault_piped(
+        &["recovery", "reissue"],
+        &format!("{}\n{}\n{old_card}\n", old[0], old[2]),
+    ));
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("recovery sheets not written down"),
+        "{status}"
+    );
+    let new = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let new: Vec<String> = new.lines().map(str::to_owned).collect();
+    assert_eq!(new.len(), 4);
+    assert!(new.iter().all(|line| !old.contains(line)));
+    let new_card = new[3].clone();
+
+    // The old sheets no longer check, sign or read what comes next.
+    fails(&sandbox.vault_piped(&["recovery", "check"], &format!("{}\n{old_card}\n", old[1])));
+    succeeds(&sandbox.vault_piped(&["recovery", "check"], &format!("{}\n{new_card}\n", new[1])));
+    fails(&sandbox.vault_piped(
+        &["recovery", "reissue"],
+        &format!("{}\n{}\n{old_card}\n", old[0], old[1]),
+    ));
+    succeeds(&sandbox.vault_piped(&["add", "later", "--secret-from-stdin"], "s3cret"));
+
+    let with_new = stderr(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{new_card}\n", new[0], new[2]),
+    ));
+    assert!(with_new.contains("of 2 entries"), "{with_new}");
+    let with_old = stderr(&sandbox.vault_piped(
+        &["recovery", "drill"],
+        &format!("{}\n{}\n{old_card}\n", old[0], old[2]),
+    ));
+    // At most what came before; once the snapshot the reissue wrote is
+    // collected, not even that.
+    assert!(
+        !with_old.contains("of 2 entries"),
+        "the old sheets never read what came after: {with_old}"
+    );
+}
+
+#[test]
+fn root_actions_take_the_sheets_and_forget_leaves_the_folder_alone() {
+    let sandbox = Sandbox::new("synced-root");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let kit = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let kit: Vec<&str> = kit.lines().collect();
+    let listed = succeeds(&sandbox.vault(&["device", "list"]));
+    let me = listed
+        .lines()
+        .find(|line| line.contains("this device"))
+        .and_then(|line| line.split_whitespace().next())
+        .unwrap()
+        .to_owned();
+    let allowed = stderr(&sandbox.vault_piped(
+        &["device", "allow", &me, "--more", "2"],
+        &format!("{}\n{}\n{}\n", kit[0], kit[2], kit[3]),
+    ));
+    assert!(allowed.contains("may add more"), "{allowed}");
+    let receipt = allowed
+        .split("--receipt ")
+        .nth(1)
+        .unwrap()
+        .trim()
+        .to_owned();
+    let checked = stderr(&sandbox.vault(&["compare", "--receipt", &receipt]));
+    assert!(
+        checked.contains("a change to the devices or keys"),
+        "{checked}"
+    );
+    fails(&sandbox.vault(&["compare", "--receipt", "0123456789abcdef"]));
+    fails(&sandbox.vault_piped(
+        &["device", "allow", &me, "--more", "2"],
+        &format!("{}\n{}\nwrong card words\n", kit[0], kit[2]),
+    ));
+    fails(&sandbox.vault(&["hardware", "remove", "nothing-by-that-name"]));
+
+    let before = std::fs::read_dir(&folder).unwrap().count();
+    succeeds(&sandbox.vault(&["device", "forget", "--yes"]));
+    assert!(!succeeds(&sandbox.vault(&["list"])).contains("personal"));
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), before);
+}
+
+#[test]
+fn a_stored_totp_seed_gives_the_current_code_in_both_formats() {
+    let sandbox = Sandbox::new("totp");
+    sandbox.init();
+    succeeds(&sandbox.vault_piped(
+        &["add", "otp", "--kind", "secret", "--secret-from-stdin"],
+        "JBSWY3DPEHPK3PXP",
+    ));
+    let code = |sandbox: &Sandbox, entry: &str| {
+        let output = sandbox.vault(&["code", entry, "--field", "value"]);
+        let code = succeeds(&output).trim().to_owned();
+        assert!(stderr(&output).contains("Valid for"), "{}", stderr(&output));
+        code
+    };
+    let classic = code(&sandbox, "otp");
+    assert!(
+        classic.len() == 6 && classic.chars().all(|c| c.is_ascii_digit()),
+        "{classic}"
+    );
+    fails(&sandbox.vault(&["code", "otp"]));
+
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["create", "shared", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "shared/otp",
+            "--kind",
+            "secret",
+            "--secret-from-stdin",
+        ],
+        "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&digits=8",
+    ));
+    let synced = code(&sandbox, "shared/otp");
+    assert_eq!(synced.len(), 8, "{synced}");
+}
+
+#[test]
+fn a_rotation_keeps_both_values_until_it_is_committed_or_aborted() {
+    let sandbox = Sandbox::new("synced-rotate");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(&["add", "db", "--secret-from-stdin"], "old"));
+    fails(&sandbox.vault(&["rotate", "db", "--commit"]));
+    succeeds(&sandbox.vault_piped(&["rotate", "db", "--secret-from-stdin"], "new"));
+    assert_eq!(succeeds(&sandbox.vault(&["copy", "--print", "db"])), "old");
+    assert_eq!(
+        succeeds(&sandbox.vault(&["copy", "--print", "--pending", "db"])),
+        "new"
+    );
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("personal/db has a new password waiting"),
+        "{status}"
+    );
+    fails(&sandbox.vault_piped(&["rotate", "db", "--secret-from-stdin"], "newer"));
+    succeeds(&sandbox.vault(&["rotate", "db", "--commit"]));
+    assert_eq!(succeeds(&sandbox.vault(&["copy", "--print", "db"])), "new");
+    fails(&sandbox.vault(&["copy", "--print", "--pending", "db"]));
+    assert!(!succeeds(&sandbox.vault(&["status"])).contains("waiting"));
+
+    succeeds(&sandbox.vault(&["rotate", "db", "--generate"]));
+    succeeds(&sandbox.vault(&["rotate", "db", "--abort"]));
+    assert_eq!(succeeds(&sandbox.vault(&["copy", "--print", "db"])), "new");
+}
+
+#[test]
+fn a_yellow_line_snoozes_for_a_month_and_unlock_reminds_once_a_day() {
+    let sandbox = Sandbox::new("synced-snooze");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("recovery sheets not written down"),
+        "{status}"
+    );
+
+    let first = stderr(&sandbox.vault(&["unlock"]));
+    assert!(
+        first.contains("recovery sheets not written down"),
+        "unlock reminds: {first}"
+    );
+    let again = stderr(&sandbox.vault(&["unlock"]));
+    assert!(
+        !again.contains("recovery sheets"),
+        "at most once a day: {again}"
+    );
+    succeeds(&sandbox.vault(&["lock"]));
+
+    let snoozed = stderr(&sandbox.vault(&["status", "--snooze"]));
+    assert!(snoozed.contains("Snoozed 1 yellow line"), "{snoozed}");
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(!status.contains("recovery sheets"), "{status}");
+    let all = succeeds(&sandbox.vault(&["status", "--all"]));
+    assert!(
+        all.contains("recovery sheets not written down") && all.contains("snoozed until"),
+        "{all}"
+    );
+    assert!(all.contains("has added 0 of 4"), "{all}");
+}
+
+#[test]
+fn an_offline_backup_opens_with_the_recovery_key_alone() {
+    use std::io::Read as _;
+    let sandbox = Sandbox::new("synced-backup");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    succeeds(&sandbox.vault_piped(
+        &[
+            "add",
+            "github",
+            "--username",
+            "octocat",
+            "--secret-from-stdin",
+        ],
+        "hunter2",
+    ));
+    succeeds(&sandbox.vault_piped(&["add", "old", "--secret-from-stdin"], "gone-soon"));
+    succeeds(&sandbox.vault(&["rm", "--yes", "old"]));
+    let kit = succeeds(&sandbox.vault(&["recovery", "print"]));
+    let kit: Vec<&str> = kit.lines().collect();
+
+    let media = sandbox.root.join("usb");
+    std::fs::create_dir_all(&media).unwrap();
+    succeeds(&sandbox.vault(&["backup", "--to", media.to_str().unwrap()]));
+    let backup = std::fs::read_dir(&media)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "age"))
+        .unwrap();
+    assert!(backup.with_extension("age.sig").exists());
+    let checked = stderr(&sandbox.vault(&["backup", "--verify", backup.to_str().unwrap()]));
+    assert!(checked.contains("intact"), "{checked}");
+    let tampered = sandbox.root.join("tampered.age");
+    let mut bytes = std::fs::read(&backup).unwrap();
+    bytes.push(0);
+    std::fs::write(&tampered, &bytes).unwrap();
+    std::fs::copy(
+        backup.with_extension("age.sig"),
+        sandbox.root.join("tampered.age.sig"),
+    )
+    .unwrap();
+    fails(&sandbox.vault(&["backup", "--verify", tampered.to_str().unwrap()]));
+
+    // No vault needed: two sheets and the card give the key, and age reads it.
+    let key = succeeds(&sandbox.vault_piped(
+        &["recovery", "key"],
+        &format!("{}\n{}\n{}\n", kit[0], kit[1], kit[3]),
+    ));
+    let identity: txc::vault::pq::Identity = key.trim().parse().unwrap();
+    let sealed = std::fs::read(&backup).unwrap();
+    let decryptor = age::Decryptor::new(sealed.as_slice()).unwrap();
+    let mut plain = String::new();
+    decryptor
+        .decrypt(std::iter::once(&identity as &dyn age::Identity))
+        .unwrap()
+        .read_to_string(&mut plain)
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&plain).unwrap();
+    assert_eq!(json["format"], "txc-backup-v1");
+    let github = &json["entries"][0];
+    assert_eq!(github["name"], "github");
+    let fields = github["fields"].as_array().unwrap();
+    assert!(
+        fields
+            .iter()
+            .any(|field| field["name"] == "password" && field["value"] == "hunter2")
+    );
+    assert_eq!(json["removed"][0]["name"], "old");
+    assert!(
+        plain.contains("gone-soon"),
+        "tombstones inside the window are kept"
+    );
+    // Remembered: the next backup needs no --to.
+    succeeds(&sandbox.vault(&["backup"]));
+}
+
+#[cfg(unix)]
+#[test]
+fn the_kit_prints_from_memory_or_to_a_pdf_that_status_asks_to_delete() {
+    use std::os::unix::fs::PermissionsExt;
+    let sandbox = Sandbox::new("synced-kit-print");
+    let folder = sandbox.folder();
+    succeeds(&sandbox.vault(&["init", "--folder", folder.to_str().unwrap()]));
+    let pdf = sandbox.root.join("kit.pdf");
+    succeeds(&sandbox.vault(&["recovery", "print", "--pdf", pdf.to_str().unwrap()]));
+    assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-1.4"));
+    assert_eq!(
+        std::fs::metadata(&pdf).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let status = succeeds(&sandbox.vault(&["status"]));
+    assert!(
+        status.contains("still in") && !status.contains("not written down"),
+        "{status}"
+    );
+    std::fs::remove_file(&pdf).unwrap();
+    assert!(!succeeds(&sandbox.vault(&["status"])).contains("still in"));
+
+    // A second vault goes to the printer, through a stand-in for lp.
+    let lp = sandbox.root.join("fake-lp");
+    std::fs::write(&lp, "#!/bin/sh\ncat > \"$0.out\"\n").unwrap();
+    std::fs::set_permissions(&lp, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let other = sandbox.root.join("sync-other");
+    succeeds(&sandbox.vault(&["create", "other", "--folder", other.to_str().unwrap()]));
+    succeeds(&sandbox.vault(&["recovery", "print", "other", "--printer"]));
+    let printed = std::fs::read_to_string(sandbox.root.join("fake-lp.out")).unwrap();
+    assert!(
+        printed.contains("txc recovery sheet 3 of 3") && printed.contains("txc recovery card"),
+        "{printed}"
+    );
+    assert!(!succeeds(&sandbox.vault(&["status", "other"])).contains("not written down"));
+
+    // The marks printed on a sheet check it with nothing secret.
+    let marks = printed
+        .lines()
+        .find(|line| line.starts_with("Not secret"))
+        .unwrap();
+    let words: Vec<&str> = marks.split_whitespace().collect();
+    let root = words[words.iter().position(|w| *w == "root").unwrap() + 1];
+    let share = words[words.iter().position(|w| *w == "share").unwrap() + 1];
+    let checked = stderr(&sandbox.vault(&[
+        "recovery", "check", "other", "--root", root, "--share", share,
+    ]));
+    assert!(checked.contains("belongs to this vault"), "{checked}");
+    fails(&sandbox.vault(&[
+        "recovery", "check", "personal", "--root", root, "--share", share,
+    ]));
+}
+
+#[test]
+fn the_reference_script_derives_the_same_recovery_key_as_txc() {
+    use age::secrecy::ExposeSecret as _;
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/recovery-key.py");
+    for secret in [[0x5a_u8; 32], [0; 32], *b"0123456789abcdef0123456789abcdef"] {
+        let Ok(output) = Command::new("python3")
+            .arg(&script)
+            .arg(data_encoding::HEXLOWER.encode(&secret))
+            .output()
+        else {
+            return eprintln!("python3 is not installed; skipped");
+        };
+        assert!(output.status.success(), "{}", stderr(&output));
+        let expected = txc::vault::authority::recovery_identity(&secret)
+            .to_string()
+            .expose_secret()
+            .to_owned();
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+    }
 }

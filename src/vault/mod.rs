@@ -37,24 +37,68 @@
 //! decrypts a vault to JSON, and each sealed value in it is base64 of another
 //! age file the same identity decrypts.
 //!
+//! # Synced vaults
+//!
+//! A synced vault ([`synced`]) lives in a sync folder that several devices
+//! share, as signed, encrypted objects with random names ([`object`],
+//! [`store`]): post-quantum throughout, with age `mlkem768x25519` ([`pq`])
+//! and composite ML-DSA-65 and Ed25519 signatures ([`composite`]). Each
+//! device folds what it can read into its view ([`device`]): membership as
+//! facts ([`control`]), entries as multi-value registers ([`entries`],
+//! [`core`]). Authority comes from three recovery sheets under a 2-of-3
+//! multisignature ([`authority`], [`slip39`]), which also rebuild the vault
+//! with no device left, and offline backups ([`backup`]) open with age
+//! alone. Security keys reach it through pinned age plugins ([`hardware`]).
+//!
 //! # What it does not protect against
 //!
 //! Malware already running as you while the vault is unlocked, a keylogger
 //! reading the passphrase, and anything that reads the clipboard during the
 //! seconds a secret is on it.
 
+pub mod authority;
+pub mod backup;
+pub mod breach;
 pub mod clipboard;
 pub mod command;
+pub mod composite;
+pub mod confine;
+pub mod control;
+pub mod core;
 mod crypto;
+pub mod deliver;
+pub mod device;
 mod document;
+pub mod entries;
 mod grant;
+pub mod grant2;
 pub mod harden;
+pub mod hardware;
 mod home;
+pub mod import;
+pub mod keyholder;
 mod keyring;
+pub mod kitprint;
+pub mod local;
 pub mod model;
+pub mod object;
+pub mod pairing;
+pub mod pq;
 pub mod prompt;
 mod recent;
+#[cfg(test)]
+mod robustness;
+pub mod session;
+pub mod slip39;
+pub mod sshca;
+pub mod store;
+pub mod synced;
+pub mod synced_command;
+pub mod synced_model;
+pub mod template;
+pub mod totp;
 mod trust;
+pub mod wire;
 
 #[cfg(debug_assertions)]
 pub use crypto::TEST_WORK_FACTOR_VARIABLE;

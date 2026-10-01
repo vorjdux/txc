@@ -22,10 +22,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::tui::textarea::TextArea;
 use crate::vault::clipboard::{DEFAULT_CLEAR_SECONDS, Held};
+use crate::vault::keyholder::Holder;
 use crate::vault::model::{DEFAULT_VAULT, Entry, Kind, Sensitivity, check_vault_name};
 use crate::vault::prompt::check_new_passphrase;
+use crate::vault::synced;
 use crate::vault::{
-    Change, Home, Inspection, Keyring, NewEntry, NotTrusted, Opened, Use, WriteKey, harden,
+    Change, Home, Inspection, Keyring, NewEntry, NotTrusted, Opened, Use, WriteKey, harden, session,
 };
 
 pub use form::{EntryForm, FormAction, SecretInput};
@@ -102,6 +104,104 @@ pub struct LoadedVault {
     pub problem: Option<String>,
     /// Whether it is refused only for want of trust, which `t` can give.
     pub untrusted: bool,
+    /// The vault, when it is a synced one.
+    pub synced: Option<Box<SyncedLoaded>>,
+}
+
+/// A synced vault as the screen holds it: the vault, and its entries in the
+/// shape the screen draws, with no secret in them.
+pub struct SyncedLoaded {
+    holder: Holder,
+    entries: Vec<Entry>,
+    /// Entries that are not normal, by name: protected or operation-only.
+    classes: std::collections::BTreeMap<String, String>,
+    /// What needs the person, as `txc vault status` shows it.
+    status: Vec<String>,
+}
+
+impl SyncedLoaded {
+    fn new(holder: Holder) -> anyhow::Result<Self> {
+        let mut loaded = Self {
+            holder,
+            entries: Vec::new(),
+            classes: std::collections::BTreeMap::new(),
+            status: Vec::new(),
+        };
+        loaded.refresh()?;
+        Ok(loaded)
+    }
+
+    /// Reads the entries, their classes and the status lines again.
+    fn refresh(&mut self) -> anyhow::Result<()> {
+        self.entries = self.holder.entries()?;
+        self.classes = self.holder.classes()?.into_iter().collect();
+        self.status = self.holder.status()?;
+        Ok(())
+    }
+}
+
+impl LoadedVault {
+    /// Its entries, while it is open.
+    #[must_use]
+    pub fn entries(&self) -> Option<&[Entry]> {
+        match (&self.opened, &self.synced) {
+            (Some(opened), _) => Some(opened.vault().entries()),
+            (None, Some(synced)) => Some(&synced.entries),
+            (None, None) => None,
+        }
+    }
+
+    /// Whether it is open.
+    #[must_use]
+    pub const fn is_open(&self) -> bool {
+        self.opened.is_some() || self.synced.is_some()
+    }
+
+    /// Whether it is a synced vault.
+    #[must_use]
+    pub const fn is_synced(&self) -> bool {
+        self.synced.is_some()
+    }
+
+    fn synced(name: String, result: Result<Holder, String>) -> Self {
+        let loaded = result
+            .and_then(|holder| SyncedLoaded::new(holder).map_err(|error| format!("{error:#}")));
+        match loaded {
+            Ok(synced) => Self {
+                name,
+                opened: None,
+                problem: None,
+                untrusted: false,
+                synced: Some(Box::new(synced)),
+            },
+            Err(problem) => Self {
+                name,
+                opened: None,
+                problem: Some(problem),
+                untrusted: false,
+                synced: None,
+            },
+        }
+    }
+}
+
+/// A change that asked for the write key, carried on once it is unlocked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Resume {
+    Add,
+    Create,
+    Edit,
+    Delete,
+    Favourite,
+    Move,
+}
+
+/// A change to one entry, for either kind of vault.
+enum Edit {
+    Add(NewEntry),
+    Change(String, Change),
+    Remove(String),
+    Favourite(String, bool),
 }
 
 /// An entry in the list.
@@ -151,7 +251,10 @@ enum Job {
 /// What a background job produced: an unlocked identity, or an unlocked write
 /// key.
 enum Unlocked {
-    Identity(Keyring),
+    Vaults {
+        keyring: Option<Keyring>,
+        synced: Vec<(String, Result<Holder, String>)>,
+    },
     Writer(WriteKey),
 }
 
@@ -255,12 +358,16 @@ pub struct VaultScreen {
     /// The window open over the screen, if any.
     pub dialog: Option<Dialog>,
     busy: Option<Busy>,
+    /// The change waiting for the write passphrase dialog, if any.
+    after_writer: Option<Resume>,
     revealed: Option<Revealed>,
     /// A secret for the event loop to put on the clipboard, and what to call
     /// it. The event loop owns the clipboard, as it does for the output.
     pub pending_copy: Option<(SecretString, String)>,
     held: Option<(Held, Instant)>,
     last_key: Instant,
+    /// Whether the desktop session is locked, as a watcher thread hears it.
+    screen_lock: Option<std::sync::mpsc::Receiver<bool>>,
     /// The message along the bottom.
     pub status: String,
 }
@@ -285,10 +392,12 @@ impl VaultScreen {
             searching: false,
             dialog: None,
             busy: None,
+            after_writer: None,
             revealed: None,
             pending_copy: None,
             held: None,
             last_key: Instant::now(),
+            screen_lock: None,
             status: String::new(),
         }
     }
@@ -297,13 +406,15 @@ impl VaultScreen {
     /// by name and asks for the passphrase, or offers to create the identity.
     pub fn enter(&mut self) {
         self.last_key = Instant::now();
-        if self.keyring.is_none() {
-            self.locked_names = self
+        if !self.is_unlocked() {
+            let mut names = self
                 .home
                 .as_ref()
                 .ok()
                 .and_then(|home| home.vault_names().ok())
                 .unwrap_or_default();
+            names.extend(self.synced_names());
+            self.locked_names = names;
             if self.dialog.is_none() && self.busy.is_none() {
                 self.begin_unlock();
             }
@@ -324,8 +435,22 @@ impl VaultScreen {
 
     /// Whether the identity is unlocked.
     #[must_use]
-    pub const fn is_unlocked(&self) -> bool {
-        self.keyring.is_some()
+    pub fn is_unlocked(&self) -> bool {
+        self.keyring.is_some() || self.vaults.iter().any(LoadedVault::is_synced)
+    }
+
+    /// Whether this home has anything to unlock: an identity, or a synced
+    /// vault.
+    fn has_anything(&self) -> bool {
+        self.has_identity() || !self.synced_names().is_empty()
+    }
+
+    fn synced_names(&self) -> Vec<String> {
+        self.home
+            .as_ref()
+            .ok()
+            .and_then(|home| synced::names(home).ok())
+            .unwrap_or_default()
     }
 
     /// The slow work in progress, if any.
@@ -338,6 +463,35 @@ impl VaultScreen {
     #[must_use]
     pub fn public_key(&self) -> Option<String> {
         self.keyring.as_ref().map(Keyring::public_key)
+    }
+
+    /// What needs the person in each synced vault, as `txc vault status`
+    /// shows it: the vault's name and the line.
+    #[must_use]
+    pub fn status_lines(&self) -> Vec<(&str, &str)> {
+        self.vaults
+            .iter()
+            .filter_map(|vault| {
+                vault
+                    .synced
+                    .as_ref()
+                    .map(|synced| (vault.name.as_str(), synced))
+            })
+            .flat_map(|(name, synced)| synced.status.iter().map(move |line| (name, line.as_str())))
+            .collect()
+    }
+
+    /// An entry's class in a synced vault, when it is not normal:
+    /// `protected` or `operation-only`.
+    #[must_use]
+    pub fn class_of(&self, vault: usize, entry: &str) -> Option<&str> {
+        self.vaults
+            .get(vault)?
+            .synced
+            .as_ref()?
+            .classes
+            .get(entry)
+            .map(String::as_str)
     }
 
     /// The vaults, while unlocked.
@@ -353,17 +507,13 @@ impl VaultScreen {
     }
 
     fn entries(&self) -> impl Iterator<Item = (usize, &Entry)> + '_ {
-        self.vaults
-            .iter()
-            .enumerate()
-            .filter_map(|(index, vault)| vault.opened.as_ref().map(|opened| (index, opened)))
-            .flat_map(|(index, opened)| {
-                opened
-                    .vault()
-                    .entries()
-                    .iter()
-                    .map(move |entry| (index, entry))
-            })
+        self.vaults.iter().enumerate().flat_map(|(index, vault)| {
+            vault
+                .entries()
+                .unwrap_or_default()
+                .iter()
+                .map(move |entry| (index, entry))
+        })
     }
 
     /// The rows down the left: the three ways in, the kinds that have
@@ -431,10 +581,7 @@ impl VaultScreen {
                 .filter_map(|used| {
                     let vault = self.vaults.iter().position(|v| v.name == used.vault)?;
                     let entry = self.vaults[vault]
-                        .opened
-                        .as_ref()?
-                        .vault()
-                        .entries()
+                        .entries()?
                         .iter()
                         .find(|entry| entry.name == used.entry)?;
                     Some(Item {
@@ -479,10 +626,7 @@ impl VaultScreen {
     pub fn entry_of(&self, item: &Item) -> Option<&Entry> {
         self.vaults
             .get(item.vault)?
-            .opened
-            .as_ref()?
-            .vault()
-            .entries()
+            .entries()?
             .iter()
             .find(|entry| entry.name == item.entry)
     }
@@ -564,7 +708,7 @@ impl VaultScreen {
         if self.home.is_err() {
             return None;
         }
-        if !self.has_identity() {
+        if !self.has_anything() {
             return Some("txc vault init".to_string());
         }
         if !self.is_unlocked() {
@@ -572,13 +716,22 @@ impl VaultScreen {
         }
         if let Some((_, vault)) = self.problem() {
             return Some(if vault.untrusted {
-                format!("txc vault trust {}", vault.name)
+                format!("txc vault advanced trust {}", vault.name)
             } else {
                 format!("txc vault list {}", vault.name)
             });
         }
         if let Some((vault, entry)) = self.selected() {
             let reference = shell_word(&format!("{}/{}", self.vaults[vault].name, entry.name));
+            match self.class_of(vault, &entry.name) {
+                Some("protected") => {
+                    return Some(format!(
+                        "txc vault run --set SECRET=txc+file://{reference} -- <program>"
+                    ));
+                }
+                Some(_) => return Some("txc vault ssh <host>".to_string()),
+                None => {}
+            }
             let field = entry
                 .fields
                 .get(self.field_index)
@@ -595,6 +748,7 @@ impl VaultScreen {
             Section::Recent => "txc vault list --recent".to_string(),
             Section::Kind(kind) => format!("txc vault list --kind {}", kind.id()),
             Section::Vault(index) => format!("txc vault list {}", self.vaults[index].name),
+            Section::All if !self.status_lines().is_empty() => "txc vault status".to_string(),
             Section::All => "txc vault add <name> --generate".to_string(),
         })
     }
@@ -612,12 +766,49 @@ impl VaultScreen {
         // Locking drops the write key too, so it is asked for again the next
         // time a change is made.
         self.write_key = None;
+        self.after_writer = None;
         self.search.clear();
         self.searching = false;
         self.section = Section::All;
         self.pane = Pane::Items;
         self.item_index = 0;
         self.field_index = 0;
+    }
+
+    /// Starts watching the desktop session, so locking the screen locks the
+    /// vaults and ends the session `txc vault unlock` opened (study section
+    /// 11). Linux only, through logind; elsewhere the idle lock remains.
+    pub fn watch_screen_lock(&mut self) {
+        if !cfg!(target_os = "linux") {
+            return;
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("screen-lock".to_owned())
+            .spawn(move || {
+                let session = std::env::var("XDG_SESSION_ID").unwrap_or_else(|_| "auto".to_owned());
+                loop {
+                    std::thread::sleep(Duration::from_secs(3));
+                    let Ok(output) = std::process::Command::new("loginctl")
+                        .args(["show-session", &session, "-p", "LockedHint", "--value"])
+                        .stdin(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .output()
+                    else {
+                        return;
+                    };
+                    if !output.status.success() {
+                        return;
+                    }
+                    let locked = String::from_utf8_lossy(&output.stdout).trim() == "yes";
+                    if sender.send(locked).is_err() {
+                        return;
+                    }
+                }
+            });
+        if spawned.is_ok() {
+            self.screen_lock = Some(receiver);
+        }
     }
 
     /// Picks up finished work, hides a revealed secret and clears the
@@ -657,7 +848,19 @@ impl VaultScreen {
             };
         }
 
-        if self.keyring.is_some()
+        let screen_locked = self
+            .screen_lock
+            .as_ref()
+            .is_some_and(|receiver| receiver.try_iter().any(|locked| locked));
+        if screen_locked && self.is_unlocked() {
+            self.lock();
+            if let Ok(home) = &self.home {
+                let _ended = session::end(home);
+            }
+            self.status = "locked with the screen".to_string();
+        }
+
+        if self.is_unlocked()
             && self.busy.is_none()
             && now.saturating_duration_since(self.last_key) >= IDLE_LOCK
         {
@@ -747,7 +950,7 @@ impl VaultScreen {
         if self.home.is_err() {
             return;
         }
-        if self.keyring.is_none() {
+        if !self.is_unlocked() {
             if key.code == KeyCode::Enter {
                 self.begin_unlock();
             }
@@ -870,6 +1073,7 @@ impl VaultScreen {
             KeyCode::End => self.move_item(usize::MAX),
             KeyCode::Enter | KeyCode::Char('c') => self.copy(None),
             KeyCode::Char('u') => self.copy(Some("username".to_string())),
+            KeyCode::Char('p') => self.copy_code(),
             KeyCode::Char('r') => self.reveal(None),
             KeyCode::Char('f') => self.toggle_favourite(),
             KeyCode::Char('e') => self.begin_edit(),
@@ -922,6 +1126,7 @@ impl VaultScreen {
                     self.reveal(Some(field));
                 }
             }
+            KeyCode::Char('p') => self.copy_code(),
             KeyCode::Char('f') => self.toggle_favourite(),
             KeyCode::Char('e') => self.begin_edit(),
             KeyCode::Char('d') => self.begin_delete(),
@@ -954,13 +1159,20 @@ impl VaultScreen {
             .map(|field| field.name.clone())
     }
 
-    fn decrypt(&self, vault: usize, entry: &str, field: &str) -> Result<SecretString, String> {
-        let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
-        let opened = self
+    fn decrypt(&mut self, vault: usize, entry: &str, field: &str) -> Result<SecretString, String> {
+        if let Some(synced) = self
             .vaults
-            .get(vault)
-            .and_then(|loaded| loaded.opened.as_ref())
-            .ok_or("the vault is not open")?;
+            .get_mut(vault)
+            .and_then(|loaded| loaded.synced.as_mut())
+        {
+            return synced
+                .holder
+                .reveal(entry, field)
+                .map_err(|error| format!("{error:#}"));
+        }
+        let loaded = self.vaults.get(vault).ok_or("the vault is not open")?;
+        let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
+        let opened = loaded.opened.as_ref().ok_or("the vault is not open")?;
         opened
             .reveal(keyring, entry, field)
             .map_err(|error| format!("{error:#}"))
@@ -1005,6 +1217,38 @@ impl VaultScreen {
                 self.status = "copying".to_string();
             }
             Err(message) => self.status = message,
+        }
+    }
+
+    /// Copies the current 2FA code of the entry's TOTP key, as
+    /// `txc vault code` shows it; the key itself never leaves.
+    fn copy_code(&mut self) {
+        let Ok((vault, entry, field, _, _)) = self.target(Some("totp".to_string())) else {
+            self.status = "no 2FA key here: edit the entry (e) and paste the setup key the site \
+                           showed when you turned on two-factor login"
+                .to_string();
+            return;
+        };
+        let seed = match self.decrypt(vault, &entry, &field) {
+            Ok(seed) => seed,
+            Err(message) => {
+                self.status = message;
+                return;
+            }
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        match crate::vault::totp::code(seed.expose_secret(), now) {
+            Ok((code, left)) => {
+                self.pending_copy = Some((
+                    SecretString::from(code),
+                    format!("2FA code of {entry}, which changes in {left}s,"),
+                ));
+                self.note_use(vault, &entry);
+                self.status = "copying".to_string();
+            }
+            Err(error) => self.status = format!("{error:#}"),
         }
     }
 
@@ -1078,11 +1322,34 @@ impl VaultScreen {
 
     /// Changes an open vault and saves it. When saving fails, the vault is
     /// read again from disk, so nothing unsaved is left looking saved.
-    fn modify(
-        &mut self,
-        vault: usize,
-        change: impl FnOnce(&mut Opened) -> anyhow::Result<()>,
-    ) -> Result<(), String> {
+    fn modify(&mut self, vault: usize, edit: Edit) -> Result<(), String> {
+        if let Some(synced) = self
+            .vaults
+            .get_mut(vault)
+            .and_then(|loaded| loaded.synced.as_mut())
+        {
+            let result = match &edit {
+                Edit::Add(new) => synced.holder.add(new),
+                Edit::Change(name, change) => synced.holder.change(name, change),
+                Edit::Remove(name) => synced.holder.remove(name),
+                Edit::Favourite(name, favourite) => synced.holder.change(
+                    name,
+                    &Change {
+                        favourite: Some(*favourite),
+                        ..Change::default()
+                    },
+                ),
+            };
+            result.map_err(|error| format!("{error:#}"))?;
+            synced.refresh().map_err(|error| format!("{error:#}"))?;
+            return Ok(());
+        }
+        let change = |opened: &mut Opened| match edit {
+            Edit::Add(new) => opened.add(new),
+            Edit::Change(name, change) => opened.change(&name, change),
+            Edit::Remove(name) => opened.remove(&name),
+            Edit::Favourite(name, favourite) => opened.set_favourite(&name, favourite),
+        };
         self.require_write_key()?;
         let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
         let write_key = self.write_key.as_ref().ok_or("the write key is locked")?;
@@ -1101,7 +1368,7 @@ impl VaultScreen {
     }
 
     fn toggle_favourite(&mut self) {
-        if let Err(message) = self.require_write_key() {
+        if let Err(message) = self.require_write_key_here(Resume::Favourite) {
             self.status = message;
             return;
         }
@@ -1111,7 +1378,7 @@ impl VaultScreen {
         else {
             return;
         };
-        let message = match self.modify(vault, |opened| opened.set_favourite(&name, favourite)) {
+        let message = match self.modify(vault, Edit::Favourite(name.clone(), favourite)) {
             Ok(()) if favourite => format!("starred {name}"),
             Ok(()) => format!("unstarred {name}"),
             Err(message) => message,
@@ -1122,7 +1389,13 @@ impl VaultScreen {
 
     /// Opens the new-vault dialog, unlocking the write key first.
     fn begin_create(&mut self) {
-        if let Err(message) = self.require_write_key() {
+        if !self.has_identity() {
+            self.status =
+                "make a synced vault with: txc vault create <name> --folder <sync folder>"
+                    .to_string();
+            return;
+        }
+        if let Err(message) = self.require_write_key_then(Resume::Create) {
             self.status = message;
             return;
         }
@@ -1134,12 +1407,17 @@ impl VaultScreen {
 
     fn begin_add(&mut self) {
         // Unlock the write key before the form opens, so a change is never
-        // stopped halfway through filling one in.
-        if let Err(message) = self.require_write_key() {
+        // stopped halfway through filling one in; synced vaults need none.
+        let only_synced = self
+            .vaults
+            .iter()
+            .filter(|vault| vault.is_open())
+            .all(LoadedVault::is_synced);
+        if !only_synced && let Err(message) = self.require_write_key_then(Resume::Add) {
             self.status = message;
             return;
         }
-        if self.vaults.iter().all(|vault| vault.opened.is_none()) {
+        if self.vaults.iter().all(|vault| !vault.is_open()) {
             self.status = "no vault is open to add to".to_string();
         } else {
             self.dialog = Some(Dialog::PickKind { index: 0 });
@@ -1151,7 +1429,7 @@ impl VaultScreen {
             .vaults
             .iter()
             .enumerate()
-            .filter(|(_, vault)| vault.opened.is_some())
+            .filter(|(_, vault)| vault.is_open())
             .map(|(index, vault)| (index, vault.name.clone()))
             .collect();
         let preferred = match self.section {
@@ -1172,19 +1450,16 @@ impl VaultScreen {
     // `vault` above always comes from `self.selected()`, which only ever
     // returns a valid index into `self.vaults`.
     #[allow(clippy::indexing_slicing)]
-    fn edit_form(&self) -> Result<EntryForm, String> {
-        let (vault, entry) = self.selected().ok_or("select an entry first")?;
-        let keyring = self.keyring.as_ref().ok_or("the vault is locked")?;
-        let opened = self.vaults[vault]
-            .opened
-            .as_ref()
-            .ok_or("the vault is not open")?;
+    fn edit_form(&mut self) -> Result<EntryForm, String> {
+        let (vault, entry) = self
+            .selected()
+            .map(|(vault, entry)| (vault, entry.clone()))
+            .ok_or("select an entry first")?;
+        let entry = &entry;
         let mut notes = Vec::new();
         for field in &entry.fields {
             if entry.sensitivity(&field.name) == Sensitivity::Private && field.is_sealed() {
-                let note = opened
-                    .reveal(keyring, &entry.name, &field.name)
-                    .map_err(|error| format!("{error:#}"))?;
+                let note = self.decrypt(vault, &entry.name, &field.name)?;
                 notes.push((field.name.clone(), note));
             }
         }
@@ -1196,7 +1471,7 @@ impl VaultScreen {
     }
 
     fn begin_edit(&mut self) {
-        if let Err(message) = self.require_write_key() {
+        if let Err(message) = self.require_write_key_here(Resume::Edit) {
             self.status = message;
             return;
         }
@@ -1207,7 +1482,7 @@ impl VaultScreen {
     }
 
     fn begin_delete(&mut self) {
-        if let Err(message) = self.require_write_key() {
+        if let Err(message) = self.require_write_key_here(Resume::Delete) {
             self.status = message;
             return;
         }
@@ -1220,7 +1495,7 @@ impl VaultScreen {
     }
 
     fn begin_move(&mut self) {
-        if let Err(message) = self.require_write_key() {
+        if let Err(message) = self.require_write_key_then(Resume::Move) {
             self.status = message;
             return;
         }
@@ -1230,6 +1505,10 @@ impl VaultScreen {
         else {
             return;
         };
+        if self.vaults.get(source).is_some_and(LoadedVault::is_synced) {
+            self.status = "moving entries out of a synced vault is not available yet".to_string();
+            return;
+        }
         let targets: Vec<(usize, String)> = self
             .vaults
             .iter()
@@ -1289,7 +1568,14 @@ impl VaultScreen {
         if self.home.is_err() {
             return;
         }
-        self.dialog = Some(if self.has_identity() {
+        if self.resume_session() {
+            return;
+        }
+        if let Err(message) = typing_allowed() {
+            self.status = message;
+            return;
+        }
+        self.dialog = Some(if self.has_anything() {
             Dialog::Unlock {
                 passphrase: SecretInput::default(),
                 error: None,
@@ -1302,6 +1588,52 @@ impl VaultScreen {
                 error: None,
             }
         });
+    }
+
+    /// Opens the vaults from a session `txc vault unlock` left open, so the
+    /// interface does not ask for the passphrase again. Returns whether it did.
+    fn resume_session(&mut self) -> bool {
+        let Ok(home) = self.home.clone() else {
+            return false;
+        };
+        match session::resume(&home) {
+            Ok(session::Resumed::Open(contents)) => {
+                let keyring = match contents.identity {
+                    Some(identity) if home.has_identity() => {
+                        match Keyring::from_session(&home, identity) {
+                            Ok(keyring) => Some(keyring),
+                            Err(error) => {
+                                self.status = format!("{error:#}");
+                                return false;
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+                // The keyholder reads the session itself: no vault key
+                // reaches this process.
+                let synced = contents
+                    .synced
+                    .into_keys()
+                    .map(|name| {
+                        let held = hold(&home, &name, None);
+                        (name, held.map_err(|error| format!("{error:#}")))
+                    })
+                    .collect();
+                self.finish_job(Job::Unlock, Ok(Unlocked::Vaults { keyring, synced }));
+                if self.is_unlocked() {
+                    self.status =
+                        "opened from the session; lock it with: txc vault lock".to_string();
+                    return true;
+                }
+                false
+            }
+            Ok(session::Resumed::Ended(reason)) => {
+                self.status = format!("the session has ended: {reason}");
+                false
+            }
+            Ok(session::Resumed::None) | Err(_) => false,
+        }
     }
 
     fn trust_dialog(&self) -> Result<Dialog, String> {
@@ -1330,8 +1662,13 @@ impl VaultScreen {
             .name("txc-vault-unlock".to_string())
             .spawn(move || {
                 let result = match job {
-                    Job::Unlock => Keyring::unlock(&home, &passphrase).map(Unlocked::Identity),
-                    Job::Create => create_identity(&home, &passphrase).map(Unlocked::Identity),
+                    Job::Unlock => unlock_all(&home, &passphrase),
+                    Job::Create => {
+                        create_identity(&home, &passphrase).map(|keyring| Unlocked::Vaults {
+                            keyring: Some(keyring),
+                            synced: Vec::new(),
+                        })
+                    }
                     Job::UnlockWriter => {
                         Keyring::open_writer(&home, &passphrase).map(Unlocked::Writer)
                     }
@@ -1362,11 +1699,16 @@ impl VaultScreen {
 
     fn finish_job(&mut self, job: Job, result: Result<Unlocked, String>) {
         match result {
-            Ok(Unlocked::Identity(keyring)) => {
+            Ok(Unlocked::Vaults { keyring, synced }) => {
                 self.dialog = None;
-                self.recent = keyring.recent();
-                self.keyring = Some(keyring);
+                self.recent = keyring.as_ref().map(Keyring::recent).unwrap_or_default();
+                self.keyring = keyring;
                 self.load_vaults();
+                self.vaults.extend(
+                    synced
+                        .into_iter()
+                        .map(|(name, result)| LoadedVault::synced(name, result)),
+                );
                 self.section = self.default_section();
                 self.item_index = 0;
                 self.field_index = 0;
@@ -1382,7 +1724,10 @@ impl VaultScreen {
                 self.dialog = None;
                 self.write_key = Some(write_key);
                 self.last_key = Instant::now();
-                self.status = "the write key is unlocked; repeat the change".to_string();
+                self.status = "the write key is unlocked".to_string();
+                if let Some(resume) = self.after_writer.take() {
+                    self.resume(resume);
+                }
             }
             Err(message) => match self.dialog.as_mut() {
                 Some(
@@ -1401,6 +1746,42 @@ impl VaultScreen {
         }
     }
 
+    /// Ensures the write key is unlocked before changing the selected entry,
+    /// unless it is in a synced vault, which needs none.
+    fn require_write_key_here(&mut self, resume: Resume) -> Result<(), String> {
+        let synced = self
+            .selected()
+            .is_some_and(|(vault, _)| self.vaults.get(vault).is_some_and(LoadedVault::is_synced));
+        if synced {
+            Ok(())
+        } else {
+            self.require_write_key_then(resume)
+        }
+    }
+
+    /// As [`require_write_key`](Self::require_write_key), remembering the
+    /// change so it carries on once the write key is unlocked, rather than
+    /// asking the person to repeat it.
+    fn require_write_key_then(&mut self, resume: Resume) -> Result<(), String> {
+        let result = self.require_write_key();
+        if result.is_err() && matches!(self.dialog, Some(Dialog::UnlockWriter { .. })) {
+            self.after_writer = Some(resume);
+        }
+        result
+    }
+
+    /// Carries on the change that asked for the write key.
+    fn resume(&mut self, resume: Resume) {
+        match resume {
+            Resume::Add => self.begin_add(),
+            Resume::Create => self.begin_create(),
+            Resume::Edit => self.begin_edit(),
+            Resume::Delete => self.begin_delete(),
+            Resume::Favourite => self.toggle_favourite(),
+            Resume::Move => self.begin_move(),
+        }
+    }
+
     /// Ensures the write key is unlocked before a change. When it is not, opens
     /// the write passphrase dialog (or reports a reader-only device) and returns
     /// an error, so the caller stops and the operator unlocks and repeats.
@@ -1413,11 +1794,12 @@ impl VaultScreen {
                         changes must be made on a device that has the write key"
                 .to_string());
         }
+        typing_allowed()?;
         self.dialog = Some(Dialog::UnlockWriter {
             passphrase: SecretInput::default(),
             error: None,
         });
-        Err("unlock the write key to make changes, then repeat that".to_string())
+        Err("unlock the write key to make this change".to_string())
     }
 
     /// Unlocks the write key directly, for tests, so a write-flow test does not
@@ -1453,29 +1835,35 @@ impl VaultScreen {
                 opened: Some(opened),
                 problem: None,
                 untrusted: false,
+                synced: None,
             },
             Some(Err(error)) => LoadedVault {
                 untrusted: error.downcast_ref::<NotTrusted>().is_some(),
                 problem: Some(format!("{error:#}")),
                 name,
                 opened: None,
+                synced: None,
             },
             None => LoadedVault {
                 name,
                 opened: None,
                 problem: Some("the vault is locked".to_string()),
                 untrusted: false,
+                synced: None,
             },
         }
     }
 
     fn load_vaults(&mut self) {
-        let names = self
-            .home
-            .as_ref()
-            .ok()
-            .and_then(|home| home.vault_names().ok())
-            .unwrap_or_default();
+        let names = if self.keyring.is_some() {
+            self.home
+                .as_ref()
+                .ok()
+                .and_then(|home| home.vault_names().ok())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let vaults = names
             .into_iter()
             .map(|name| self.load_vault(name))
@@ -1486,6 +1874,17 @@ impl VaultScreen {
     // `vault` was just confirmed to be in bounds via `self.vaults.get(vault)`.
     #[allow(clippy::indexing_slicing)]
     fn reload(&mut self, vault: usize) {
+        if let Some(synced) = self
+            .vaults
+            .get_mut(vault)
+            .and_then(|loaded| loaded.synced.as_mut())
+        {
+            // Best effort: what is shown stays as it was when this fails.
+            if synced.holder.sync().is_ok() {
+                synced.refresh().ok();
+            }
+            return;
+        }
         if let Some(name) = self.vaults.get(vault).map(|loaded| loaded.name.clone()) {
             let loaded = self.load_vault(name);
             self.vaults[vault] = loaded;
@@ -1537,7 +1936,10 @@ impl VaultScreen {
                 mut passphrase,
                 error,
             } => match (key.code, control) {
-                (KeyCode::Esc, _) => None,
+                (KeyCode::Esc, _) => {
+                    self.after_writer = None;
+                    None
+                }
                 (KeyCode::Enter, _) if passphrase.is_empty() => Some(Dialog::UnlockWriter {
                     passphrase,
                     error: Some("type your write passphrase".to_string()),
@@ -1713,11 +2115,17 @@ impl VaultScreen {
 
             Dialog::Delete { vault, entry } => {
                 let message = if key.code == KeyCode::Char('y') {
-                    match self.modify(vault, |opened| opened.remove(&entry)) {
+                    match self.modify(vault, Edit::Remove(entry.clone())) {
                         Ok(()) => {
                             self.forget(vault, &entry);
                             self.move_item(self.item_index);
-                            format!("removed {entry}")
+                            match self.vaults.get(vault) {
+                                Some(loaded) if loaded.synced.is_some() => format!(
+                                    "removed {entry}; for 30 days: txc vault restore {}/{entry}",
+                                    loaded.name
+                                ),
+                                _ => format!("removed {entry}"),
+                            }
                         }
                         Err(message) => message,
                     }
@@ -1818,8 +2226,8 @@ impl VaultScreen {
             let existing = self
                 .vaults
                 .get(vault)
-                .and_then(|loaded| loaded.opened.as_ref())
-                .and_then(|opened| opened.vault().entry(original))
+                .and_then(LoadedVault::entries)
+                .and_then(|entries| entries.iter().find(|entry| entry.name == *original))
                 .cloned()
                 .ok_or("the entry is no longer there")?;
             let change = Change {
@@ -1846,7 +2254,7 @@ impl VaultScreen {
                 favourite: None,
             };
             let renamed = change.rename.is_some();
-            self.modify(vault, |opened| opened.change(&existing.name, change))?;
+            self.modify(vault, Edit::Change(existing.name.clone(), change))?;
             if renamed
                 && let (Some(keyring), Some(loaded)) =
                     (self.keyring.as_ref(), self.vaults.get(vault))
@@ -1856,16 +2264,17 @@ impl VaultScreen {
             }
         } else {
             let kind = form.kind;
-            self.modify(vault, |opened| {
-                opened.add(NewEntry {
+            self.modify(
+                vault,
+                Edit::Add(NewEntry {
                     name: collected.name,
                     kind,
                     plain: collected.plain,
                     secrets: collected.secrets,
                     tags: collected.tags,
                     favourite: false,
-                })
-            })?;
+                }),
+            )?;
         }
         Ok((vault, name))
     }
@@ -1930,6 +2339,44 @@ impl Drop for VaultScreen {
 /// `txc vault init`, which collects the separate write passphrase; the
 /// interface cannot ask for a second passphrase during creation, so it leaves
 /// that step to the command line.
+/// A synced vault's keyholder: a child process that alone holds its keys,
+/// or in tests, which cannot start the txc binary, the vault in this process.
+fn hold(home: &Home, name: &str, passphrase: Option<&SecretString>) -> anyhow::Result<Holder> {
+    #[cfg(not(test))]
+    {
+        let program = std::env::current_exe()?;
+        Holder::spawn(&program, home, name, passphrase)
+    }
+    #[cfg(test)]
+    {
+        Holder::local(home, name, passphrase)
+    }
+}
+
+/// Unlocks everything a passphrase opens: the identity when there is one,
+/// and each synced vault, read up to date.
+fn unlock_all(home: &Home, passphrase: &SecretString) -> anyhow::Result<Unlocked> {
+    let keyring = if home.has_identity() {
+        Some(Keyring::unlock(home, passphrase)?)
+    } else {
+        None
+    };
+    let synced: Vec<(String, Result<Holder, String>)> = synced::names(home)?
+        .into_iter()
+        .map(|name| {
+            let held = hold(home, &name, Some(passphrase));
+            (name, held.map_err(|error| format!("{error:#}")))
+        })
+        .collect();
+    if keyring.is_none()
+        && let Some((_, Err(error))) = synced.first()
+        && synced.iter().all(|(_, result)| result.is_err())
+    {
+        anyhow::bail!("{error}");
+    }
+    Ok(Unlocked::Vaults { keyring, synced })
+}
+
 fn create_identity(home: &Home, passphrase: &SecretString) -> anyhow::Result<Keyring> {
     Keyring::create(home, passphrase)
 }
@@ -1959,6 +2406,21 @@ fn shell_word(text: &str) -> String {
     } else {
         format!("'{}'", text.replace('\'', "'\\''"))
     }
+}
+
+/// Whether a passphrase may be typed here: not under X11, where any program
+/// on the display reads the keys, unless the person said so (study section
+/// 11).
+fn typing_allowed() -> Result<(), String> {
+    if crate::vault::harden::under_x11() && !crate::vault::harden::x11_allowed() {
+        return Err(
+            "under X11 any program can read what you type: open a session with \
+                    txc vault unlock --passphrase-file FILE first, or set \
+                    TXC_VAULT_ALLOW_X11=1"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2113,6 +2575,43 @@ pub(crate) mod tests {
                 .expose_secret(),
             "hunter2"
         );
+    }
+
+    #[test]
+    fn p_copies_the_current_one_time_code_and_never_the_seed() {
+        let (_scratch, mut screen) = unlocked("tui-totp");
+        press(&mut screen, KeyCode::Char('a'));
+        press(&mut screen, KeyCode::Enter);
+        type_text(&mut screen, "GitHub");
+        press(&mut screen, KeyCode::Tab);
+        type_text(&mut screen, "octocat");
+        press(&mut screen, KeyCode::Tab);
+        type_text(&mut screen, "hunter2");
+        press(&mut screen, KeyCode::Tab);
+        press(&mut screen, KeyCode::Tab);
+        type_text(&mut screen, "JBSWY3DPEHPK3PXP");
+        press_ctrl(&mut screen, KeyCode::Char('s'));
+        assert!(screen.dialog.is_none(), "{:?}", screen.status);
+        add_login(&mut screen, "plain", "u", "p");
+
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        press(&mut screen, KeyCode::Char('p'));
+        let (code, what) = screen
+            .pending_copy
+            .take()
+            .unwrap_or_else(|| panic!("no code to copy: {}", screen.status));
+        assert!(
+            code.expose_secret().len() == 6
+                && code.expose_secret().chars().all(|c| c.is_ascii_digit()),
+            "{}",
+            code.expose_secret()
+        );
+        assert!(what.starts_with("2FA code of GitHub"), "{what}");
+        screen.move_item(1);
+        press(&mut screen, KeyCode::Char('p'));
+        assert!(screen.pending_copy.is_none());
+        assert!(screen.status.contains("no 2FA key"), "{}", screen.status);
     }
 
     #[test]
@@ -2376,6 +2875,20 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn locking_the_screen_locks_the_vaults() {
+        let (_scratch, mut screen) = unlocked("tui-screen-lock");
+        let (sender, receiver) = std::sync::mpsc::channel();
+        screen.screen_lock = Some(receiver);
+        sender.send(false).unwrap();
+        screen.tick(Instant::now());
+        assert!(screen.is_unlocked());
+        sender.send(true).unwrap();
+        screen.tick(Instant::now());
+        assert!(!screen.is_unlocked());
+        assert_eq!(screen.status, "locked with the screen");
+    }
+
+    #[test]
     fn it_locks_itself_after_a_while_without_a_key() {
         let (_scratch, mut screen) = unlocked("tui-idle");
         screen.tick(Instant::now() + IDLE_LOCK / 2);
@@ -2399,7 +2912,7 @@ pub(crate) mod tests {
         assert!(vault.untrusted);
         assert_eq!(
             screen.command_hint().as_deref(),
-            Some("txc vault trust personal")
+            Some("txc vault advanced trust personal")
         );
 
         press(&mut screen, KeyCode::Char('t'));
@@ -2429,11 +2942,12 @@ pub(crate) mod tests {
         type_text(&mut screen, PASSPHRASE);
         press(&mut screen, KeyCode::Enter);
         settle(&mut screen);
-        assert!(screen.dialog.is_none(), "{}", screen.status);
-
-        // Repeating the change now goes straight to the kind picker.
-        press(&mut screen, KeyCode::Char('a'));
-        assert!(matches!(screen.dialog, Some(Dialog::PickKind { .. })));
+        // The change carries on by itself: the kind picker opens.
+        assert!(
+            matches!(screen.dialog, Some(Dialog::PickKind { .. })),
+            "{}",
+            screen.status
+        );
         press(&mut screen, KeyCode::Esc);
 
         // A different change does not ask again: the key is kept for the session.
@@ -2546,5 +3060,219 @@ pub(crate) mod tests {
         press(&mut screen, KeyCode::Enter);
         settle(&mut screen);
         assert!(screen.is_unlocked(), "{}", screen.status);
+    }
+
+    #[test]
+    fn a_home_with_only_a_synced_vault_unlocks_lists_adds_and_copies() {
+        let created = crate::vault::synced::tests::created("tui-synced");
+        let home = created.home.clone();
+        drop(created.vault);
+        let mut screen = VaultScreen::new(Ok(home));
+        screen.enter();
+        assert!(
+            matches!(screen.dialog, Some(Dialog::Unlock { .. })),
+            "a synced vault is unlocked, not created"
+        );
+        type_text(&mut screen, "correct horse battery staple");
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(screen.is_unlocked(), "{}", screen.status);
+        assert!(screen.vaults().iter().any(LoadedVault::is_synced));
+
+        // No write key is asked for: the device's own keys sign the change.
+        add_login(&mut screen, "github", "octocat", "hunter2");
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        press(&mut screen, KeyCode::Char('c'));
+        let (secret, label) = screen.pending_copy.take().expect("a copy was queued");
+        assert_eq!(secret.expose_secret(), "hunter2");
+        assert_eq!(label, "password of github");
+
+        press(&mut screen, KeyCode::Char('d'));
+        press(&mut screen, KeyCode::Char('y'));
+        assert!(screen.items().is_empty(), "{}", screen.status);
+
+        screen.lock();
+        assert!(!screen.is_unlocked());
+    }
+
+    #[test]
+    fn a_wrong_passphrase_keeps_a_synced_vault_locked() {
+        let created = crate::vault::synced::tests::created("tui-synced-wrong");
+        let home = created.home.clone();
+        drop(created.vault);
+        let mut screen = VaultScreen::new(Ok(home));
+        screen.enter();
+        type_text(&mut screen, "not the passphrase at all");
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(!screen.is_unlocked());
+        assert!(matches!(
+            screen.dialog,
+            Some(Dialog::Unlock { error: Some(_), .. })
+        ));
+    }
+
+    #[test]
+    fn a_synced_vault_shows_its_status_and_hints_what_the_cli_does() {
+        let mut created = crate::vault::synced::tests::created_pending("tui-synced-status");
+        // An operation-only entry, as txc vault ssh-ca makes.
+        let entries = created.vault.entries().unwrap();
+        let mut changes = crate::vault::entries::Changes::new(&entries, 1);
+        let entry = changes.create("infra").unwrap();
+        changes.set_kind(&entry, "ssh-ca").unwrap();
+        changes
+            .classify(&entry, crate::vault::entries::Sensitivity::OperationOnly)
+            .unwrap();
+        changes
+            .add_field(
+                &entry,
+                crate::vault::entries::FieldKind::SshCa,
+                "ca-key",
+                b"key",
+            )
+            .unwrap();
+        created.vault.write(changes).unwrap();
+        let home = created.home.clone();
+        drop(created.vault);
+
+        let mut screen = VaultScreen::new(Ok(home));
+        screen.enter();
+        type_text(&mut screen, "correct horse battery staple");
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(screen.is_unlocked(), "{}", screen.status);
+
+        let lines = screen.status_lines();
+        assert!(
+            lines
+                .iter()
+                .any(|(vault, line)| *vault == "personal" && line.contains("recovery sheets")),
+            "{lines:?}"
+        );
+        assert!(
+            screen
+                .sidebar()
+                .iter()
+                .any(|row| matches!(row, SidebarRow::Section(Section::Vault(_))))
+        );
+        let vault = screen
+            .vaults()
+            .iter()
+            .position(LoadedVault::is_synced)
+            .unwrap();
+        assert_eq!(
+            section_label_for_test(&screen, vault),
+            "  personal (synced)"
+        );
+
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        assert_eq!(
+            screen.command_hint().as_deref(),
+            Some("txc vault ssh <host>")
+        );
+        press(&mut screen, KeyCode::Char('c'));
+        assert!(
+            screen.pending_copy.is_none(),
+            "an operation-only key is never copied"
+        );
+
+        // With nothing selected, the hint is the status screen.
+        screen.search = "no such entry".to_string();
+        screen.move_item(0);
+        assert_eq!(screen.command_hint().as_deref(), Some("txc vault status"));
+        screen.search.clear();
+
+        press(&mut screen, KeyCode::Char('n'));
+        assert!(screen.dialog.is_none());
+        assert!(
+            screen.status.contains("txc vault create"),
+            "{}",
+            screen.status
+        );
+    }
+
+    fn section_label_for_test(screen: &VaultScreen, vault: usize) -> String {
+        let loaded = &screen.vaults()[vault];
+        format!(
+            "  {}{}",
+            loaded.name,
+            if loaded.is_synced() { " (synced)" } else { "" }
+        )
+    }
+
+    #[test]
+    fn each_change_carries_on_after_the_write_passphrase() {
+        let (_scratch, mut screen) = locked("tui-write-resume");
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.unlock_writer_for_test(PASSPHRASE);
+        add_login(&mut screen, "first", "one", "p1");
+        screen.lock();
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.set_section(Section::All);
+        screen.move_item(0);
+
+        // Star: asks, then stars without being asked again.
+        press(&mut screen, KeyCode::Char('f'));
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(screen.dialog.is_none(), "{}", screen.status);
+        assert!(
+            screen.selected().is_some_and(|(_, entry)| entry.favourite),
+            "{}",
+            screen.status
+        );
+
+        // Cancelling the dialog forgets the change.
+        screen.lock();
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        press(&mut screen, KeyCode::Char('e'));
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        press(&mut screen, KeyCode::Esc);
+        assert!(screen.dialog.is_none());
+        // The next change asks again, and only it carries on, not the edit.
+        press(&mut screen, KeyCode::Char('a'));
+        assert!(matches!(screen.dialog, Some(Dialog::UnlockWriter { .. })));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(
+            matches!(screen.dialog, Some(Dialog::PickKind { .. })),
+            "the cancelled edit came back: {}",
+            screen.status
+        );
+        press(&mut screen, KeyCode::Esc);
+
+        // Edit and delete carry on into their dialogs.
+        screen.lock();
+        screen.enter();
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        screen.set_section(Section::All);
+        screen.move_item(0);
+        press(&mut screen, KeyCode::Char('d'));
+        type_text(&mut screen, PASSPHRASE);
+        press(&mut screen, KeyCode::Enter);
+        settle(&mut screen);
+        assert!(
+            matches!(screen.dialog, Some(Dialog::Delete { .. })),
+            "{}",
+            screen.status
+        );
     }
 }

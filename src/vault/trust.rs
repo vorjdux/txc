@@ -450,7 +450,7 @@ fn sorted(recipients: &[String]) -> Vec<String> {
 fn damaged(path: &Path) -> anyhow::Error {
     anyhow!(
         "the trust records at {} were changed, or were written by another identity; \
-         remove the file, then trust each vault again with: txc vault trust <name>",
+         remove the file, then trust each vault again with: txc vault advanced trust <name>",
         path.display()
     )
 }

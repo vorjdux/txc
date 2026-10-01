@@ -98,6 +98,23 @@ impl Keyring {
         Self::from_identity(home.clone(), identity)
     }
 
+    /// Rebuilds the keyring from the identity an open session holds, without
+    /// asking for the passphrase (see [`crate::vault::session`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the vault directory fails its checks or the
+    /// pinned writers cannot be read.
+    pub(crate) fn from_session(home: &Home, identity: Identity) -> Result<Self> {
+        home.check()?;
+        Self::from_identity(home.clone(), identity)
+    }
+
+    /// The unlocked identity, for sealing it into a session.
+    pub(crate) const fn identity(&self) -> &Identity {
+        &self.identity
+    }
+
     fn from_identity(home: Home, identity: Identity) -> Result<Self> {
         let trust_key = crypto::derive(&identity, TRUST_KEY_LABEL);
         let writers = load_writers(&home)?;
@@ -255,7 +272,7 @@ impl Keyring {
     }
 
     /// Decrypts a vault and compares it with what this device trusts, without
-    /// refusing it. This is what `txc vault trust` shows before asking.
+    /// refusing it. This is what `txc vault advanced trust` shows before asking.
     ///
     /// # Errors
     ///
@@ -552,7 +569,7 @@ impl fmt::Display for NotTrusted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}; it is not opened. If you expected this, check it and run: txc vault trust {}",
+            "{}; it is not opened. If you expected this, check it and run: txc vault advanced trust {}",
             self.standing.describe(&self.vault),
             self.vault
         )

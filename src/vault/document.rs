@@ -209,7 +209,7 @@ impl Vault {
             ensure!(
                 writers.iter().any(|pinned| pinned == &writer),
                 "the vault {} was written by a key this device does not know; \
-                 pin it with: txc vault writers --add",
+                 pin it with: txc vault advanced writers --add",
                 stored.name
             );
             let signature = decode_signature(&stored.signature)?;

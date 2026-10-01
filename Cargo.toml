@@ -2,7 +2,7 @@
 name = "txc"
 description = "Offline text utilities for the terminal, and an encrypted local vault for passwords, keys and other secrets: nothing is sent anywhere"
 authors = ["Matheus Santos <vorj.dux@gmail.com>"]
-version = "0.7.2"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.88"
 readme = "README.md"
@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/vorjdux/txc"
 keywords = ["cli", "text", "encoding", "hash", "tui"]
 categories = ["command-line-utilities", "text-processing", "cryptography"]
-exclude = ["debian/", ".github/", "packaging/", "install.sh", "install.ps1"]
+exclude = ["debian/", ".github/", "packaging/", "fuzz/", "install.sh", "install.ps1"]
 
 [lib]
 name = "txc"
@@ -24,15 +24,33 @@ path = "src/main.rs"
 default = ["vault"]
 # The encrypted vault for passwords, API keys and other secrets. Building
 # without it leaves a binary with no key handling and no clipboard library.
-vault = ["dep:age", "dep:arboard", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:zeroize"]
+vault = ["dep:age", "dep:age-core", "dep:argon2", "dep:arboard", "dep:bech32", "dep:chacha20poly1305", "dep:hkdf", "dep:hpke", "dep:keyring", "dep:landlock", "dep:seccompiler", "dep:ssh-key", "dep:pbkdf2", "dep:ml-dsa", "dep:ml-kem", "dep:rand08", "dep:sha3_10", "dep:x25519-dalek", "dep:ed25519-dalek", "dep:libc", "dep:rpassword", "dep:security-framework", "dep:windows-sys", "dep:zeroize"]
 
 [dependencies]
 age = { version = "0.12", optional = true }
+# age's post-quantum recipient type (mlkem768x25519), composed in
+# src/vault/pq.rs from the same parts, and versions, the age crate uses.
+age-core = { version = "0.12", optional = true, features = ["plugin"] }
+argon2 = { version = "0.6", optional = true, default-features = false, features = ["alloc", "zeroize"] }
+bech32 = { version = "0.11", optional = true }
+hkdf = { version = "0.13", optional = true }
+keyring = { version = "4.2", optional = true }
+ssh-key = { version = "0.6.7", optional = true, default-features = false, features = ["std", "ed25519", "rand_core"] }
+pbkdf2 = { version = "0.13", optional = true, default-features = false, features = ["hmac"] }
+hpke = { version = "0.12", optional = true, default-features = false, features = ["alloc"] }
+ml-kem = { version = "0.2", optional = true, features = ["deterministic"] }
+# The post-quantum half of the composite signature (src/vault/composite.rs).
+ml-dsa = { version = "0.1.1", optional = true, default-features = false, features = ["alloc", "rand_core", "zeroize"] }
+rand08 = { package = "rand", version = "0.8", optional = true }
+sha3_10 = { package = "sha3", version = "0.10", optional = true }
+x25519-dalek = { version = "2", optional = true, features = ["static_secrets"] }
 anyhow = "1.0"
 # Only text is ever put on the clipboard, so the image support is left out.
 # On Linux, Wayland is spoken directly rather than only through XWayland.
 arboard = { version = "3.6", optional = true, default-features = false, features = ["wayland-data-control"] }
 blake3 = "1.8"
+# Seals a session: the unlocked identity under a random session key.
+chacha20poly1305 = { version = "0.10", optional = true }
 bs58 = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.6", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "color", "wrap_help"] }
@@ -68,7 +86,40 @@ zeroize = { version = "1.9", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # Core dump and ptrace protection, and refusing to follow links, for the vault.
+# Also the kernel keyring and clocks that sessions use.
 libc = { version = "0.2", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Confining the process that holds vault keys: Landlock limits the files it
+# can reach, seccomp denies network sockets and running programs.
+landlock = { version = "0.4", optional = true }
+seccompiler = { version = "0.5", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# The Keychain, where a session key is kept on macOS.
+security-framework = { version = "3", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+# DPAPI, the logon session and the clocks that sessions use on Windows.
+windows-sys = { version = "0.61", optional = true, features = [
+    "Wdk_Foundation",
+    "Wdk_Storage_FileSystem",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Cryptography",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+] }
+
+[dev-dependencies]
+# Property-based tests of the vault core's fold laws.
+proptest = "1"
 
 [profile.dev]
 debug = true

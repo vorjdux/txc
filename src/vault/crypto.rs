@@ -5,6 +5,8 @@
 //! their own. The only additions are HMAC-SHA256 tags, for proving that a
 //! record was written by someone holding a key.
 
+// Protocol code: no unsafe block, and no module-level exception either.
+#![forbid(unsafe_code)]
 // The age errors are deliberately not shown: a secrets tool reports "wrong
 // passphrase, or damaged" rather than leaking which, so map_err discards them
 // on purpose here.
@@ -176,7 +178,7 @@ pub(crate) fn encrypt(recipients: &[Recipient], plaintext: &[u8]) -> Result<Vec<
     encrypt_to(&recipients, plaintext)
 }
 
-fn encrypt_to(recipients: &[&dyn age::Recipient], plaintext: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn encrypt_to(recipients: &[&dyn age::Recipient], plaintext: &[u8]) -> Result<Vec<u8>> {
     let encryptor = age::Encryptor::with_recipients(recipients.iter().copied())
         .map_err(|error| anyhow!("cannot encrypt: {error}"))?;
     let mut ciphertext = Vec::with_capacity(plaintext.len() + 1024);

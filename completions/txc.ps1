@@ -2417,12 +2417,17 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create your identity, write key and the personal vault')
-            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
-            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault')
+            [CompletionResult]::new('unlock', 'unlock', [CompletionResultType]::ParameterValue, 'Unlock once and keep the vaults open for a while, across commands')
+            [CompletionResult]::new('lock', 'lock', [CompletionResultType]::ParameterValue, 'End the session that txc vault unlock opened')
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Bring in entries from another password manager or a .env file')
+            [CompletionResult]::new('export', 'export', [CompletionResultType]::ParameterValue, 'Write a copy of vaults as one age file, readable with age -d')
+            [CompletionResult]::new('run', 'run', [CompletionResultType]::ParameterValue, 'Run a program with secrets in its environment or as files, never in your shell')
+            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase of your identity and of the synced vaults it opens')
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault; with --folder, a synced one shared between your devices')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
             [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show an entry, with its secrets masked')
@@ -2430,53 +2435,128 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('favorite', 'favorite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
+            [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
+            [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and show what is fine and what needs you')
+            [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
+            [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
+            [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
+            [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
+            [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
+            [CompletionResult]::new('backup', 'backup', [CompletionResultType]::ParameterValue, 'Write an offline backup of a synced vault, readable with age and the recovery sheets')
+            [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
+            [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
+            [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, check one, rehearse or restore')
+            [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
+            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('rotate', 'rotate', [CompletionResultType]::ParameterValue, 'Change a secret in two steps, so a failed change elsewhere loses nothing')
+            [CompletionResult]::new('code', 'code', [CompletionResultType]::ParameterValue, 'Show the current 2FA code of an entry, as an authenticator app would')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Bring back an entry removed from a synced vault in the last 30 days')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('mv', 'mv', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
+            [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
+            [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
+            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
+            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
+            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
             [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
             [CompletionResult]::new('fingerprint', 'fingerprint', [CompletionResultType]::ParameterValue, 'Print a vault''s fingerprint, to verify it from another device')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
-            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
-            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
-            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
-            [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
-            [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
+            [CompletionResult]::new('advanced', 'advanced', [CompletionResultType]::ParameterValue, 'Keys, trust and format details of vaults that are not synced')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'txc;vault;init' {
+            [CompletionResult]::new('--folder', '--folder', [CompletionResultType]::ParameterName, 'Create a synced vault in this sync folder, to share between your devices')
+            [CompletionResult]::new('--name', '--name', [CompletionResultType]::ParameterName, 'The synced vault''s name (default: personal)')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
             [CompletionResult]::new('--reader-only', '--reader-only', [CompletionResultType]::ParameterName, 'Create only an identity and an empty writers list, for an unattended reader')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
-        'txc;vault;identity' {
+        'txc;vault;unlock' {
+            [CompletionResult]::new('--idle', '--idle', [CompletionResultType]::ParameterName, 'End the session after this many minutes without use')
+            [CompletionResult]::new('--max', '--max', [CompletionResultType]::ParameterName, 'End the session after this many hours whatever happens')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;lock' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
+        'txc;vault;import' {
+            [CompletionResult]::new('--format', '--format', [CompletionResultType]::ParameterName, 'The file''s format, when the name does not show it')
+            [CompletionResult]::new('--into', '--into', [CompletionResultType]::ParameterName, 'The vault to add the entries to')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--dry-run', '--dry-run', [CompletionResultType]::ParameterName, 'Show what would be imported, and change nothing')
+            [CompletionResult]::new('--remove-source', '--remove-source', [CompletionResultType]::ParameterName, 'Overwrite and delete the export once it is imported')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;export' {
+            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'An age public key to encrypt the copy to (age1...)')
+            [CompletionResult]::new('-o', '-o', [CompletionResultType]::ParameterName, 'Write to this new file rather than to standard output')
+            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Write to this new file rather than to standard output')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--plaintext', '--plaintext', [CompletionResultType]::ParameterName, 'Write unencrypted JSON, after a typed confirmation')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;run' {
+            [CompletionResult]::new('--env-file', '--env-file', [CompletionResultType]::ParameterName, 'A template of references (default: .env.txc here, if it exists)')
+            [CompletionResult]::new('--set', '--set', [CompletionResultType]::ParameterName, 'One more variable; only references are accepted, never values')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
         'txc;vault;passwd' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'Change only this synced vault''s passphrase')
             [CompletionResult]::new('--new-passphrase-file', '--new-passphrase-file', [CompletionResultType]::ParameterName, 'Read the new passphrase from a file rather than asking')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
         'txc;vault;create' {
             [CompletionResult]::new('--recipient', '--recipient', [CompletionResultType]::ParameterName, 'Also encrypt to this public key, such as another device''s')
+            [CompletionResult]::new('--folder', '--folder', [CompletionResultType]::ParameterName, 'Make it a synced vault in this sync folder, shared between your devices')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2490,6 +2570,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--favourites', '--favourites', [CompletionResultType]::ParameterName, 'Only starred entries')
             [CompletionResult]::new('--favorites', '--favorites', [CompletionResultType]::ParameterName, 'Only starred entries')
             [CompletionResult]::new('--recent', '--recent', [CompletionResultType]::ParameterName, 'The entries used most recently on this device, newest first')
+            [CompletionResult]::new('--stale', '--stale', [CompletionResultType]::ParameterName, 'Entries of a synced vault a removed device could read, whose secrets have not changed since')
+            [CompletionResult]::new('--removed', '--removed', [CompletionResultType]::ParameterName, 'Entries of a synced vault removed in the last 30 days, which txc vault restore brings back')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2510,6 +2593,9 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input, which may run over several lines')
             [CompletionResult]::new('--favourite', '--favourite', [CompletionResultType]::ParameterName, 'Star it straight away')
             [CompletionResult]::new('--favorite', '--favorite', [CompletionResultType]::ParameterName, 'Star it straight away')
+            [CompletionResult]::new('--protect', '--protect', [CompletionResultType]::ParameterName, 'Seal it to security keys: each use needs a touch, and it goes only to programs as a file (synced vaults)')
+            [CompletionResult]::new('--root-grade', '--root-grade', [CompletionResultType]::ParameterName, 'Protect it most: as --protect, and each use also needs the passphrase typed again (synced vaults)')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2518,6 +2604,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2527,6 +2614,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
             [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Unstar it instead')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2536,6 +2624,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
             [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Unstar it instead')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2547,6 +2636,8 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
             [CompletionResult]::new('--print', '--print', [CompletionResultType]::ParameterName, 'Write the secret to standard output instead, which must be a pipe')
+            [CompletionResult]::new('--pending', '--pending', [CompletionResultType]::ParameterName, 'The new value of a rotation in progress (txc vault rotate), to set where it is used')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2568,6 +2659,478 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--generate', '--generate', [CompletionResultType]::ParameterName, 'Generate the main secret: a password, or a PIN where that is what it is')
             [CompletionResult]::new('--no-symbols', '--no-symbols', [CompletionResultType]::ParameterName, 'Generate from letters and digits only')
             [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input, which may run over several lines')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;join' {
+            [CompletionResult]::new('--folder', '--folder', [CompletionResultType]::ParameterName, 'This device''s copy of the vault''s folder')
+            [CompletionResult]::new('--name', '--name', [CompletionResultType]::ParameterName, 'The name for the vault here (default: personal)')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;device' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
+            [CompletionResult]::new('promote', 'promote', [CompletionResultType]::ParameterValue, 'Let a device add devices; needs two recovery sheets and the card')
+            [CompletionResult]::new('allow', 'allow', [CompletionResultType]::ParameterValue, 'Let a device that adds devices add more; needs two recovery sheets and the card')
+            [CompletionResult]::new('forget', 'forget', [CompletionResultType]::ParameterValue, 'Remove this vault''s keys from this device, as before a border crossing')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;device;add' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--role', '--role', [CompletionResultType]::ParameterName, 'What the device may do: read and write, or view only')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;device;list' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;device;approve' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Approve all without asking')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;device;remove' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--wipe', '--wipe', [CompletionResultType]::ParameterName, 'Also tell it to wipe its keys when txc next opens the vault there')
+            [CompletionResult]::new('--key-lost', '--key-lost', [CompletionResultType]::ParameterName, 'Its security key was lost with it: remove the key even if another device uses it')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Do not ask first')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;device;promote' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;device;allow' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--more', '--more', [CompletionResultType]::ParameterName, 'How many more devices or security keys it may add')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;device;forget' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Do not ask first')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;device;help' {
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
+            [CompletionResult]::new('promote', 'promote', [CompletionResultType]::ParameterValue, 'Let a device add devices; needs two recovery sheets and the card')
+            [CompletionResult]::new('allow', 'allow', [CompletionResultType]::ParameterValue, 'Let a device that adds devices add more; needs two recovery sheets and the card')
+            [CompletionResult]::new('forget', 'forget', [CompletionResultType]::ParameterValue, 'Remove this vault''s keys from this device, as before a border crossing')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;device;help;add' {
+            break
+        }
+        'txc;vault;device;help;list' {
+            break
+        }
+        'txc;vault;device;help;approve' {
+            break
+        }
+        'txc;vault;device;help;remove' {
+            break
+        }
+        'txc;vault;device;help;promote' {
+            break
+        }
+        'txc;vault;device;help;allow' {
+            break
+        }
+        'txc;vault;device;help;forget' {
+            break
+        }
+        'txc;vault;device;help;help' {
+            break
+        }
+        'txc;vault;status' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--all', '--all', [CompletionResultType]::ParameterName, 'Also show what this system cannot protect, the lines folded into one, and snoozed lines')
+            [CompletionResult]::new('--snooze', '--snooze', [CompletionResultType]::ParameterName, 'Hide the yellow lines shown now for 30 days; red lines always show')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;ssh-ca' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;ssh' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--ca', '--ca', [CompletionResultType]::ParameterName, 'The certificate authority, when there are several')
+            [CompletionResult]::new('--user', '--user', [CompletionResultType]::ParameterName, 'The login the certificate is for (default: yours)')
+            [CompletionResult]::new('--minutes', '--minutes', [CompletionResultType]::ParameterName, 'How long the certificate lives (default: 5)')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--setup', '--setup', [CompletionResultType]::ParameterName, 'Print the line servers need, and the authority''s public key')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;keyholder' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;breach' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;breach;import' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;breach;check' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;breach;help' {
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;breach;help;import' {
+            break
+        }
+        'txc;vault;breach;help;check' {
+            break
+        }
+        'txc;vault;breach;help;help' {
+            break
+        }
+        'txc;vault;hardware' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('rewrap', 'rewrap', [CompletionResultType]::ParameterValue, 'Seal protected entries again to every security key registered now')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a lost security key from the vault; protected entries stop being sealed to it')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;hardware;add' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--recipient', '--recipient', [CompletionResultType]::ParameterName, 'The hardware''s public side, such as age1yubikey1... or age1tagpq1...')
+            [CompletionResult]::new('--identity-file', '--identity-file', [CompletionResultType]::ParameterName, 'The plugin identity file the hardware''s plugin wrote (AGE-PLUGIN-...)')
+            [CompletionResult]::new('--recipient-plugin', '--recipient-plugin', [CompletionResultType]::ParameterName, 'The plugin for the recipient, rather than the one on PATH now')
+            [CompletionResult]::new('--identity-plugin', '--identity-plugin', [CompletionResultType]::ParameterName, 'The plugin for the identity, rather than the one on PATH now')
+            [CompletionResult]::new('--name', '--name', [CompletionResultType]::ParameterName, 'What to call it where other devices show it (default: security key)')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;hardware;rewrap' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;hardware;pin' {
+            [CompletionResult]::new('--path', '--path', [CompletionResultType]::ParameterName, 'Its binary, rather than the one on PATH now')
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;hardware;remove' {
+            [CompletionResult]::new('--vault', '--vault', [CompletionResultType]::ParameterName, 'The synced vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;hardware;help' {
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('rewrap', 'rewrap', [CompletionResultType]::ParameterValue, 'Seal protected entries again to every security key registered now')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a lost security key from the vault; protected entries stop being sealed to it')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;hardware;help;add' {
+            break
+        }
+        'txc;vault;hardware;help;rewrap' {
+            break
+        }
+        'txc;vault;hardware;help;pin' {
+            break
+        }
+        'txc;vault;hardware;help;remove' {
+            break
+        }
+        'txc;vault;hardware;help;help' {
+            break
+        }
+        'txc;vault;backup' {
+            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'The folder to write it into, as on separate media')
+            [CompletionResult]::new('--verify', '--verify', [CompletionResultType]::ParameterName, 'Check a backup''s signature against this vault''s devices')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;compare' {
+            [CompletionResult]::new('--receipt', '--receipt', [CompletionResultType]::ParameterName, 'Check a receipt a device change printed: what it was, and who signed it')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;doctor' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;recovery' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
+            [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;recovery;print' {
+            [CompletionResult]::new('--queue', '--queue', [CompletionResultType]::ParameterName, 'The printer to use, rather than the default')
+            [CompletionResult]::new('--pdf', '--pdf', [CompletionResultType]::ParameterName, 'Write them to a new PDF file, to print and then delete')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--printer', '--printer', [CompletionResultType]::ParameterName, 'Print them with lp, from memory')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;recovery;check' {
+            [CompletionResult]::new('--root', '--root', [CompletionResultType]::ParameterName, 'The root mark printed on the sheet: checks it with nothing secret')
+            [CompletionResult]::new('--share', '--share', [CompletionResultType]::ParameterName, 'The share mark printed on the sheet')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;recovery;drill' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;recovery;key' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;recovery;reissue' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;recovery;restore' {
+            [CompletionResult]::new('--from', '--from', [CompletionResultType]::ParameterName, 'The old vault''s sync folder, or a copy of it')
+            [CompletionResult]::new('--folder', '--folder', [CompletionResultType]::ParameterName, 'A new, empty folder for the restored vault')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;recovery;help' {
+            [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
+            [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;recovery;help;print' {
+            break
+        }
+        'txc;vault;recovery;help;check' {
+            break
+        }
+        'txc;vault;recovery;help;drill' {
+            break
+        }
+        'txc;vault;recovery;help;key' {
+            break
+        }
+        'txc;vault;recovery;help;reissue' {
+            break
+        }
+        'txc;vault;recovery;help;restore' {
+            break
+        }
+        'txc;vault;recovery;help;help' {
+            break
+        }
+        'txc;vault;resolve' {
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'The field to settle')
+            [CompletionResult]::new('--keep', '--keep', [CompletionResultType]::ParameterName, 'The version to keep, as numbered when shown')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;migrate' {
+            [CompletionResult]::new('--folder', '--folder', [CompletionResultType]::ParameterName, 'The sync folder, when the synced vault is new')
+            [CompletionResult]::new('--name', '--name', [CompletionResultType]::ParameterName, 'The synced vault (default: the same name)')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2577,6 +3140,42 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
             [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Do not ask for confirmation')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;rotate' {
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'The field to rotate, rather than the entry''s main secret')
+            [CompletionResult]::new('--length', '--length', [CompletionResultType]::ParameterName, 'Characters in a generated password')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--commit', '--commit', [CompletionResultType]::ParameterName, 'The new value is in use: make it the current one')
+            [CompletionResult]::new('--abort', '--abort', [CompletionResultType]::ParameterName, 'Keep the old value and drop the new one')
+            [CompletionResult]::new('--generate', '--generate', [CompletionResultType]::ParameterName, 'Generate the main secret: a password, or a PIN where that is what it is')
+            [CompletionResult]::new('--no-symbols', '--no-symbols', [CompletionResultType]::ParameterName, 'Generate from letters and digits only')
+            [CompletionResult]::new('--secret-from-stdin', '--secret-from-stdin', [CompletionResultType]::ParameterName, 'Read the main secret from standard input, which may run over several lines')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;code' {
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'The field holding the seed')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;restore' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
@@ -2585,6 +3184,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
@@ -2593,42 +3193,52 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
-        'txc;vault;recipients' {
-            [CompletionResult]::new('--add', '--add', [CompletionResultType]::ParameterName, 'Encrypt to this public key too')
-            [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Stop encrypting to this public key')
+        'txc;vault;delete' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Delete without asking for the vault''s name')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
-        'txc;vault;trust' {
-            [CompletionResult]::new('--expect', '--expect', [CompletionResultType]::ParameterName, 'Trust without a terminal, only if the fingerprint matches this')
+        'txc;vault;grant' {
+            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Grant this field rather than the main secret')
+            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'Seal to this age public key, the host''s own key')
+            [CompletionResult]::new('--expires', '--expires', [CompletionResultType]::ParameterName, 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement')
+            [CompletionResult]::new('--origin', '--origin', [CompletionResultType]::ParameterName, 'Where it may be used, signed into a grant from a synced vault')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
-            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Trust without asking, for a vault new to this device only')
+            [CompletionResult]::new('--to-file', '--to-file', [CompletionResultType]::ParameterName, 'Bundle a fresh key in the grant; the file then is the secret')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
-        'txc;vault;fingerprint' {
+        'txc;vault;redeem' {
+            [CompletionResult]::new('--identity', '--identity', [CompletionResultType]::ParameterName, 'The host''s age secret key file, unless the grant bundles one')
+            [CompletionResult]::new('--vault-id', '--vault-id', [CompletionResultType]::ParameterName, 'For a grant from a synced vault: the vault id this runner trusts')
+            [CompletionResult]::new('--min-version', '--min-version', [CompletionResultType]::ParameterName, 'For a grant from a synced vault: refuse older versions of the secret')
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'txc;vault;history' {
+        'txc;vault;identity' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2638,6 +3248,7 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
             [CompletionResult]::new('--rotate', '--rotate', [CompletionResultType]::ParameterName, 'Replace the write key with a fresh one and re-sign every vault')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -2649,78 +3260,262 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
             [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Pin or unpin without asking')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;recipients' {
+            [CompletionResult]::new('--add', '--add', [CompletionResultType]::ParameterName, 'Encrypt to this public key too')
+            [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Stop encrypting to this public key')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;trust' {
+            [CompletionResult]::new('--expect', '--expect', [CompletionResultType]::ParameterName, 'Trust without a terminal, only if the fingerprint matches this')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Trust without asking, for a vault new to this device only')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;fingerprint' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;history' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
         'txc;vault;upgrade' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'txc;vault;delete' {
+        'txc;vault;advanced' {
             [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
             [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
             [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
-            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Delete without asking for the vault''s name')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            break
-        }
-        'txc;vault;grant' {
-            [CompletionResult]::new('--field', '--field', [CompletionResultType]::ParameterName, 'Grant this field rather than the main secret')
-            [CompletionResult]::new('--to', '--to', [CompletionResultType]::ParameterName, 'Seal to this age public key, the host''s own key')
-            [CompletionResult]::new('--expires', '--expires', [CompletionResultType]::ParameterName, 'How long it stays fresh, as 1h, 30m, 7d; hygiene, not enforcement')
-            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
-            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
-            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
-            [CompletionResult]::new('--to-file', '--to-file', [CompletionResultType]::ParameterName, 'Bundle a fresh key in the grant; the file then is the secret')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            break
-        }
-        'txc;vault;redeem' {
-            [CompletionResult]::new('--identity', '--identity', [CompletionResultType]::ParameterName, 'The host''s age secret key file, unless the grant bundles one')
-            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
-            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
-            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
-            break
-        }
-        'txc;vault;help' {
-            [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create your identity, write key and the personal vault')
             [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
-            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault')
-            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
-            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
-            [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show an entry, with its secrets masked')
-            [CompletionResult]::new('favourite', 'favourite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
-            [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
-            [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
-            [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
-            [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
             [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
             [CompletionResult]::new('fingerprint', 'fingerprint', [CompletionResultType]::ParameterValue, 'Print a vault''s fingerprint, to verify it from another device')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
             [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
             [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
-            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;advanced;identity' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;advanced;recipients' {
+            [CompletionResult]::new('--add', '--add', [CompletionResultType]::ParameterName, 'Encrypt to this public key too')
+            [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Stop encrypting to this public key')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;advanced;trust' {
+            [CompletionResult]::new('--expect', '--expect', [CompletionResultType]::ParameterName, 'Trust without a terminal, only if the fingerprint matches this')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Trust without asking, for a vault new to this device only')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;advanced;fingerprint' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;advanced;history' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;advanced;writer' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--rotate', '--rotate', [CompletionResultType]::ParameterName, 'Replace the write key with a fresh one and re-sign every vault')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;advanced;writers' {
+            [CompletionResult]::new('--add', '--add', [CompletionResultType]::ParameterName, 'Pin this writer public key')
+            [CompletionResult]::new('--remove', '--remove', [CompletionResultType]::ParameterName, 'Unpin this writer public key')
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--yes', '--yes', [CompletionResultType]::ParameterName, 'Pin or unpin without asking')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            break
+        }
+        'txc;vault;advanced;upgrade' {
+            [CompletionResult]::new('--home', '--home', [CompletionResultType]::ParameterName, 'Use this vault directory rather than the default, as TXC_VAULT_HOME does')
+            [CompletionResult]::new('--passphrase-file', '--passphrase-file', [CompletionResultType]::ParameterName, 'Read the passphrase from a file only you can read, rather than asking')
+            [CompletionResult]::new('--write-passphrase-file', '--write-passphrase-file', [CompletionResultType]::ParameterName, 'Read the write passphrase from a file only you can read. Providing it on a machine where untrusted code runs as you collapses the read/write split.')
+            [CompletionResult]::new('--no-session', '--no-session', [CompletionResultType]::ParameterName, 'Ask for the passphrase even when a session is open (see: txc vault unlock)')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            break
+        }
+        'txc;vault;advanced;help' {
+            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
+            [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
+            [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
+            [CompletionResult]::new('fingerprint', 'fingerprint', [CompletionResultType]::ParameterValue, 'Print a vault''s fingerprint, to verify it from another device')
+            [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
+            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
+            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
+            [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
+            break
+        }
+        'txc;vault;advanced;help;identity' {
+            break
+        }
+        'txc;vault;advanced;help;recipients' {
+            break
+        }
+        'txc;vault;advanced;help;trust' {
+            break
+        }
+        'txc;vault;advanced;help;fingerprint' {
+            break
+        }
+        'txc;vault;advanced;help;history' {
+            break
+        }
+        'txc;vault;advanced;help;writer' {
+            break
+        }
+        'txc;vault;advanced;help;writers' {
+            break
+        }
+        'txc;vault;advanced;help;upgrade' {
+            break
+        }
+        'txc;vault;advanced;help;help' {
+            break
+        }
+        'txc;vault;help' {
+            [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create your identity, write key and the personal vault')
+            [CompletionResult]::new('unlock', 'unlock', [CompletionResultType]::ParameterValue, 'Unlock once and keep the vaults open for a while, across commands')
+            [CompletionResult]::new('lock', 'lock', [CompletionResultType]::ParameterValue, 'End the session that txc vault unlock opened')
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Bring in entries from another password manager or a .env file')
+            [CompletionResult]::new('export', 'export', [CompletionResultType]::ParameterValue, 'Write a copy of vaults as one age file, readable with age -d')
+            [CompletionResult]::new('run', 'run', [CompletionResultType]::ParameterValue, 'Run a program with secrets in its environment or as files, never in your shell')
+            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase of your identity and of the synced vaults it opens')
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault; with --folder, a synced one shared between your devices')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
+            [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show an entry, with its secrets masked')
+            [CompletionResult]::new('favourite', 'favourite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
+            [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
+            [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
+            [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
+            [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and show what is fine and what needs you')
+            [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
+            [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
+            [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
+            [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
+            [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
+            [CompletionResult]::new('backup', 'backup', [CompletionResultType]::ParameterValue, 'Write an offline backup of a synced vault, readable with age and the recovery sheets')
+            [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
+            [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
+            [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, check one, rehearse or restore')
+            [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
+            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
+            [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('rotate', 'rotate', [CompletionResultType]::ParameterValue, 'Change a secret in two steps, so a failed change elsewhere loses nothing')
+            [CompletionResult]::new('code', 'code', [CompletionResultType]::ParameterValue, 'Show the current 2FA code of an entry, as an authenticator app would')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Bring back an entry removed from a synced vault in the last 30 days')
+            [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
             [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
             [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
             [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
+            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
+            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
+            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
+            [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
+            [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
+            [CompletionResult]::new('fingerprint', 'fingerprint', [CompletionResultType]::ParameterValue, 'Print a vault''s fingerprint, to verify it from another device')
+            [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
+            [CompletionResult]::new('advanced', 'advanced', [CompletionResultType]::ParameterValue, 'Keys, trust and format details of vaults that are not synced')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
         'txc;vault;help;init' {
             break
         }
-        'txc;vault;help;identity' {
+        'txc;vault;help;unlock' {
+            break
+        }
+        'txc;vault;help;lock' {
+            break
+        }
+        'txc;vault;help;import' {
+            break
+        }
+        'txc;vault;help;export' {
+            break
+        }
+        'txc;vault;help;run' {
             break
         }
         'txc;vault;help;passwd' {
@@ -2747,10 +3542,155 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;help;edit' {
             break
         }
+        'txc;vault;help;join' {
+            break
+        }
+        'txc;vault;help;device' {
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
+            [CompletionResult]::new('promote', 'promote', [CompletionResultType]::ParameterValue, 'Let a device add devices; needs two recovery sheets and the card')
+            [CompletionResult]::new('allow', 'allow', [CompletionResultType]::ParameterValue, 'Let a device that adds devices add more; needs two recovery sheets and the card')
+            [CompletionResult]::new('forget', 'forget', [CompletionResultType]::ParameterValue, 'Remove this vault''s keys from this device, as before a border crossing')
+            break
+        }
+        'txc;vault;help;device;add' {
+            break
+        }
+        'txc;vault;help;device;list' {
+            break
+        }
+        'txc;vault;help;device;approve' {
+            break
+        }
+        'txc;vault;help;device;remove' {
+            break
+        }
+        'txc;vault;help;device;promote' {
+            break
+        }
+        'txc;vault;help;device;allow' {
+            break
+        }
+        'txc;vault;help;device;forget' {
+            break
+        }
+        'txc;vault;help;status' {
+            break
+        }
+        'txc;vault;help;ssh-ca' {
+            break
+        }
+        'txc;vault;help;ssh' {
+            break
+        }
+        'txc;vault;help;keyholder' {
+            break
+        }
+        'txc;vault;help;breach' {
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            break
+        }
+        'txc;vault;help;breach;import' {
+            break
+        }
+        'txc;vault;help;breach;check' {
+            break
+        }
+        'txc;vault;help;hardware' {
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('rewrap', 'rewrap', [CompletionResultType]::ParameterValue, 'Seal protected entries again to every security key registered now')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a lost security key from the vault; protected entries stop being sealed to it')
+            break
+        }
+        'txc;vault;help;hardware;add' {
+            break
+        }
+        'txc;vault;help;hardware;rewrap' {
+            break
+        }
+        'txc;vault;help;hardware;pin' {
+            break
+        }
+        'txc;vault;help;hardware;remove' {
+            break
+        }
+        'txc;vault;help;backup' {
+            break
+        }
+        'txc;vault;help;compare' {
+            break
+        }
+        'txc;vault;help;doctor' {
+            break
+        }
+        'txc;vault;help;recovery' {
+            [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
+            [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
+            break
+        }
+        'txc;vault;help;recovery;print' {
+            break
+        }
+        'txc;vault;help;recovery;check' {
+            break
+        }
+        'txc;vault;help;recovery;drill' {
+            break
+        }
+        'txc;vault;help;recovery;key' {
+            break
+        }
+        'txc;vault;help;recovery;reissue' {
+            break
+        }
+        'txc;vault;help;recovery;restore' {
+            break
+        }
+        'txc;vault;help;resolve' {
+            break
+        }
+        'txc;vault;help;migrate' {
+            break
+        }
         'txc;vault;help;rm' {
             break
         }
+        'txc;vault;help;rotate' {
+            break
+        }
+        'txc;vault;help;code' {
+            break
+        }
+        'txc;vault;help;restore' {
+            break
+        }
         'txc;vault;help;move' {
+            break
+        }
+        'txc;vault;help;delete' {
+            break
+        }
+        'txc;vault;help;grant' {
+            break
+        }
+        'txc;vault;help;redeem' {
+            break
+        }
+        'txc;vault;help;identity' {
+            break
+        }
+        'txc;vault;help;writer' {
+            break
+        }
+        'txc;vault;help;writers' {
             break
         }
         'txc;vault;help;recipients' {
@@ -2765,22 +3705,42 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;vault;help;history' {
             break
         }
-        'txc;vault;help;writer' {
-            break
-        }
-        'txc;vault;help;writers' {
-            break
-        }
         'txc;vault;help;upgrade' {
             break
         }
-        'txc;vault;help;delete' {
+        'txc;vault;help;advanced' {
+            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
+            [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
+            [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
+            [CompletionResult]::new('fingerprint', 'fingerprint', [CompletionResultType]::ParameterValue, 'Print a vault''s fingerprint, to verify it from another device')
+            [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
+            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
+            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
             break
         }
-        'txc;vault;help;grant' {
+        'txc;vault;help;advanced;identity' {
             break
         }
-        'txc;vault;help;redeem' {
+        'txc;vault;help;advanced;recipients' {
+            break
+        }
+        'txc;vault;help;advanced;trust' {
+            break
+        }
+        'txc;vault;help;advanced;fingerprint' {
+            break
+        }
+        'txc;vault;help;advanced;history' {
+            break
+        }
+        'txc;vault;help;advanced;writer' {
+            break
+        }
+        'txc;vault;help;advanced;writers' {
+            break
+        }
+        'txc;vault;help;advanced;upgrade' {
             break
         }
         'txc;vault;help;help' {
@@ -3392,33 +4352,68 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         }
         'txc;help;vault' {
             [CompletionResult]::new('init', 'init', [CompletionResultType]::ParameterValue, 'Create your identity, write key and the personal vault')
-            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
-            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase protecting your identity')
-            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault')
+            [CompletionResult]::new('unlock', 'unlock', [CompletionResultType]::ParameterValue, 'Unlock once and keep the vaults open for a while, across commands')
+            [CompletionResult]::new('lock', 'lock', [CompletionResultType]::ParameterValue, 'End the session that txc vault unlock opened')
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Bring in entries from another password manager or a .env file')
+            [CompletionResult]::new('export', 'export', [CompletionResultType]::ParameterValue, 'Write a copy of vaults as one age file, readable with age -d')
+            [CompletionResult]::new('run', 'run', [CompletionResultType]::ParameterValue, 'Run a program with secrets in its environment or as files, never in your shell')
+            [CompletionResult]::new('passwd', 'passwd', [CompletionResultType]::ParameterValue, 'Change the passphrase of your identity and of the synced vaults it opens')
+            [CompletionResult]::new('create', 'create', [CompletionResultType]::ParameterValue, 'Create a new, empty vault; with --folder, a synced one shared between your devices')
             [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the vaults, or entries: of one vault, favourites, or recently used')
             [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Add an entry; its secret is typed, generated or piped in')
             [CompletionResult]::new('show', 'show', [CompletionResultType]::ParameterValue, 'Show an entry, with its secrets masked')
             [CompletionResult]::new('favourite', 'favourite', [CompletionResultType]::ParameterValue, 'Star an entry, so it is easy to find, or unstar it with --remove')
             [CompletionResult]::new('copy', 'copy', [CompletionResultType]::ParameterValue, 'Copy a secret to the clipboard, and clear it again after a while')
             [CompletionResult]::new('edit', 'edit', [CompletionResultType]::ParameterValue, 'Change an entry')
+            [CompletionResult]::new('join', 'join', [CompletionResultType]::ParameterValue, 'Join a synced vault from another of your devices')
+            [CompletionResult]::new('device', 'device', [CompletionResultType]::ParameterValue, 'Add, list and remove the devices of a synced vault')
+            [CompletionResult]::new('status', 'status', [CompletionResultType]::ParameterValue, 'Read what other devices wrote, and show what is fine and what needs you')
+            [CompletionResult]::new('ssh-ca', 'ssh-ca', [CompletionResultType]::ParameterValue, 'Make an SSH certificate authority whose key never leaves txc')
+            [CompletionResult]::new('ssh', 'ssh', [CompletionResultType]::ParameterValue, 'Connect with a fresh key and a certificate that lives for minutes')
+            [CompletionResult]::new('keyholder', 'keyholder', [CompletionResultType]::ParameterValue, 'Hold one synced vault''s keys for the interactive screen')
+            [CompletionResult]::new('breach', 'breach', [CompletionResultType]::ParameterValue, 'Check passwords against a breach list, offline')
+            [CompletionResult]::new('hardware', 'hardware', [CompletionResultType]::ParameterValue, 'Keep this device''s keys behind a security key, the Secure Enclave or a TPM')
+            [CompletionResult]::new('backup', 'backup', [CompletionResultType]::ParameterValue, 'Write an offline backup of a synced vault, readable with age and the recovery sheets')
+            [CompletionResult]::new('compare', 'compare', [CompletionResultType]::ParameterValue, 'Show digests to compare with another device, to see you share one history')
+            [CompletionResult]::new('doctor', 'doctor', [CompletionResultType]::ParameterValue, 'Print a diagnostic report for a bug report; it holds no secret and no entry name')
+            [CompletionResult]::new('recovery', 'recovery', [CompletionResultType]::ParameterValue, 'Write down the recovery sheets, check one, rehearse or restore')
+            [CompletionResult]::new('resolve', 'resolve', [CompletionResultType]::ParameterValue, 'Show the two versions of an entry edited on two devices at once, and keep one')
+            [CompletionResult]::new('migrate', 'migrate', [CompletionResultType]::ParameterValue, 'Copy a vault into a synced vault, to share it between devices; the original stays as it is')
             [CompletionResult]::new('rm', 'rm', [CompletionResultType]::ParameterValue, 'Remove an entry')
+            [CompletionResult]::new('rotate', 'rotate', [CompletionResultType]::ParameterValue, 'Change a secret in two steps, so a failed change elsewhere loses nothing')
+            [CompletionResult]::new('code', 'code', [CompletionResultType]::ParameterValue, 'Show the current 2FA code of an entry, as an authenticator app would')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Bring back an entry removed from a synced vault in the last 30 days')
             [CompletionResult]::new('move', 'move', [CompletionResultType]::ParameterValue, 'Move an entry into another vault, re-sealing its secrets there')
+            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
+            [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
+            [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
+            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
+            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
+            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
             [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
             [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
             [CompletionResult]::new('fingerprint', 'fingerprint', [CompletionResultType]::ParameterValue, 'Print a vault''s fingerprint, to verify it from another device')
             [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
-            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
-            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
-            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults still in the old format, without other changes')
-            [CompletionResult]::new('delete', 'delete', [CompletionResultType]::ParameterValue, 'Delete a whole vault, keeping a recovery copy beside it')
-            [CompletionResult]::new('grant', 'grant', [CompletionResultType]::ParameterValue, 'Seal one secret to another key, for a host to redeem')
-            [CompletionResult]::new('redeem', 'redeem', [CompletionResultType]::ParameterValue, 'Open a grant, printing its secret to a pipe')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
+            [CompletionResult]::new('advanced', 'advanced', [CompletionResultType]::ParameterValue, 'Keys, trust and format details of vaults that are not synced')
             break
         }
         'txc;help;vault;init' {
             break
         }
-        'txc;help;vault;identity' {
+        'txc;help;vault;unlock' {
+            break
+        }
+        'txc;help;vault;lock' {
+            break
+        }
+        'txc;help;vault;import' {
+            break
+        }
+        'txc;help;vault;export' {
+            break
+        }
+        'txc;help;vault;run' {
             break
         }
         'txc;help;vault;passwd' {
@@ -3445,10 +4440,155 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;help;vault;edit' {
             break
         }
+        'txc;help;vault;join' {
+            break
+        }
+        'txc;help;vault;device' {
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Pair a new device; it runs txc vault join')
+            [CompletionResult]::new('list', 'list', [CompletionResultType]::ParameterValue, 'List the devices')
+            [CompletionResult]::new('approve', 'approve', [CompletionResultType]::ParameterValue, 'Approve what waits for you: renewals, and security keys other devices added')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a device; it reads nothing written afterwards')
+            [CompletionResult]::new('promote', 'promote', [CompletionResultType]::ParameterValue, 'Let a device add devices; needs two recovery sheets and the card')
+            [CompletionResult]::new('allow', 'allow', [CompletionResultType]::ParameterValue, 'Let a device that adds devices add more; needs two recovery sheets and the card')
+            [CompletionResult]::new('forget', 'forget', [CompletionResultType]::ParameterValue, 'Remove this vault''s keys from this device, as before a border crossing')
+            break
+        }
+        'txc;help;vault;device;add' {
+            break
+        }
+        'txc;help;vault;device;list' {
+            break
+        }
+        'txc;help;vault;device;approve' {
+            break
+        }
+        'txc;help;vault;device;remove' {
+            break
+        }
+        'txc;help;vault;device;promote' {
+            break
+        }
+        'txc;help;vault;device;allow' {
+            break
+        }
+        'txc;help;vault;device;forget' {
+            break
+        }
+        'txc;help;vault;status' {
+            break
+        }
+        'txc;help;vault;ssh-ca' {
+            break
+        }
+        'txc;help;vault;ssh' {
+            break
+        }
+        'txc;help;vault;keyholder' {
+            break
+        }
+        'txc;help;vault;breach' {
+            [CompletionResult]::new('import', 'import', [CompletionResultType]::ParameterValue, 'Import a Pwned Passwords SHA-1 list, HASH or HASH:COUNT per line')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'List the entries whose password is in the imported list')
+            break
+        }
+        'txc;help;vault;breach;import' {
+            break
+        }
+        'txc;help;vault;breach;check' {
+            break
+        }
+        'txc;help;vault;hardware' {
+            [CompletionResult]::new('add', 'add', [CompletionResultType]::ParameterValue, 'Seal this device''s second factor to hardware')
+            [CompletionResult]::new('rewrap', 'rewrap', [CompletionResultType]::ParameterValue, 'Seal protected entries again to every security key registered now')
+            [CompletionResult]::new('pin', 'pin', [CompletionResultType]::ParameterValue, 'Pin a plugin, to seal protected entries to other devices'' hardware')
+            [CompletionResult]::new('remove', 'remove', [CompletionResultType]::ParameterValue, 'Remove a lost security key from the vault; protected entries stop being sealed to it')
+            break
+        }
+        'txc;help;vault;hardware;add' {
+            break
+        }
+        'txc;help;vault;hardware;rewrap' {
+            break
+        }
+        'txc;help;vault;hardware;pin' {
+            break
+        }
+        'txc;help;vault;hardware;remove' {
+            break
+        }
+        'txc;help;vault;backup' {
+            break
+        }
+        'txc;help;vault;compare' {
+            break
+        }
+        'txc;help;vault;doctor' {
+            break
+        }
+        'txc;help;vault;recovery' {
+            [CompletionResult]::new('print', 'print', [CompletionResultType]::ParameterValue, 'Show the three sheets and the card, one at a time, to write down')
+            [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check one sheet and the card against the vault, or a sheet''s printed marks alone')
+            [CompletionResult]::new('drill', 'drill', [CompletionResultType]::ParameterValue, 'Rehearse a full recovery with two sheets and the card, keeping nothing')
+            [CompletionResult]::new('key', 'key', [CompletionResultType]::ParameterValue, 'Print the recovery key from two sheets and the card, to read a backup with age')
+            [CompletionResult]::new('reissue', 'reissue', [CompletionResultType]::ParameterValue, 'Replace the sheets and the card, after one was lost or seen by someone else')
+            [CompletionResult]::new('restore', 'restore', [CompletionResultType]::ParameterValue, 'Rebuild a vault from its folder with two sheets and the card, after losing every device')
+            break
+        }
+        'txc;help;vault;recovery;print' {
+            break
+        }
+        'txc;help;vault;recovery;check' {
+            break
+        }
+        'txc;help;vault;recovery;drill' {
+            break
+        }
+        'txc;help;vault;recovery;key' {
+            break
+        }
+        'txc;help;vault;recovery;reissue' {
+            break
+        }
+        'txc;help;vault;recovery;restore' {
+            break
+        }
+        'txc;help;vault;resolve' {
+            break
+        }
+        'txc;help;vault;migrate' {
+            break
+        }
         'txc;help;vault;rm' {
             break
         }
+        'txc;help;vault;rotate' {
+            break
+        }
+        'txc;help;vault;code' {
+            break
+        }
+        'txc;help;vault;restore' {
+            break
+        }
         'txc;help;vault;move' {
+            break
+        }
+        'txc;help;vault;delete' {
+            break
+        }
+        'txc;help;vault;grant' {
+            break
+        }
+        'txc;help;vault;redeem' {
+            break
+        }
+        'txc;help;vault;identity' {
+            break
+        }
+        'txc;help;vault;writer' {
+            break
+        }
+        'txc;help;vault;writers' {
             break
         }
         'txc;help;vault;recipients' {
@@ -3463,22 +4603,42 @@ Register-ArgumentCompleter -Native -CommandName 'txc' -ScriptBlock {
         'txc;help;vault;history' {
             break
         }
-        'txc;help;vault;writer' {
-            break
-        }
-        'txc;help;vault;writers' {
-            break
-        }
         'txc;help;vault;upgrade' {
             break
         }
-        'txc;help;vault;delete' {
+        'txc;help;vault;advanced' {
+            [CompletionResult]::new('identity', 'identity', [CompletionResultType]::ParameterValue, 'Print your public key, for encrypting a vault to you elsewhere')
+            [CompletionResult]::new('recipients', 'recipients', [CompletionResultType]::ParameterValue, 'Show or change which public keys a vault is encrypted to')
+            [CompletionResult]::new('trust', 'trust', [CompletionResultType]::ParameterValue, 'Trust a vault that is new to this device, or that changed')
+            [CompletionResult]::new('fingerprint', 'fingerprint', [CompletionResultType]::ParameterValue, 'Print a vault''s fingerprint, to verify it from another device')
+            [CompletionResult]::new('history', 'history', [CompletionResultType]::ParameterValue, 'Show this device''s trust decisions for a vault')
+            [CompletionResult]::new('writer', 'writer', [CompletionResultType]::ParameterValue, 'Print this device''s writer public key, or rotate the write key')
+            [CompletionResult]::new('writers', 'writers', [CompletionResultType]::ParameterValue, 'List, pin or unpin the writer keys this device trusts')
+            [CompletionResult]::new('upgrade', 'upgrade', [CompletionResultType]::ParameterValue, 'Re-sign vaults of txc 0.6 or older in this format; to share vaults between devices see migrate')
             break
         }
-        'txc;help;vault;grant' {
+        'txc;help;vault;advanced;identity' {
             break
         }
-        'txc;help;vault;redeem' {
+        'txc;help;vault;advanced;recipients' {
+            break
+        }
+        'txc;help;vault;advanced;trust' {
+            break
+        }
+        'txc;help;vault;advanced;fingerprint' {
+            break
+        }
+        'txc;help;vault;advanced;history' {
+            break
+        }
+        'txc;help;vault;advanced;writer' {
+            break
+        }
+        'txc;help;vault;advanced;writers' {
+            break
+        }
+        'txc;help;vault;advanced;upgrade' {
             break
         }
         'txc;help;list' {

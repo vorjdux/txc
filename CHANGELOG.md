@@ -6,6 +6,225 @@ All notable changes to txc are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-30
+
+### Added
+
+- **Supply chain and verification.**
+  - `deny.toml`, checked in CI with cargo-deny, bans every HTTP, TLS and
+    network-socket crate, allows only permissive licences and crates.io.
+  - The protocol and keyholder modules `forbid(unsafe_code)`.
+  - Property tests feed arbitrary input to every parser of the folder, the
+    local files and people's text, and `fuzz/` holds cargo-fuzz targets
+    for the same, run a minute each in CI.
+  - CI gates: listing and the interface's view decrypt no secret, and a
+    thousand entries after a year of edits on two devices stay under 5 MB
+    and 500 files, with a quick warm open (160 files, 1.7 MB and about
+    30 ms here).
+  - Releases carry a CycloneDX SBOM, are built with fixed paths, and a
+    second build from another directory must match byte for byte.
+
+- **`txc vault restore VAULT/ENTRY`** brings back an entry removed from a
+  synced vault in the last 30 days, with the values it had; fields removed on
+  their own before it stay removed. `txc vault list VAULT --removed` lists
+  what can come back. After the 30 days a snapshot drops the removed values,
+  so they no longer outlive the window.
+- **Recovery without txc.** `docs/recovery-without-txc.md` gives the whole
+  path from two sheets and the card to a backup's contents with a SLIP-39
+  tool and age, and `scripts/recovery-key.py`, written from that
+  description and checked against txc in the tests, turns the recovery
+  secret into the age key.
+- **The kit on paper.** `txc vault recovery print --printer` prints the
+  sheets and the card with `lp` straight from memory, after warning that
+  network printers keep copies; `--pdf FILE` writes them to a new file only
+  you can read, and `status` asks you to delete it until it is gone. Each
+  sheet carries, in the clear, its root and share marks, and
+  `txc vault recovery check --root MARK --share MARK` confirms a sheet
+  belongs to the vault with nothing secret typed.
+- **Offline backups.** `txc vault backup --to DIR` writes one age file,
+  sealed to the vault's recovery key and this device, holding the whole
+  vault as documented JSON (`txc-backup-v1`), removed entries still inside
+  their window included, and a signature beside it that `backup --verify`
+  checks. The folder is remembered: while it is there, as a backup drive
+  plugged in, a new backup is written on its own once a week, and `status`
+  says when the last one is a month old. `txc vault recovery key` gives the
+  recovery key from two sheets and the card, with no vault needed, so
+  `age -d -i key.txt BACKUP` reads a backup with age alone.
+- **Recovery without any device.** `txc vault recovery restore NAME --from
+  OLD --folder NEW` reads a vault's folder with two sheets and the card alone
+  (the recovery key is a recipient of every control object, so it holds every
+  sender key) and rebuilds it as a new vault with new sheets; protected
+  entries come back as normal ones until a security key is added.
+  `txc vault recovery drill` does the same without keeping anything, as the
+  yearly rehearsal. Sheet checks and drills are dated, and `status` reminds
+  you when one is due, folding several reminders into one line that
+  `status --all` expands.
+- **`txc vault recovery reissue`** replaces the sheets and the card after one
+  was lost or seen. Two current sheets and the card sign a root fact naming
+  new root keys, a new recovery recipient and new share commitments, and
+  carrying over what the old roots had signed; every device then seals to
+  the new recovery recipient and changes its sender key, and a recovery
+  package gives the new sheets the history. The old sheets sign nothing and
+  read nothing written afterwards.
+- **Devices, keys and root actions.**
+  - `txc vault device remove` flags every entry the removed device could
+    read until one of its secrets changes, on any device: `status` says how
+    many, and
+    `txc vault list VAULT --stale` names them.
+  - `device remove` also removes its security keys unless another device
+    uses them (`--key-lost` removes those too). `--wipe` tells the device to
+    wipe its keys when txc next opens the vault there; only a kill from a
+    device that adds devices, or from root, counts.
+  - `txc vault hardware remove KEY` removes a lost security key, and
+    `device list` shows the keys.
+  - With two sheets and the card, `txc vault device promote DEVICE` lets a
+    device with a security key add devices, `device allow DEVICE --more N`
+    lets it add more, and `device remove` of such a device revokes it.
+  - A security key added to a certificate now counts against the admin's
+    allowance, as a new device does.
+  - `txc vault device forget` removes a vault's keys from this device, as
+    before a border crossing.
+- **Setup that suggests.** A new passphrase at the terminal comes with a
+  suggested one of seven random words, and one that looks weak (under about
+  50 bits) gets a word of warning. `txc vault init` points at a sync folder
+  it finds (Dropbox, Syncthing, Nextcloud, Google Drive, OneDrive, iCloud
+  Drive) for a synced vault, and `--folder` makes the last folder of the
+  path when its parent exists.
+- **Exports of protected entries.** A synced vault's export asks, one by
+  one, whether to include each protected entry, instead of always leaving
+  them out; root-grade and operation-only entries are never exported. A
+  plaintext export from a device with a security key also asks for the
+  passphrase and a touch.
+- **A quieter status.** `txc vault status --snooze` hides the yellow lines
+  shown now for 30 days (a line that changes shows again, and red lines are
+  never snoozed); `status --all` lists them with their date, and how many
+  devices and security keys each admin has added of those it may.
+  `txc vault unlock` shows each synced vault's red lines every time and its
+  yellow ones at most once a day.
+- **Swap, X11 and the screen lock.** Where swap or the hibernation target is
+  not encrypted (Linux: not on dm-crypt, nor zram), protected entries refuse
+  to release and `status` says why; macOS swap is always encrypted, and
+  where the system cannot tell, `status --all` says so. Under X11, where any
+  program on the display reads the keys, a passphrase is not asked for at
+  the terminal or in the interactive screen unless `TXC_VAULT_ALLOW_X11=1`
+  is set; a passphrase file or a session still works. On Linux the
+  interactive screen locks, and ends the session, when the desktop session
+  locks. The keyholder locks its memory out of swap where the system's lock
+  limit allows.
+- **Look-alike names and addresses.** Entry names that mix Latin with
+  Greek, Cyrillic, Armenian or Cherokee letters in one word are marked
+  "(mixed scripts)" in lists, `show` and the interactive screen, and a web
+  address whose host has letters beyond ASCII is shown in punycode, as
+  `https://xn--pple-43d.com` for an "аpple.com" with a Cyrillic "а".
+- **Root-grade entries.** `txc vault add ENTRY --root-grade` seals an entry
+  as `--protect` does, and each release also asks for the passphrase again,
+  whatever the session holds; it goes only to a program as a file.
+- **Two-step rotation.** `txc vault rotate ENTRY` writes a new secret beside
+  the old one in a synced vault, both readable; `txc vault copy ENTRY
+  --pending` gets the new one to set where it is used, and `rotate --commit`
+  makes it current, or `--abort` keeps the old. `status` lists a rotation
+  until it is finished, so a change that failed halfway loses nothing.
+- **2FA codes.** A login has a 2FA key field (`totp`) for the setup key a
+  site shows when you turn on two-factor login, or its `otpauth://` link,
+  and `txc vault code ENTRY` shows the current six-digit code, as an
+  authenticator app would, in either kind of vault (RFC 6238, SHA-1,
+  SHA-256 and SHA-512). In the interactive screen, `p` copies it, and the
+  details pane says so beside the key. The key itself is never shown; a
+  protected entry's code asks for its security key.
+- **Checkpoints, staleness and receipts.** Opening a synced vault writes a
+  checkpoint at least once an hour, dated by the device's clock. When no
+  other device has written one for a week, `status` says so and adding
+  devices, approving, promoting and reissuing are refused until the folder
+  syncs again; removing a device never waits. Changes that have waited three
+  days for objects that never arrived ask, in the checkpoint, for a
+  snapshot, which a device that adds devices writes at its next sync. Device
+  changes and reissues print a receipt, which `txc vault compare --receipt`
+  checks against the signed history.
+
+- **A smaller command surface.** The keys, trust and format commands of vaults
+  that are not synced (`identity`, `writer`, `writers`, `recipients`, `trust`,
+  `fingerprint`, `history`, `upgrade`) are grouped under `txc vault advanced`;
+  their old spellings still work but are no longer listed. `txc vault create
+  NAME --folder DIR` makes another synced vault, `device approve` also covers
+  what `device ack` did, and `status` replaces `sync`.
+- **`txc vault passwd` covers synced vaults.** It changes the passphrase of the
+  identity and of every synced vault the current passphrase opens, keeping
+  each vault's second factor, keystore or hardware; `--vault NAME` changes one.
+- **Synced vaults.** `txc vault init --folder DIR` creates a vault in a sync
+  folder that several devices share: signed, encrypted objects with random
+  names, post-quantum from end to end (age `mlkem768x25519`, composite
+  ML-DSA-65 + Ed25519 signatures). `txc vault join` and `txc vault device
+  add | list | remove` pair devices through two pasted lines and a six-digit
+  code; removing a device keeps it out of everything written afterwards.
+  Concurrent edits keep both versions until `txc vault resolve`.
+  `txc vault status` reads what other devices wrote and shows what needs
+  doing, one line each. Keys at rest need
+  the passphrase and a second factor from the system keystore. Recovery is
+  three SLIP-39 sheets and a card (`txc vault recovery print | check`), and a
+  second device waits until they are written down. `txc vault migrate` copies
+  a vault into a synced one and leaves the original untouched; `run`, `copy`,
+  `show`, `list`, `add`, `edit` and `rm` work on synced vaults by name, and
+  `txc vault unlock` covers them too.
+- **Grants from synced vaults** are sealed to the runner's own post-quantum
+  key (`age-keygen -pq`) and signed by the issuing device, with the runner,
+  entry, version, origin and expiry inside the signature and the certificate
+  chain alongside. `txc vault redeem --vault-id ID` checks it all offline
+  against the vault id the runner pins; `--min-version` refuses an outdated
+  secret, and a grant decrypted by one runner cannot be passed to another.
+- **An SSH certificate authority in the vault.** `txc vault ssh-ca NAME`
+  makes one whose key is used only inside txc: never shown, copied, granted or
+  put in an environment. `txc vault ssh HOST` signs a fresh Ed25519 key for
+  that connection with a certificate that lives five minutes (`--minutes`, an
+  hour at most) and hands both to `ssh` as in-memory files; `--setup` prints
+  the `TrustedUserCAKeys` line servers need.
+- **Hardware keys and protected entries.** `txc vault hardware add` moves a
+  device's second key factor to a security key, the Secure Enclave or a TPM
+  through its age plugin, pinned by path and hash and never looked up again,
+  and registers it as an authenticator; others see a red line until they
+  approve it (`txc vault device approve`, which also handles renewals
+  waiting for approval). `txc vault add --protect` seals an entry
+  to every registered security key and the recovery sheets: each use needs a
+  touch, and it goes only to programs as a file, never to the clipboard, the
+  screen, an environment variable, a grant or an export.
+- **Offline breach checks.** `txc vault breach import` turns a downloaded
+  Pwned Passwords SHA-1 list into a filter in the txc home, and
+  `txc vault breach check` lists the entries whose password is probably in
+  it; `status` says how many. Nothing is sent anywhere.
+- **A keyholder for the interactive screen.** `txc vault` on a terminal now
+  shows synced vaults too, and holds their keys in a separate, confined
+  process that gives the screen one secret at a time.
+- **`txc vault compare`** shows checkpoint digests to compare between devices,
+  so a storage provider showing them different histories is noticed, and
+  **`txc vault doctor`** prints a report for bug reports with no secret in it.
+- **Confinement.** While a synced vault is open, txc limits itself to its own
+  files and the vault's folder and cannot open network sockets or start
+  programs: Landlock and seccomp on Linux, a sandbox profile on macOS, and no
+  child processes on Windows. `txc vault status --all` lists what a system
+  cannot provide.
+- **Sessions.** `txc vault unlock` asks for the passphrase once and keeps the
+  vaults open across commands; `txc vault lock` ends it. The unlocked identity
+  is sealed under a random session key kept where only this login can reach
+  it: the kernel session keyring on Linux, the Keychain on macOS, DPAPI bound
+  to the logon session on Windows. A session ends after 15 minutes without use
+  (`--idle`), 8 hours at most (`--max`), when the computer sleeps, or when
+  locked. It never holds the write key. `--no-session` ignores an open
+  session.
+- **`txc vault run`** starts a program with secrets in its environment or as
+  files, never in the shell. References come from a `.env.txc` template, safe
+  to commit, and from `--set`, which accepts only references.
+  `txc://VAULT/ENTRY[/FIELD]` goes into the environment; `txc+file://` becomes
+  a path to a sealed in-memory file on Linux, a pipe on macOS, or a named pipe
+  only you can open on Windows. The exit code is passed on.
+- **`txc vault import`** reads a Bitwarden JSON export, a password CSV as
+  1Password, KeePassXC, Bitwarden, LastPass, Chrome and Firefox write it, or a
+  `.env` file, shows a summary (`--dry-run` stops there), keeps hidden values
+  secret, turns folders into tags, numbers clashing names, and with
+  `--remove-source` overwrites and deletes the export.
+- **`txc vault export`** writes vaults as one age file with a JSON body,
+  encrypted to the keys given with `--to`, so `age -d` alone reads it.
+  `--plaintext` writes unencrypted JSON after a typed confirmation, only to a
+  new file.
+
 ## [0.7.2] - 2026-09-20
 
 ### Changed
@@ -345,7 +564,8 @@ are all generated.
 
 - Initial draft.
 
-[Unreleased]: https://github.com/vorjdux/txc/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/vorjdux/txc/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/vorjdux/txc/compare/v0.7.2...v0.8.0
 [0.5.2]: https://github.com/vorjdux/txc/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/vorjdux/txc/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/vorjdux/txc/compare/v0.4.1...v0.5.0
